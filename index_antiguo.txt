@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANDE - Control de Frecuencia</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <header>
+        <h1>ANDE</h1>
+        <p>Sistema de Monitoreo de Frecuencia Eléctrica</p>
+    </header>
+
+    <section>
+        <h2>Registrar Nueva Medición</h2>
+        <form id="dataForm">
+            <input type="text" id="transformador" placeholder="Nombre del Alimentador" required>
+            <input type="number" id="frecuencia" step="0.01" placeholder="Frecuencia (Hz)" required>
+            <input type="date" id="fecha" required>
+            <button type="submit">Guardar Datos</button>
+        </form>
+    </section>
+
+    <section>
+        <h2>Filtros de Visualización</h2>
+        <div class="filters">
+            <div class="filter-group">
+                <label for="filterTransformador">Alimentador</label>
+                <select id="filterTransformador">
+                    <option value="">Todos los alimentadores</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filterYear">Año</label>
+                <select id="filterYear">
+                    <option value="">Todos los años</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filterMonth">Mes</label>
+                <select id="filterMonth">
+                    <option value="">Todos los meses</option>
+                    <option value="1">Enero</option>
+                    <option value="2">Febrero</option>
+                    <option value="3">Marzo</option>
+                    <option value="4">Abril</option>
+                    <option value="5">Mayo</option>
+                    <option value="6">Junio</option>
+                    <option value="7">Julio</option>
+                    <option value="8">Agosto</option>
+                    <option value="9">Septiembre</option>
+                    <option value="10">Octubre</option>
+                    <option value="11">Noviembre</option>
+                    <option value="12">Diciembre</option>
+                </select>
+            </div>
+        </div>
+    </section>
+
+    <section class="chart-section">
+        <h2>Gráfico de Frecuencia</h2>
+        <canvas id="frequencyChart"></canvas>
+    </section>
+
+    <section>
+        <h2>Historial de Mediciones</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Alimentador</th>
+                    <th>Fecha</th>
+                    <th>Frecuencia</th>
+                </tr>
+            </thead>
+            <tbody id="dataTable">
+            </tbody>
+        </table>
+    </section>
+
+    <script src="script.js"></script>
+</body>
+</html>

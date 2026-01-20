@@ -1,0 +1,65 @@
+# Dependencias de Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Base de datos (NO subir archivos de base de datos a git)
+ANDE.db
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Archivos de Excel originales (datos sensibles)
+datos.xlsx
+*.xlsx
+*.xls
+*.csv
+
+# Archivos de entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Sistema operativo
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# Archivos temporales
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Logs
+logs
+*.log
+
+# Archivos de compilación
+dist/
+build/
+out/
+
+# Cobertura de código
+coverage/
+.nyc_output
+
+# Paquetes
+*.tgz

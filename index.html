@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANDE Dashboard - Monitoreo de Frecuencia</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo-section">
+                <i class="fas fa-bolt"></i>
+                <div>
+                    <h1>ANDE Dashboard</h1>
+                    <p>Sistema de Monitoreo de Frecuencia Eléctrica</p>
+                </div>
+            </div>
+            <div class="header-stats">
+                <div class="stat-card">
+                    <span class="stat-label">Transformadores Activos</span>
+                    <span class="stat-value" id="total-transformadores">0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Mediciones Totales</span>
+                    <span class="stat-value" id="total-mediciones">0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Periodo</span>
+                    <span class="stat-value" id="periodo-actual">2023-2024</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="dashboard-container">
+        <!-- Sidebar de Filtros -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h3><i class="fas fa-filter"></i> Filtros</h3>
+                
+                <div class="filter-group">
+                    <label for="filterTipoMedicion"><i class="fas fa-chart-line"></i> Tipo de Medición</label>
+                    <select id="filterTipoMedicion" class="filter-select">
+                        <option value="">Todas las mediciones</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="filterTransformador"><i class="fas fa-transformer"></i> Alimentador</label>
+                    <select id="filterTransformador" class="filter-select">
+                        <option value="">Todos los alimentadores</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="filterYear"><i class="fas fa-calendar"></i> Año</label>
+                    <select id="filterYear" class="filter-select">
+                        <option value="">Todos los años</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="filterMonth"><i class="fas fa-calendar-alt"></i> Mes</label>
+                    <select id="filterMonth" class="filter-select">
+                        <option value="">Todos los meses</option>
+                        <option value="1">Enero</option>
+                        <option value="2">Febrero</option>
+                        <option value="3">Marzo</option>
+                        <option value="4">Abril</option>
+                        <option value="5">Mayo</option>
+                        <option value="6">Junio</option>
+                        <option value="7">Julio</option>
+                        <option value="8">Agosto</option>
+                        <option value="9">Septiembre</option>
+                        <option value="10">Octubre</option>
+                        <option value="11">Noviembre</option>
+                        <option value="12">Diciembre</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="filterDepartamento"><i class="fas fa-map-marker-alt"></i> Departamento</label>
+                    <select id="filterDepartamento" class="filter-select">
+                        <option value="">Todos los departamentos</option>
+                    </select>
+                </div>
+                
+                <button id="applyFilters" class="btn-apply">
+                    <i class="fas fa-search"></i> Aplicar Filtros
+                </button>
+                <button id="resetFilters" class="btn-reset">
+                    <i class="fas fa-redo"></i> Limpiar Filtros
+                </button>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3><i class="fas fa-info-circle"></i> Resumen</h3>
+                <div class="summary-stats">
+                    <div class="summary-item">
+                        <span class="summary-label">Promedio:</span>
+                        <span class="summary-value" id="avg-value">0.0000</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Máximo:</span>
+                        <span class="summary-value" id="max-value">0.0000</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Mínimo:</span>
+                        <span class="summary-value" id="min-value">0.0000</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Desviación:</span>
+                        <span class="summary-value" id="std-value">0.0000</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Contenido Principal -->
+        <section class="main-content">
+            <!-- Primera Fila: Gráfico Principal y KPI Cards -->
+            <div class="row">
+                <div class="col-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-line"></i> Tendencia de Frecuencia</h3>
+                            <div class="chart-controls">
+                                <button class="chart-btn active" data-chart-type="line">
+                                    <i class="fas fa-chart-line"></i>
+                                </button>
+                                <button class="chart-btn" data-chart-type="bar">
+                                    <i class="fas fa-chart-bar"></i>
+                                </button>
+                                <button class="chart-btn" data-chart-type="area">
+                                    <i class="fas fa-chart-area"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="mainChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-4">
+                    <div class="kpi-grid">
+                        <div class="kpi-card kpi-1">
+                            <div class="kpi-icon">
+                                <i class="fas fa-bolt"></i>
+                            </div>
+                            <div class="kpi-content">
+                                <h4>Frecuencia Promedio</h4>
+                                <div class="kpi-value" id="kpi-avg">0.0000</div>
+                                <div class="kpi-trend up">
+                                    <i class="fas fa-arrow-up"></i> 2.3%
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="kpi-card kpi-2">
+                            <div class="kpi-icon">
+                                <i class="fas fa-arrow-up"></i>
+                            </div>
+                            <div class="kpi-content">
+                                <h4>Valor Máximo</h4>
+                                <div class="kpi-value" id="kpi-max">0.0000</div>
+                                <div class="kpi-subtext">Último mes</div>
+                            </div>
+                        </div>
+                        
+                        <div class="kpi-card kpi-3">
+                            <div class="kpi-icon">
+                                <i class="fas fa-arrow-down"></i>
+                            </div>
+                            <div class="kpi-content">
+                                <h4>Valor Mínimo</h4>
+                                <div class="kpi-value" id="kpi-min">0.0000</div>
+                                <div class="kpi-subtext">Último mes</div>
+                            </div>
+                        </div>
+                        
+                        <div class="kpi-card kpi-4">
+                            <div class="kpi-icon">
+                                <i class="fas fa-exchange-alt"></i>
+                            </div>
+                            <div class="kpi-content">
+                                <h4>Variabilidad</h4>
+                                <div class="kpi-value" id="kpi-std">0.0000</div>
+                                <div class="kpi-trend down">
+                                    <i class="fas fa-arrow-down"></i> 1.5%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Segunda Fila: Gráficos Secundarios -->
+            <div class="row">
+                <div class="col-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-pie"></i> Distribución por Tipo</h3>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="pieChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-bar"></i> Top Alimentadores</h3>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="barChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-map"></i> Por Departamento</h3>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="radarChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tercera Fila: Tabla de Datos -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-table"></i> Historial de Mediciones</h3>
+                            <div class="table-controls">
+                                <div class="search-box">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" id="tableSearch" placeholder="Buscar...">
+                                </div>
+                                <button class="btn-export">
+                                    <i class="fas fa-download"></i> Exportar
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>
+                                                <input type="checkbox" id="selectAll">
+                                            </th>
+                                            <th>Alimentador <i class="fas fa-sort"></i></th>
+                                            <th>Departamento <i class="fas fa-sort"></i></th>
+                                            <th>Fecha <i class="fas fa-sort"></i></th>
+                                            <th>Tipo <i class="fas fa-sort"></i></th>
+                                            <th>Valor <i class="fas fa-sort"></i></th>
+                                            <th>Estado</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dataTable">
+                                        <!-- Datos se cargarán aquí -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="table-footer">
+                                <div class="pagination-info">
+                                    Mostrando <span id="rowsShown">0</span> de <span id="totalRows">0</span> registros
+                                </div>
+                                <div class="pagination-controls">
+                                    <button class="pagination-btn" id="prevPage">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                    <span class="page-numbers">
+                                        Página <span id="currentPage">1</span> de <span id="totalPages">1</span>
+                                    </span>
+                                    <button class="pagination-btn" id="nextPage">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal para detalles -->
+    <div class="modal" id="detailModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Detalles de Medición</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Contenido dinámico -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner">
+            <div class="spinner-circle"></div>
+            <p>Cargando datos...</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
