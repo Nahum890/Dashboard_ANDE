@@ -10,10 +10,9 @@ app.use(express.json());
 // Conexión a la base de datos
 const db = new sqlite3.Database("./ANDE.db");
 
-// GET - Obtener datos con filtros mejorados
-// GET - Obtener datos con filtros mejorados
+// GET - Obtener datos con filtros mejorados para comparación múltiple
 app.get("/api/datos", (req, res) => {
-    const { seccion, anio, mes, tipo_medicion, fecha_inicio, fecha_fin, periodo, departamento } = req.query;
+    const { seccion, anio, mes, tipo_medicion } = req.query;
 
     let sql = `
         SELECT seccion, anio, mes, departamento, tipo_medicion, valor
@@ -23,7 +22,7 @@ app.get("/api/datos", (req, res) => {
 
     const params = [];
 
-    // Filtro por alimentadores (sección) - CORREGIDO
+    // Filtro por alimentadores (sección) - múltiple
     if (seccion) {
         if (Array.isArray(seccion)) {
             const placeholders = seccion.map(() => '?').join(',');
@@ -35,75 +34,39 @@ app.get("/api/datos", (req, res) => {
         }
     }
 
-    // Filtro por departamento
-    if (departamento) {
-        if (Array.isArray(departamento)) {
-            const placeholders = departamento.map(() => '?').join(',');
-            sql += ` AND departamento IN (${placeholders})`;
-            params.push(...departamento);
+    // Filtro por año - múltiple
+    if (anio) {
+        if (Array.isArray(anio)) {
+            const placeholders = anio.map(() => '?').join(',');
+            sql += ` AND anio IN (${placeholders})`;
+            params.push(...anio.map(a => Number(a)));
         } else {
-            sql += " AND departamento = ?";
-            params.push(departamento);
-        }
-    }
-
-    // Filtro por período predefinido
-    if (periodo) {
-        const fechaActual = new Date();
-        let fechaInicio = new Date();
-        
-        switch(periodo) {
-            case '6m':
-                fechaInicio.setMonth(fechaActual.getMonth() - 6);
-                break;
-            case '3m':
-                fechaInicio.setMonth(fechaActual.getMonth() - 3);
-                break;
-            case '12m':
-                fechaInicio.setMonth(fechaActual.getMonth() - 12);
-                break;
-            case 'ytd':
-                fechaInicio = new Date(fechaActual.getFullYear(), 0, 1);
-                break;
-            default:
-                fechaInicio = new Date(fechaActual.getFullYear() - 1, fechaActual.getMonth(), fechaActual.getDate());
-        }
-        
-        sql += " AND (anio > ? OR (anio = ? AND mes >= ?))";
-        params.push(fechaInicio.getFullYear(), fechaInicio.getFullYear(), fechaInicio.getMonth() + 1);
-    }
-
-    // Filtro por rango de fechas personalizado
-    if (fecha_inicio && fecha_fin) {
-        const [inicioAnio, inicioMes] = fecha_inicio.split('-').map(Number);
-        const [finAnio, finMes] = fecha_fin.split('-').map(Number);
-        
-        sql += " AND (anio > ? OR (anio = ? AND mes >= ?))";
-        params.push(inicioAnio, inicioAnio, inicioMes);
-        
-        sql += " AND (anio < ? OR (anio = ? AND mes <= ?))";
-        params.push(finAnio, finAnio, finMes);
-    } else {
-        // Filtros individuales (mantener compatibilidad)
-        if (anio) {
             sql += " AND anio = ?";
             params.push(Number(anio));
         }
+    }
 
-        if (mes) {
-            sql += " AND mes = ?";
-            params.push(Number(mes));
+    // Filtro por mes
+    if (mes) {
+        sql += " AND mes = ?";
+        params.push(Number(mes));
+    }
+
+    // Filtro por tipo de medición - múltiple
+    if (tipo_medicion) {
+        if (Array.isArray(tipo_medicion)) {
+            const placeholders = tipo_medicion.map(() => '?').join(',');
+            sql += ` AND tipo_medicion IN (${placeholders})`;
+            params.push(...tipo_medicion.map(t => t.trim()));
+        } else {
+            sql += " AND tipo_medicion = ?";
+            params.push(tipo_medicion.trim());
         }
     }
 
-    if (tipo_medicion) {
-        sql += " AND tipo_medicion = ?";
-        params.push(tipo_medicion.trim()); // IMPORTANTE: trim() para quitar espacios
-    }
+    sql += " ORDER BY anio ASC, mes ASC, seccion ASC, tipo_medicion ASC";
 
-    sql += " ORDER BY anio ASC, mes ASC, seccion ASC";
-
-    console.log("🔍 SQL ejecutado:", sql);
+    console.log("🔍 SQL ejecutado para comparación:", sql);
     console.log("📌 Parámetros:", params);
 
     db.all(sql, params, (err, rows) => {
@@ -112,20 +75,22 @@ app.get("/api/datos", (req, res) => {
             return res.status(500).json({ error: err.message });
         }
 
-        console.log(`✅ Datos obtenidos: ${rows.length} registros`);
+        console.log(`✅ Datos obtenidos para comparación: ${rows.length} registros`);
 
         // Procesar datos para asegurar formato consistente
         const datos = rows.map(r => ({
             transformador: r.seccion,
-            frecuencia: parseFloat(r.valor) || 0, // Convertir a número
-            fecha: `${r.anio}-${String(r.mes).padStart(2, "0")}-01`, // Fecha en formato YYYY-MM-DD
+            frecuencia: parseFloat(r.valor) || 0,
+            fecha: `${r.anio}-${String(r.mes).padStart(2, "0")}-01`,
             tipo: r.tipo_medicion,
-            departamento: r.departamento || 'N/A'
+            departamento: r.departamento || 'N/A',
+            year: r.anio
         }));
 
         res.json(datos);
     });
 });
+
 // GET - Estadísticas agregadas para KPIs
 app.get("/api/estadisticas", (req, res) => {
     const { seccion, anio, mes, tipo_medicion } = req.query;

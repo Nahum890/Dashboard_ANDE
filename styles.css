@@ -505,6 +505,7 @@ body {
 .text-orange { color: var(--warning); background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); }
 .text-red { color: var(--danger); background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%); }
 .text-purple { color: var(--purple); background: linear-gradient(135deg, #f5f3ff 0%, #ddd6fe 100%); }
+.text-green { color: var(--success); background: linear-gradient(135deg, #f0fdf4 0%, #bbf7d0 100%); }
 
 /* Gráficos Grid Mejorado */
 .charts-grid { 
@@ -794,6 +795,7 @@ body {
 .delay-5 { animation: fadeInUp 0.7s ease-out forwards; opacity: 0; animation-delay: 0.5s; }
 .delay-6 { animation: fadeInUp 0.7s ease-out forwards; opacity: 0; animation-delay: 0.6s; }
 .delay-7 { animation: fadeInUp 0.7s ease-out forwards; opacity: 0; animation-delay: 0.7s; }
+.delay-8 { animation: fadeInUp 0.7s ease-out forwards; opacity: 0; animation-delay: 0.8s; }
 
 /* Loader Mejorado */
 .loading-overlay { 
@@ -1177,6 +1179,149 @@ body {
     margin: -8px;
 }
 
+/* ============================================= */
+/* ESTILOS NUEVOS PARA COMPARACIÓN AVANZADA */
+/* ============================================= */
+
+/* Etiquetas de comparación */
+.comparison-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.tag {
+    padding: 0.4rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.year-tag {
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--primary);
+    border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.transformer-tag {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.type-tag {
+    background: rgba(139, 92, 246, 0.1);
+    color: var(--purple);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.tag.hint {
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--text-light);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    display: none;
+}
+
+.modal-content {
+    background: white;
+    border-radius: var(--radius);
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-lg);
+}
+
+.modal-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #94a3b8;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+/* Mejoras para gráficos con muchas series */
+.chart-legend {
+    max-height: 150px;
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.6rem;
+    background: #f8fafc;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.legend-item:hover {
+    background: #f1f5f9;
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+}
+
+.legend-text {
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.chart-hint {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
 /* Responsive Mejorado */
 @media (max-width: 1200px) {
     .charts-grid { grid-template-columns: 1fr; }
@@ -1237,6 +1382,16 @@ body {
         flex-direction: column;
         gap: 0.5rem;
     }
+    
+    /* Responsive para comparación */
+    .comparison-tags {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .tag {
+        width: fit-content;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1254,6 +1409,15 @@ body {
         left: 1rem;
         right: 1rem;
         bottom: 1rem;
+    }
+    
+    .kpi-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 1rem;
     }
 }
 
@@ -1297,6 +1461,7 @@ body {
     margin-bottom: 2px;
     z-index: 1000;
 }
+
 /* Asegurar que los gráficos sean visibles */
 .chart-wrapper canvas {
     display: block !important;
