@@ -18,12 +18,18 @@ class ANDEDashboard {
         ];
         this.activeColorMap = {};
         this.seriesMap = {}; // Mapa de series únicas
+        this.allSecciones = []; // Todas las secciones disponibles
+        this.estaciones = []; // Lista de estaciones únicas (primeras 3 letras)
+        this.monthSelectionMode = 'unique'; // 'unique' o 'multiple'
+        this.globalComparisonMode = 'unique'; // 'unique' o 'multiple' - NUEVO: Modo global
 
         this.filters = {
-            tipoMedicion: [],    // Ahora array
+            tipoMedicion: [],    // Array
             transformador: [],   // Array
             year: [],            // Array
-            month: ''
+            month: [],           // Array para selección múltiple
+            estacion: '',        // Filtro de estación
+            periodo: 'select_months'  // Por defecto "Seleccionar Meses"
         };
 
         this.groupBy = 'alimentador'; // Por defecto agrupar por alimentador
@@ -156,15 +162,60 @@ class ANDEDashboard {
             
             if (secciones && secciones.length > 0) {
                 console.log("✅ Secciones cargadas desde BD:", secciones.length, "total");
+                this.allSecciones = secciones;
+                
+                // Extraer estaciones únicas (primeras 3 letras)
+                const estacionesSet = new Set();
+                secciones.forEach(seccion => {
+                    if (seccion && seccion.length >= 3) {
+                        estacionesSet.add(seccion.substring(0, 3));
+                    }
+                });
+                this.estaciones = Array.from(estacionesSet).sort();
+                
+                // Llenar select de estaciones
+                this.fillEstacionSelect();
+                
+                // Llenar select de alimentadores (inicialmente todos)
                 this.fillMultiSelect('filterTransformador', secciones);
             } else {
                 throw new Error("No hay secciones en la BD");
             }
         } catch (error) {
             console.warn("⚠️  Usando secciones por defecto:", error.message);
-            this.fillMultiSelect('filterTransformador', [
+            const defaultSecciones = [
                 'ACY1', 'ACY2', 'ACY3', 'ACY4', 'ACY5', 'ACY6'
-            ]);
+            ];
+            this.allSecciones = defaultSecciones;
+            this.estaciones = ['ACY'];
+            this.fillEstacionSelect();
+            this.fillMultiSelect('filterTransformador', defaultSecciones);
+        }
+    }
+
+    fillEstacionSelect() {
+        const selectEstacion = document.getElementById('filterEstacion');
+        // Limpiar opciones existentes excepto "Todas"
+        selectEstacion.innerHTML = '<option value="">Todas las estaciones</option>';
+        
+        this.estaciones.forEach(estacion => {
+            const option = document.createElement('option');
+            option.value = estacion;
+            option.textContent = estacion;
+            selectEstacion.appendChild(option);
+        });
+    }
+
+    filterAlimentadoresByEstacion(estacion) {
+        if (!estacion) {
+            // Mostrar todos los alimentadores
+            this.fillMultiSelect('filterTransformador', this.allSecciones);
+        } else {
+            // Filtrar alimentadores que comienzan con la estación seleccionada
+            const filteredSecciones = this.allSecciones.filter(seccion => 
+                seccion.startsWith(estacion)
+            );
+            this.fillMultiSelect('filterTransformador', filteredSecciones);
         }
     }
 
@@ -203,36 +254,119 @@ class ANDEDashboard {
         });
     }
 
+    // ===================================
+    // NUEVO: MÉTODOS PARA MODO GLOBAL
+    // ===================================
+    
+    setGlobalComparisonMode(mode) {
+        this.globalComparisonMode = mode;
+        
+        // Actualizar botones de modo global
+        if (mode === 'unique') {
+            document.getElementById('globalModeUnique').classList.add('active');
+            document.getElementById('globalModeMultiple').classList.remove('active');
+            document.getElementById('globalModeHint').innerHTML = 
+                '<i class="fas fa-info-circle"></i> Modo único: selecciona un valor por filtro';
+            
+            // En modo único, limitar a una selección en todos los filtros
+            this.limitToSingleSelection('filterYear');
+            this.limitToSingleSelection('filterTipoMedicion');
+            this.limitToSingleSelection('filterTransformador');
+            this.limitToSingleSelection('filterMonth');
+            
+            // También forzar modo único en meses
+            this.setMonthSelectionMode('unique');
+            
+        } else {
+            document.getElementById('globalModeUnique').classList.remove('active');
+            document.getElementById('globalModeMultiple').classList.add('active');
+            document.getElementById('globalModeHint').innerHTML = 
+                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios valores para comparar';
+            
+            // Permitir múltiples selecciones
+            this.allowMultipleSelections('filterYear');
+            this.allowMultipleSelections('filterTipoMedicion');
+            this.allowMultipleSelections('filterTransformador');
+            this.allowMultipleSelections('filterMonth');
+            
+            // Permitir múltiples selecciones en meses
+            this.setMonthSelectionMode('multiple');
+        }
+        
+        this.showNotification(`Modo de comparación: ${mode === 'unique' ? 'único' : 'múltiple'}`, "info");
+    }
+
+    limitToSingleSelection(selectId) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        
+        // Si hay más de uno seleccionado, dejar solo el primero
+        const selectedOptions = Array.from(select.selectedOptions);
+        if (selectedOptions.length > 1) {
+            // Deseleccionar todos excepto el primero
+            selectedOptions.slice(1).forEach(option => {
+                option.selected = false;
+            });
+        }
+    }
+
+    allowMultipleSelections(selectId) {
+        // En modo múltiple, no hacemos nada especial
+        // Los selectores múltiples ya permiten Ctrl+Click
+        console.log(`Permitiendo múltiples selecciones en: ${selectId}`);
+    }
+
     // --- LÓGICA DE FILTROS MEJORADA ---
     setInitialDefaults() {
         console.log("🔧 Configurando valores predeterminados para comparación...");
+        
+        // Configurar modo global único por defecto - NUEVO
+        this.setGlobalComparisonMode('unique');
         
         // Seleccionar algunos valores por defecto para demostración
         const tipoSel = document.getElementById('filterTipoMedicion');
         const yearSel = document.getElementById('filterYear');
         const transSel = document.getElementById('filterTransformador');
         
-        // Seleccionar primeros 2 tipos
-        if (tipoSel.options.length >= 2) {
+        // Seleccionar primer tipo (solo uno porque estamos en modo único)
+        if (tipoSel.options.length > 0) {
             tipoSel.options[0].selected = true;
-            tipoSel.options[1].selected = true;
         }
         
-        // Seleccionar años 2024 y 2023
+        // Seleccionar año 2025 por defecto (solo uno)
+        let found2025 = false;
         for (let i = 0; i < yearSel.options.length; i++) {
-            if (['2024', '2023'].includes(yearSel.options[i].value)) {
+            if (yearSel.options[i].value === '2025') {
                 yearSel.options[i].selected = true;
+                found2025 = true;
+                break;
             }
         }
         
-        // Seleccionar primeros 2 alimentadores
-        if (transSel.options.length >= 2) {
+        // Si no existe 2025, seleccionar el primer año disponible
+        if (!found2025 && yearSel.options.length > 0) {
+            yearSel.options[0].selected = true;
+        }
+        
+        // Seleccionar primer alimentador (solo uno)
+        if (transSel.options.length > 0) {
             transSel.options[0].selected = true;
-            transSel.options[1].selected = true;
         }
         
         // Configurar agrupación
         document.getElementById('groupBy').value = 'alimentador';
+        
+        // Configurar período en "Seleccionar Meses"
+        document.getElementById('filterPeriodo').value = 'select_months';
+        
+        // Establecer modo único por defecto para meses
+        this.monthSelectionMode = 'unique';
+        document.getElementById('modeUnique').classList.add('active');
+        document.getElementById('modeMultiple').classList.remove('active');
+        
+        // Mostrar los selectores de mes
+        document.getElementById('monthModeGroup').style.display = 'block';
+        document.getElementById('monthSelectorGroup').style.display = 'block';
 
         this.syncFilters();
         this.updateComparisonTags();
@@ -242,18 +376,22 @@ class ANDEDashboard {
         const tipoOpts = Array.from(document.getElementById('filterTipoMedicion').selectedOptions);
         const yearOpts = Array.from(document.getElementById('filterYear').selectedOptions);
         const transOpts = Array.from(document.getElementById('filterTransformador').selectedOptions);
+        const monthOpts = Array.from(document.getElementById('filterMonth').selectedOptions);
         
         this.filters = {
             tipoMedicion: tipoOpts.map(o => o.value),
             transformador: transOpts.map(o => o.value),
             year: yearOpts.map(o => o.value),
-            month: document.getElementById('filterMonth').value
+            month: monthOpts.map(o => o.value), // Ahora es un array
+            estacion: document.getElementById('filterEstacion').value,
+            periodo: document.getElementById('filterPeriodo').value
         };
         
         this.groupBy = document.getElementById('groupBy').value;
         
         console.log("📋 Filtros actualizados:", this.filters);
         console.log("📊 Agrupar por:", this.groupBy);
+        console.log("🌐 Modo global:", this.globalComparisonMode);
     }
 
     updateComparisonTags() {
@@ -261,6 +399,13 @@ class ANDEDashboard {
         tagsContainer.innerHTML = '';
         
         let hasSelections = false;
+        
+        // Modo global
+        const modeTag = document.createElement('span');
+        modeTag.className = this.globalComparisonMode === 'unique' ? 'tag mode-unique-tag' : 'tag mode-multiple-tag';
+        modeTag.innerHTML = `<i class="fas fa-exchange-alt"></i> Modo: ${this.globalComparisonMode === 'unique' ? 'Único' : 'Múltiple'}`;
+        tagsContainer.appendChild(modeTag);
+        hasSelections = true;
         
         // Años
         if (this.filters.year.length > 0) {
@@ -280,11 +425,38 @@ class ANDEDashboard {
             hasSelections = true;
         }
         
+        // Estación (si está seleccionada)
+        if (this.filters.estacion) {
+            const tag = document.createElement('span');
+            tag.className = 'tag station-tag';
+            tag.innerHTML = `<i class="fas fa-building"></i> Estación: ${this.filters.estacion}`;
+            tagsContainer.appendChild(tag);
+            hasSelections = true;
+        }
+        
         // Tipos de medición
         if (this.filters.tipoMedicion.length > 0) {
             const tag = document.createElement('span');
             tag.className = 'tag type-tag';
             tag.innerHTML = `<i class="fas fa-chart-line"></i> ${this.filters.tipoMedicion.length} tipo(s)`;
+            tagsContainer.appendChild(tag);
+            hasSelections = true;
+        }
+        
+        // Meses (si están seleccionados)
+        if (this.filters.month.length > 0) {
+            const tag = document.createElement('span');
+            tag.className = 'tag month-tag';
+            tag.innerHTML = `<i class="fas fa-calendar-alt"></i> ${this.filters.month.length} mes(es)`;
+            tagsContainer.appendChild(tag);
+            hasSelections = true;
+        }
+        
+        // Período (si está seleccionado)
+        if (this.filters.periodo) {
+            const tag = document.createElement('span');
+            tag.className = 'tag period-tag';
+            tag.innerHTML = `<i class="fas fa-clock"></i> ${this.getPeriodoLabel(this.filters.periodo)}`;
             tagsContainer.appendChild(tag);
             hasSelections = true;
         }
@@ -297,9 +469,11 @@ class ANDEDashboard {
         }
         
         // Actualizar contador de series posibles
+        const monthMultiplier = this.filters.month.length > 0 ? this.filters.month.length : 1;
         const totalCombinations = this.filters.year.length * 
                                  this.filters.transformador.length * 
-                                 this.filters.tipoMedicion.length;
+                                 this.filters.tipoMedicion.length * 
+                                 monthMultiplier;
         document.getElementById('activeSeries').textContent = totalCombinations;
     }
 
@@ -308,26 +482,42 @@ class ANDEDashboard {
         try {
             this.previousData = this.data.length > 0 ? [...this.data] : null;
             
-            // Si no hay filtros seleccionados, usar datos de demostración
-            if (this.filters.transformador.length === 0 || 
-                this.filters.year.length === 0 || 
-                this.filters.tipoMedicion.length === 0) {
-                console.log("⚠️  No hay filtros seleccionados, cargando datos demo");
-                this.loadDemoComparisonData();
-                return;
+            // Validar según modo global - NUEVO
+            if (this.globalComparisonMode === 'unique') {
+                // En modo único, validar que haya al menos un valor en cada filtro
+                if (!this.filters.transformador[0] || !this.filters.year[0] || !this.filters.tipoMedicion[0]) {
+                    console.log("⚠️  Faltan filtros en modo único");
+                    this.showNotification("Selecciona un valor en cada filtro", "warning");
+                    this.showLoading(false);
+                    return;
+                }
+            } else {
+                // En modo múltiple, validar que haya al menos una selección
+                if (this.filters.transformador.length === 0 || 
+                    this.filters.year.length === 0 || 
+                    this.filters.tipoMedicion.length === 0) {
+                    console.log("⚠️  No hay filtros seleccionados, cargando datos demo");
+                    this.loadDemoComparisonData();
+                    return;
+                }
             }
             
             // Cargar datos para cada combinación
             this.data = [];
             const promises = [];
             
+            // Determinar los meses a consultar
+            const monthsToQuery = this.filters.month.length > 0 ? this.filters.month : [null];
+            
             // Crear combinaciones de filtros
             for (const year of this.filters.year) {
                 for (const tipo of this.filters.tipoMedicion) {
                     for (const seccion of this.filters.transformador) {
-                        promises.push(
-                            this.loadCombinationData(year, tipo, seccion)
-                        );
+                        for (const month of monthsToQuery) {
+                            promises.push(
+                                this.loadCombinationData(year, tipo, seccion, month)
+                            );
+                        }
                     }
                 }
             }
@@ -337,9 +527,7 @@ class ANDEDashboard {
             this.data = results.flat();
             this.filteredData = [...this.data];
 
-            console.log("✅ Datos cargados:", this.data.length, "registros de", 
-                       this.filters.year.length * this.filters.transformador.length * this.filters.tipoMedicion.length, 
-                       "combinaciones");
+            console.log("✅ Datos cargados:", this.data.length, "registros");
 
             // Actualizar estadísticas
             this.updateStats();
@@ -359,13 +547,13 @@ class ANDEDashboard {
         }
     }
 
-    async loadCombinationData(year, tipoMedicion, seccion) {
+    async loadCombinationData(year, tipoMedicion, seccion, month = null) {
         const params = new URLSearchParams();
         params.append('anio', year);
         params.append('tipo_medicion', tipoMedicion.trim());
         params.append('seccion', seccion.trim());
         
-        if(this.filters.month) params.append('mes', this.filters.month);
+        if(month) params.append('mes', month);
 
         const url = `http://localhost:3000/api/datos?${params}`;
         console.log("🌐 Solicitando combinación:", url);
@@ -405,11 +593,11 @@ class ANDEDashboard {
         console.log("📂 Cargando datos de demostración para comparación...");
         
         const demoData = [];
-        const years = this.filters.year.length > 0 ? this.filters.year : ['2024', '2023'];
+        const years = this.filters.year.length > 0 ? this.filters.year : ['2024'];
         const alimentadores = this.filters.transformador.length > 0 ? 
-            this.filters.transformador : ['ACY1', 'ACY2'];
+            this.filters.transformador : ['ACY1'];
         const tipos = this.filters.tipoMedicion.length > 0 ? 
-            this.filters.tipoMedicion : ['TOTAL PENEF', 'TOTAL DEP'];
+            this.filters.tipoMedicion : ['TOTAL PENEF'];
         
         let idCounter = 0;
         
@@ -1266,18 +1454,27 @@ class ANDEDashboard {
         document.getElementById('applyFilters').addEventListener('click', () => {
             this.syncFilters();
             
-            // Validar selecciones mínimas
-            if(this.filters.transformador.length === 0) {
-                this.showNotification("Selecciona al menos un alimentador", "warning");
-                return;
-            }
-            if(this.filters.year.length === 0) {
-                this.showNotification("Selecciona al menos un año", "warning");
-                return;
-            }
-            if(this.filters.tipoMedicion.length === 0) {
-                this.showNotification("Selecciona al menos un tipo de medición", "warning");
-                return;
+            // Validar según modo global
+            if (this.globalComparisonMode === 'unique') {
+                // En modo único, validar que haya al menos un valor en cada filtro
+                if (!this.filters.transformador[0] || !this.filters.year[0] || !this.filters.tipoMedicion[0]) {
+                    this.showNotification("Selecciona un valor en cada filtro", "warning");
+                    return;
+                }
+            } else {
+                // En modo múltiple, validar que haya al menos una selección
+                if (this.filters.transformador.length === 0) {
+                    this.showNotification("Selecciona al menos un alimentador", "warning");
+                    return;
+                }
+                if (this.filters.year.length === 0) {
+                    this.showNotification("Selecciona al menos un año", "warning");
+                    return;
+                }
+                if (this.filters.tipoMedicion.length === 0) {
+                    this.showNotification("Selecciona al menos un tipo de medición", "warning");
+                    return;
+                }
             }
             
             if(window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('active');
@@ -1297,6 +1494,23 @@ class ANDEDashboard {
             document.getElementById('filterTipoMedicion').selectedIndex = -1;
             document.getElementById('filterYear').selectedIndex = -1;
             document.getElementById('filterTransformador').selectedIndex = -1;
+            document.getElementById('filterMonth').selectedIndex = -1;
+            document.getElementById('filterEstacion').value = '';
+            document.getElementById('filterPeriodo').value = 'select_months';
+            
+            // Limpiar botones de meses
+            this.clearMonthSelection();
+            
+            // Mostrar selectores de mes
+            document.getElementById('monthModeGroup').style.display = 'block';
+            document.getElementById('monthSelectorGroup').style.display = 'block';
+            
+            // Restaurar todos los alimentadores cuando se limpia la estación
+            this.filterAlimentadoresByEstacion('');
+            
+            // Restaurar modo único global - NUEVO
+            this.setGlobalComparisonMode('unique');
+            
             this.syncFilters();
             this.updateComparisonTags();
             this.showNotification("Filtros limpiados", "info");
@@ -1457,6 +1671,70 @@ class ANDEDashboard {
             }
         });
 
+        // Filtro de estación
+        document.getElementById('filterEstacion').addEventListener('change', (e) => {
+            const estacion = e.target.value;
+            this.filters.estacion = estacion;
+            this.filterAlimentadoresByEstacion(estacion);
+            this.showNotification(`Filtro de estación: ${estacion || 'Todas'}`, "info");
+        });
+
+        // Filtro de período
+        document.getElementById('filterPeriodo').addEventListener('change', (e) => {
+            const periodo = e.target.value;
+            this.filters.periodo = periodo;
+            
+            if (periodo === 'select_months') {
+                // Mostrar selectores de modo y meses
+                document.getElementById('monthModeGroup').style.display = 'block';
+                document.getElementById('monthSelectorGroup').style.display = 'block';
+            } else {
+                // Ocultar selectores y aplicar período predefinido
+                document.getElementById('monthModeGroup').style.display = 'none';
+                document.getElementById('monthSelectorGroup').style.display = 'none';
+                this.applyPeriodoFilter(periodo);
+            }
+        });
+        
+        // Eventos para botones de modo (único/múltiple) para meses
+        document.getElementById('modeUnique').addEventListener('click', () => {
+            this.setMonthSelectionMode('unique');
+        });
+        
+        document.getElementById('modeMultiple').addEventListener('click', () => {
+            this.setMonthSelectionMode('multiple');
+        });
+        
+        // Eventos para botones de meses
+        document.querySelectorAll('.month-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.toggleMonthSelection(e.target.dataset.month);
+            });
+        });
+
+        // NUEVO: Eventos para modo global único/múltiple
+        document.getElementById('globalModeUnique').addEventListener('click', () => {
+            this.setGlobalComparisonMode('unique');
+        });
+        
+        document.getElementById('globalModeMultiple').addEventListener('click', () => {
+            this.setGlobalComparisonMode('multiple');
+        });
+        
+        // NUEVO: Eventos para selectores múltiples que respeten el modo global
+        ['filterYear', 'filterTipoMedicion', 'filterTransformador', 'filterMonth'].forEach(selectId => {
+            const select = document.getElementById(selectId);
+            if (select) {
+                select.addEventListener('change', (e) => {
+                    if (this.globalComparisonMode === 'unique') {
+                        this.limitToSingleSelection(selectId);
+                    }
+                    this.syncFilters();
+                    this.updateComparisonTags();
+                });
+            }
+        });
+
         // Cerrar sidebar al hacer clic fuera (en móviles)
         document.addEventListener('click', (e) => {
             const sidebar = document.getElementById('sidebar');
@@ -1593,6 +1871,207 @@ class ANDEDashboard {
                 this.loadData();
             }
         }, 30000);
+    }
+
+    // ============================================
+    // FUNCIONES PARA SELECCIÓN DE MESES
+    // ============================================
+    
+    setMonthSelectionMode(mode) {
+        this.monthSelectionMode = mode;
+        
+        // Actualizar botones de modo
+        if (mode === 'unique') {
+            document.getElementById('modeUnique').classList.add('active');
+            document.getElementById('modeMultiple').classList.remove('active');
+            
+            // En modo único, mantener solo un mes seleccionado
+            const selectedMonths = Array.from(document.querySelectorAll('.month-btn.selected'));
+            if (selectedMonths.length > 1) {
+                // Deseleccionar todos excepto el primero
+                selectedMonths.slice(1).forEach(btn => btn.classList.remove('selected'));
+                this.syncMonthsToHiddenSelect();
+            }
+            
+            document.getElementById('monthHint').innerHTML = 
+                '<i class="fas fa-info-circle"></i> Modo único: selecciona un mes';
+        } else {
+            document.getElementById('modeUnique').classList.remove('active');
+            document.getElementById('modeMultiple').classList.add('active');
+            
+            document.getElementById('monthHint').innerHTML = 
+                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios meses para comparar';
+        }
+        
+        this.showNotification(`Modo ${mode === 'unique' ? 'único' : 'múltiple'} activado`, "info");
+    }
+    
+    toggleMonthSelection(month) {
+        const btn = document.querySelector(`.month-btn[data-month="${month}"]`);
+        if (!btn) return;
+        
+        if (this.monthSelectionMode === 'unique') {
+            // Modo único: deseleccionar todos los demás
+            document.querySelectorAll('.month-btn.selected').forEach(b => {
+                b.classList.remove('selected');
+            });
+            btn.classList.add('selected');
+        } else {
+            // Modo múltiple: toggle del botón
+            btn.classList.toggle('selected');
+        }
+        
+        // Sincronizar con el select oculto
+        this.syncMonthsToHiddenSelect();
+        this.syncFilters();
+        this.updateComparisonTags();
+    }
+    
+    syncMonthsToHiddenSelect() {
+        const selectedBtns = document.querySelectorAll('.month-btn.selected');
+        const selectedMonths = Array.from(selectedBtns).map(btn => btn.dataset.month);
+        
+        const hiddenSelect = document.getElementById('filterMonth');
+        
+        // Deseleccionar todas las opciones
+        Array.from(hiddenSelect.options).forEach(option => {
+            option.selected = false;
+        });
+        
+        // Seleccionar las opciones correspondientes
+        selectedMonths.forEach(month => {
+            Array.from(hiddenSelect.options).forEach(option => {
+                if (option.value === month) {
+                    option.selected = true;
+                }
+            });
+        });
+    }
+    
+    clearMonthSelection() {
+        document.querySelectorAll('.month-btn.selected').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        this.syncMonthsToHiddenSelect();
+    }
+
+    applyPeriodoFilter(periodo) {
+        if (!periodo || periodo === 'select_months') {
+            // Modo seleccionar meses - no hacer nada, ya están los selectores visibles
+            return;
+        }
+
+        // Limpiar selección de meses en los botones
+        this.clearMonthSelection();
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1; // 0-11 to 1-12
+
+        let selectedYears = [];
+        let selectedMonths = [];
+
+        switch(periodo) {
+            case 'last3':
+                // Últimos 3 meses
+                selectedMonths = this.getLastNMonths(3, currentYear, currentMonth);
+                selectedYears = [currentYear];
+                if (selectedMonths.some(m => m > currentMonth)) {
+                    selectedYears.push(currentYear - 1);
+                }
+                break;
+            
+            case 'last6':
+                // Últimos 6 meses
+                selectedMonths = this.getLastNMonths(6, currentYear, currentMonth);
+                selectedYears = [currentYear];
+                if (selectedMonths.some(m => m > currentMonth)) {
+                    selectedYears.push(currentYear - 1);
+                }
+                break;
+            
+            case 'last12':
+                // Últimos 12 meses
+                selectedMonths = Array.from({length: 12}, (_, i) => i + 1);
+                selectedYears = [currentYear, currentYear - 1];
+                break;
+            
+            case 'currentYear':
+                // Año actual
+                selectedMonths = Array.from({length: currentMonth}, (_, i) => i + 1);
+                selectedYears = [currentYear];
+                break;
+            
+            case 'lastYear':
+                // Año pasado completo
+                selectedMonths = Array.from({length: 12}, (_, i) => i + 1);
+                selectedYears = [currentYear - 1];
+                break;
+        }
+
+        // Aplicar selecciones
+        this.selectMultipleOptions('filterYear', selectedYears.map(String));
+        this.selectMultipleOptions('filterMonth', selectedMonths.map(String));
+        
+        this.showNotification(`Período aplicado: ${this.getPeriodoLabel(periodo)}`, "success");
+    }
+
+    getLastNMonths(n, currentYear, currentMonth) {
+        const months = [];
+        for (let i = 0; i < n; i++) {
+            let month = currentMonth - i;
+            if (month <= 0) {
+                month += 12;
+            }
+            months.unshift(month);
+        }
+        return months;
+    }
+
+    getPeriodoLabel(periodo) {
+        const labels = {
+            'last3': 'Últimos 3 meses',
+            'last6': 'Últimos 6 meses',
+            'last12': 'Últimos 12 meses',
+            'currentYear': 'Año actual',
+            'lastYear': 'Año pasado'
+        };
+        return labels[periodo] || 'Personalizado';
+    }
+
+    selectMultipleOptions(selectId, values) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        
+        // Deseleccionar todas las opciones primero
+        Array.from(select.options).forEach(option => {
+            option.selected = false;
+        });
+        
+        // Seleccionar las opciones especificadas
+        values.forEach(value => {
+            Array.from(select.options).forEach(option => {
+                if (option.value === value) {
+                    option.selected = true;
+                }
+            });
+        });
+        
+        // Si es el selector de meses, actualizar también los botones visuales
+        if (selectId === 'filterMonth') {
+            // Limpiar selección de botones
+            document.querySelectorAll('.month-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            
+            // Seleccionar los botones correspondientes
+            values.forEach(value => {
+                const btn = document.querySelector(`.month-btn[data-month="${value}"]`);
+                if (btn) {
+                    btn.classList.add('selected');
+                }
+            });
+        }
     }
 
     updateKPIs() {

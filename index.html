@@ -36,6 +36,25 @@
             </div>
             
             <div class="sidebar-content">
+                <!-- Modo de Comparación Global -->
+                <div class="filter-group">
+                    <label class="form-label"><i class="fas fa-exchange-alt"></i> Modo de Comparación</label>
+                    <div class="toggle-buttons">
+                        <button type="button" class="toggle-btn active" id="globalModeUnique" data-mode="unique">
+                            <i class="fas fa-check-circle"></i> Único
+                        </button>
+                        <button type="button" class="toggle-btn" id="globalModeMultiple" data-mode="multiple">
+                            <i class="fas fa-check-double"></i> Múltiple
+                        </button>
+                    </div>
+                    <small class="form-hint">
+                        <i class="fas fa-info-circle"></i> 
+                        <span id="globalModeHint">
+                            Único: un valor por filtro | Múltiple: varios valores por filtro
+                        </span>
+                    </small>
+                </div>
+
                 <!-- Año - Ahora múltiple -->
                 <div class="filter-group">
                     <label class="form-label"><i class="fas fa-calendar"></i> Año (Comparar)</label>
@@ -54,6 +73,15 @@
                     <small class="form-hint"><i class="fas fa-info-circle"></i> Compara diferentes tipos de medición</small>
                 </div>
                 
+                <!-- Estaciones - Nuevo filtro -->
+                <div class="filter-group">
+                    <label class="form-label"><i class="fas fa-building"></i> Estación</label>
+                    <select id="filterEstacion" class="form-select">
+                        <option value="">Todas las estaciones</option>
+                    </select>
+                    <small class="form-hint"><i class="fas fa-info-circle"></i> Filtra por las primeras 3 letras del alimentador</small>
+                </div>
+                
                 <!-- Alimentadores - Múltiple -->
                 <div class="filter-group">
                     <label class="form-label"><i class="fas fa-transformer"></i> Alimentadores (Comparar)</label>
@@ -63,25 +91,71 @@
                     <small class="form-hint"><i class="fas fa-info-circle"></i> Selecciona múltiples para comparar</small>
                 </div>
 
-                <!-- Mes - Opcional -->
+                <!-- Período - Selector mejorado -->
                 <div class="filter-group">
-                    <label class="form-label"><i class="fas fa-calendar-alt"></i> Mes (Opcional)</label>
-                    <select id="filterMonth" class="form-select">
-                        <option value="">Todos los meses</option>
-                        <option value="1">Enero</option>
-                        <option value="2">Febrero</option>
-                        <option value="3">Marzo</option>
-                        <option value="4">Abril</option>
-                        <option value="5">Mayo</option>
-                        <option value="6">Junio</option>
-                        <option value="7">Julio</option>
-                        <option value="8">Agosto</option>
-                        <option value="9">Septiembre</option>
-                        <option value="10">Octubre</option>
-                        <option value="11">Noviembre</option>
-                        <option value="12">Diciembre</option>
+                    <label class="form-label"><i class="fas fa-clock"></i> Período</label>
+                    <select id="filterPeriodo" class="form-select">
+                        <option value="select_months">Seleccionar Meses</option>
+                        <option value="last3">Últimos 3 meses</option>
+                        <option value="last6">Últimos 6 meses</option>
+                        <option value="last12">Últimos 12 meses</option>
+                        <option value="currentYear">Año actual</option>
+                        <option value="lastYear">Año pasado</option>
                     </select>
+                    <small class="form-hint"><i class="fas fa-info-circle"></i> Selección de período temporal</small>
                 </div>
+
+                <!-- Modo de Selección de Meses - Nuevo -->
+                <div class="filter-group" id="monthModeGroup" style="display: none;">
+                    <label class="form-label"><i class="fas fa-toggle-on"></i> Modo de Selección</label>
+                    <div class="toggle-buttons">
+                        <button type="button" class="toggle-btn active" id="modeUnique" data-mode="unique">
+                            <i class="fas fa-check-circle"></i> Único
+                        </button>
+                        <button type="button" class="toggle-btn" id="modeMultiple" data-mode="multiple">
+                            <i class="fas fa-check-double"></i> Múltiple
+                        </button>
+                    </div>
+                    <small class="form-hint"><i class="fas fa-info-circle"></i> Único: un mes | Múltiple: comparar varios meses</small>
+                </div>
+
+                <!-- Selector de Meses - Mejorado -->
+                <div class="filter-group" id="monthSelectorGroup" style="display: none;">
+                    <label class="form-label"><i class="fas fa-calendar-alt"></i> Meses</label>
+                    <div class="month-grid" id="monthGrid">
+                        <button type="button" class="month-btn" data-month="1">Enero</button>
+                        <button type="button" class="month-btn" data-month="2">Febrero</button>
+                        <button type="button" class="month-btn" data-month="3">Marzo</button>
+                        <button type="button" class="month-btn" data-month="4">Abril</button>
+                        <button type="button" class="month-btn" data-month="5">Mayo</button>
+                        <button type="button" class="month-btn" data-month="6">Junio</button>
+                        <button type="button" class="month-btn" data-month="7">Julio</button>
+                        <button type="button" class="month-btn" data-month="8">Agosto</button>
+                        <button type="button" class="month-btn" data-month="9">Septiembre</button>
+                        <button type="button" class="month-btn" data-month="10">Octubre</button>
+                        <button type="button" class="month-btn" data-month="11">Noviembre</button>
+                        <button type="button" class="month-btn" data-month="12">Diciembre</button>
+                    </div>
+                    <small class="form-hint" id="monthHint">
+                        <i class="fas fa-info-circle"></i> Haz clic para seleccionar
+                    </small>
+                </div>
+
+                <!-- Select oculto para mantener compatibilidad -->
+                <select id="filterMonth" class="form-select" multiple style="display: none;">
+                    <option value="1">Enero</option>
+                    <option value="2">Febrero</option>
+                    <option value="3">Marzo</option>
+                    <option value="4">Abril</option>
+                    <option value="5">Mayo</option>
+                    <option value="6">Junio</option>
+                    <option value="7">Julio</option>
+                    <option value="8">Agosto</option>
+                    <option value="9">Septiembre</option>
+                    <option value="10">Octubre</option>
+                    <option value="11">Noviembre</option>
+                    <option value="12">Diciembre</option>
+                </select>
 
                 <!-- Nuevo: Agrupación -->
                 <div class="filter-group">

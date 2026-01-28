@@ -1497,3 +1497,221 @@ body {
     margin-bottom: 1rem;
     opacity: 0.5;
 }
+/* ============================================
+   NUEVOS ESTILOS PARA SELECTOR DE MESES
+   ============================================ */
+
+/* Botones de toggle para modo único/múltiple */
+.toggle-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.toggle-btn {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border: 2px solid #e2e8f0;
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.toggle-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.toggle-btn.active {
+    background: var(--gradient-primary);
+    border-color: var(--primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.toggle-btn i {
+    font-size: 1rem;
+}
+
+/* Grid de meses */
+.month-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.month-btn {
+    padding: 0.75rem 0.5rem;
+    border: 2px solid #e2e8f0;
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    font-size: 0.85rem;
+    color: var(--text-main);
+    text-align: center;
+}
+
+.month-btn:hover {
+    border-color: var(--primary-light);
+    background: #eff6ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+}
+
+.month-btn.selected {
+    background: var(--gradient-primary);
+    border-color: var(--primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    font-weight: 600;
+}
+
+.month-btn:active {
+    transform: translateY(0);
+}
+
+/* Animación para mostrar/ocultar grupos */
+#monthModeGroup,
+#monthSelectorGroup {
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive para grid de meses */
+@media (max-width: 768px) {
+    .month-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .month-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .toggle-buttons {
+        flex-direction: column;
+    }
+}
+/* =============================================
+   NUEVOS ESTILOS PARA MODO GLOBAL DE COMPARACIÓN
+   ============================================= */
+
+/* Etiquetas para modo de comparación */
+.mode-unique-tag {
+    background: rgba(37, 99, 235, 0.15);
+    color: var(--primary);
+    border: 1px solid rgba(37, 99, 235, 0.3);
+    font-weight: 700;
+}
+
+.mode-multiple-tag {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    font-weight: 700;
+}
+
+/* Resaltar cuando está en modo único */
+.global-mode-unique .form-hint {
+    background: rgba(37, 99, 235, 0.1);
+    border-left: 3px solid var(--primary);
+}
+
+/* Resaltar cuando está en modo múltiple */
+.global-mode-multiple .form-hint {
+    background: rgba(16, 185, 129, 0.1);
+    border-left: 3px solid var(--success);
+}
+
+/* Indicador visual para modo global activo */
+.filter-group.global-mode-active {
+    position: relative;
+    border-left: 4px solid var(--primary);
+    padding-left: 12px;
+    background: rgba(37, 99, 235, 0.03);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 1rem;
+}
+
+.filter-group.global-mode-active::before {
+    content: '🌐';
+    position: absolute;
+    top: -8px;
+    right: 10px;
+    font-size: 0.8rem;
+    background: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--primary);
+}
+
+/* Ajustes para los botones de modo global */
+#globalModeUnique.active {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: white;
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+#globalModeMultiple.active {
+    background: linear-gradient(135deg, #10b981 0%, #0da06e 100%);
+    color: white;
+    border-color: var(--success);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+/* Efecto de deshabilitado para modo único */
+.global-mode-unique .multi-select option:checked ~ option {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Nota informativa para modo único */
+.mode-unique-note {
+    display: block;
+    margin-top: 5px;
+    font-size: 0.75rem;
+    color: var(--primary);
+    font-weight: 500;
+}
+
+/* Responsive para modo global */
+@media (max-width: 768px) {
+    .filter-group.global-mode-active {
+        padding: 12px;
+        margin-bottom: 0.8rem;
+    }
+    
+    .toggle-buttons {
+        flex-direction: column;
+    }
+    
+    .toggle-btn {
+        width: 100%;
+        text-align: center;
+    }
+}
