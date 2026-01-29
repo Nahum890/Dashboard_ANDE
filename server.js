@@ -29,37 +29,19 @@ if (!fs.existsSync(dbPath)) {
 // 3. Conexión a la base de datos con mejor manejo de errores
 let db;
 try {
-    db = new sqlite3.Database(dbPath, (err) => {
-        if (err) {
-            console.error("❌ Error conectando a SQLite:", err.message);
-        } else {
-            console.log("✅ Conectado a la base de datos SQLite");
-            
-            // Verificar que la tabla existe
-            db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='mediciones_completas'", (err, row) => {
-                if (err) {
-                    console.error("❌ Error verificando tablas:", err.message);
-                } else if (row) {
-                    console.log("✅ Tabla 'mediciones_completas' encontrada");
-                    
-                    // Contar registros
-                    db.get("SELECT COUNT(*) as count FROM mediciones_completas", (err, result) => {
-                        if (err) {
-                            console.error("❌ Error contando registros:", err.message);
-                        } else {
-                            console.log(`📊 Total de registros en BD: ${result.count}`);
-                        }
-                    });
-                } else {
-                    console.error("❌ ERROR: No se encontró la tabla 'mediciones_completas'");
-                }
-            });
-        }
-    });
+    db = new Database('./ANDE.db', { verbose: console.log });
+    console.log("✅ Conectado a la base de datos SQLite con better-sqlite3");
+    
+    // Verificar que la tabla existe
+    const tableCheck = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mediciones_completas'").get();
+    if (tableCheck) {
+        console.log("✅ Tabla 'mediciones_completas' encontrada");
+    } else {
+        console.error("❌ ERROR: No se encontró la tabla 'mediciones_completas'");
+    }
 } catch (error) {
-    console.error("❌ Error inicializando SQLite:", error.message);
+    console.error("❌ Error conectando a SQLite:", error.message);
 }
-
 // 4. Endpoints básicos para verificar funcionamiento
 
 // Endpoint de salud - IMPORTANTE para Render
