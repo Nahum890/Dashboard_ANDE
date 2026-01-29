@@ -346,17 +346,29 @@ app.get("/api/resumen", (req, res) => {
     });
 });
 
-// 4. Servir archivos estáticos (Frontend)
-app.use(express.static(path.join(__dirname)));
+// 4. Endpoint de verificación
+app.get("/api/health", (req, res) => {
+    res.json({ 
+        status: "OK", 
+        timestamp: new Date().toISOString(),
+        service: "ANDE Dashboard API",
+        version: "1.0.0"
+    });
+});
 
+// 5. Servir archivos estáticos (Frontend)
+app.use(express.static(__dirname));
+
+// 6. Ruta para SPA - todas las demás rutas sirven index.html
 app.get("*", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// 5. PUERTO DINÁMICO PARA RENDER
+// 7. PUERTO DINÁMICO PARA RENDER
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Servidor ANDE Dashboard en puerto ${PORT}`);
+    console.log(`🌐 URL: http://localhost:${PORT}`);
 });
 
 process.on("SIGINT", () => {
