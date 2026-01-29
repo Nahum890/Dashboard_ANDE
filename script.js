@@ -1,6 +1,7 @@
 class ANDEDashboard {
     constructor() {
-        const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : '';
+        // Esta línea detecta si estás en tu PC o en Render
+        this.apiBaseUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000' : '';
         this.data = [];
         this.filteredData = [];
         this.mainChart = null;
@@ -133,8 +134,8 @@ class ANDEDashboard {
     // --- CARGA DE SELECTORES ---
     async loadTiposMedicion() {
         try {
-            // CAMBIADO: URL relativa en lugar de localhost
-            const res = await fetch('/api/tipos-medicion');
+            // CAMBIADO: Usar this.apiBaseUrl en lugar de URL relativa
+            const res = await fetch(`${this.apiBaseUrl}/api/tipos-medicion`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             
             const tipos = await res.json();
@@ -157,8 +158,8 @@ class ANDEDashboard {
 
     async loadSeccionesDisponibles() {
         try {
-            // CAMBIADO: URL relativa en lugar de localhost
-            const res = await fetch('/api/secciones');
+            // CAMBIADO: Usar this.apiBaseUrl en lugar de URL relativa
+            const res = await fetch(`${this.apiBaseUrl}/api/secciones`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             
             const secciones = await res.json();
@@ -224,8 +225,8 @@ class ANDEDashboard {
 
     async loadYearsAvailable() {
         try {
-            // CAMBIADO: URL relativa en lugar de localhost
-            const res = await fetch('/api/anios');
+            // CAMBIADO: Usar this.apiBaseUrl en lugar de URL relativa
+            const res = await fetch(`${this.apiBaseUrl}/api/anios`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             
             const years = await res.json();
@@ -559,8 +560,8 @@ class ANDEDashboard {
         
         if(month) params.append('mes', month);
 
-        // CAMBIADO: URL relativa en lugar de localhost
-        const url = `${API_BASE_URL}/api/datos?${params.toString()}`;
+        // CAMBIADO: Usar this.apiBaseUrl en lugar de variable no definida API_BASE_URL
+        const url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
         console.log("🌐 Solicitando combinación:", url);
         
         const res = await fetch(url);
