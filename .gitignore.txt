@@ -63,3 +63,4 @@ coverage/
 
 # Paquetes
 *.tgz
+node_modules/

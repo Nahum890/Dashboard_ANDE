@@ -4,13 +4,15 @@ const cors = require("cors");
 const path = require("path");
 
 const app = express();
+
+// 1. Middlewares (Importante el orden)
 app.use(cors());
 app.use(express.json());
 
-// Conexión a la base de datos
+// 2. Conexión a la base de datos
 const db = new sqlite3.Database("./ANDE.db");
 
-// GET - Obtener datos con filtros mejorados para comparación múltiple
+// 3. Endpoints (Se mantienen igual que tu lógica original)
 app.get("/api/datos", (req, res) => {
     const { seccion, anio, mes, tipo_medicion } = req.query;
 
@@ -344,26 +346,17 @@ app.get("/api/resumen", (req, res) => {
     });
 });
 
-// Servir archivos estáticos
+// 4. Servir archivos estáticos (Frontend)
 app.use(express.static(path.join(__dirname)));
 
-app.get("/", (req, res) => {
+app.get("*", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
 });
 
-const PORT = 3000;
+// 5. PUERTO DINÁMICO PARA RENDER
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor ANDE Dashboard en http://localhost:${PORT}`);
-    console.log(`📊 Endpoints disponibles:`);
-    console.log(`   GET /api/datos - Datos principales con filtros mejorados`);
-    console.log(`   GET /api/estadisticas - Estadísticas agregadas`);
-    console.log(`   GET /api/heatmap - Datos para heatmap`);
-    console.log(`   GET /api/radar - Datos para gráfico radar`);
-    console.log(`   GET /api/boxplot - Datos para boxplot`);
-    console.log(`   GET /api/resumen - Resumen del sistema`);
-    console.log(`   GET /api/secciones - Lista de alimentadores`);
-    console.log(`   GET /api/departamentos - Lista de departamentos`);
-    console.log(`   GET /api/anios - Lista de años disponibles`);
+    console.log(`🚀 Servidor ANDE Dashboard en puerto ${PORT}`);
 });
 
 process.on("SIGINT", () => {

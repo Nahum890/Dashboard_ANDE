@@ -132,7 +132,8 @@ class ANDEDashboard {
     // --- CARGA DE SELECTORES ---
     async loadTiposMedicion() {
         try {
-            const res = await fetch('http://localhost:3000/api/tipos-medicion');
+            // CAMBIADO: URL relativa en lugar de localhost
+            const res = await fetch('/api/tipos-medicion');
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             
             const tipos = await res.json();
@@ -155,7 +156,8 @@ class ANDEDashboard {
 
     async loadSeccionesDisponibles() {
         try {
-            const res = await fetch('http://localhost:3000/api/secciones');
+            // CAMBIADO: URL relativa en lugar de localhost
+            const res = await fetch('/api/secciones');
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             
             const secciones = await res.json();
@@ -221,7 +223,8 @@ class ANDEDashboard {
 
     async loadYearsAvailable() {
         try {
-            const res = await fetch('http://localhost:3000/api/anios');
+            // CAMBIADO: URL relativa en lugar de localhost
+            const res = await fetch('/api/anios');
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             
             const years = await res.json();
@@ -555,7 +558,8 @@ class ANDEDashboard {
         
         if(month) params.append('mes', month);
 
-        const url = `http://localhost:3000/api/datos?${params}`;
+        // CAMBIADO: URL relativa en lugar de localhost
+        const url = `/api/datos?${params}`;
         console.log("🌐 Solicitando combinación:", url);
         
         const res = await fetch(url);
