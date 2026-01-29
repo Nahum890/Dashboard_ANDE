@@ -1,4 +1,37 @@
 // script.js
+console.log("🚀 Dashboard iniciando...");
+console.log("📍 URL actual:", window.location.href);
+console.log("🌐 Origen:", window.location.origin);
+console.log("🔗 Protocolo:", window.location.protocol);
+console.log("🏠 Hostname:", window.location.hostname);
+console.log("🚪 Puerto:", window.location.port);
+
+// Función para probar conexión
+async function testConnection() {
+    console.log("🔍 Probando conexión con backend...");
+    
+    const testUrls = [
+        '/api/health',
+        '/api/test',
+        '/api/tipos-medicion'
+    ];
+    
+    for (const url of testUrls) {
+        try {
+            console.log(`📡 Intentando conectar a: ${url}`);
+            const response = await fetch(url);
+            const data = await response.json();
+            console.log(`✅ ${url}:`, data);
+        } catch (error) {
+            console.error(`❌ Error en ${url}:`, error.message);
+        }
+    }
+}
+
+// Ejecutar test al cargar
+window.addEventListener('load', () => {
+    setTimeout(testConnection, 1000);
+});
 class ANDEDashboard {
     constructor() {
         // Esta línea detecta si estás en tu PC o en Render
