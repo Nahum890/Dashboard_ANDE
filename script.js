@@ -1,5 +1,6 @@
 class ANDEDashboard {
     constructor() {
+        const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : '';
         this.data = [];
         this.filteredData = [];
         this.mainChart = null;
@@ -559,7 +560,7 @@ class ANDEDashboard {
         if(month) params.append('mes', month);
 
         // CAMBIADO: URL relativa en lugar de localhost
-        const url = `/api/datos?${params}`;
+        const url = `${API_BASE_URL}/api/datos?${params.toString()}`;
         console.log("🌐 Solicitando combinación:", url);
         
         const res = await fetch(url);
