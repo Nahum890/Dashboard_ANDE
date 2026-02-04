@@ -1302,18 +1302,18 @@ class ANDEDashboard {
         const globalRange = globalMax - globalMin;
         const avgCV = allCVs.reduce((a, b) => a + b, 0) / allCVs.length;
         
-        // Encontrar la mejor serie (menor CV = más estable)
-        let bestSeriesKey = Object.keys(seriesStats)[0];
-        let bestCV = seriesStats[bestSeriesKey].cv;
+        // Encontrar la peor serie (mayor CV = menos estable)
+        let worstSeriesKey = Object.keys(seriesStats)[0];
+        let worstCV = seriesStats[worstSeriesKey].cv;
         
         Object.entries(seriesStats).forEach(([key, stats]) => {
-            if (stats.cv < bestCV) {
-                bestCV = stats.cv;
-                bestSeriesKey = key;
+            if (stats.cv > worstCV) {
+                worstCV = stats.cv;
+                worstSeriesKey = key;
             }
         });
         
-        const bestSeries = this.data.find(d => d.combinationKey === bestSeriesKey);
+        const worstSeries = this.data.find(d => d.combinationKey === worstSeriesKey);
         
         // Actualizar elementos
         document.getElementById('rangeValue').textContent = this.safeToFixed(globalRange);
@@ -1335,9 +1335,9 @@ class ANDEDashboard {
             variabilityBadge.style.color = 'var(--danger)';
         }
         
-        if (bestSeries) {
-            document.getElementById('bestSeries').textContent = bestSeries.transformador;
-            document.getElementById('bestValue').textContent = this.safeToFixed(seriesStats[bestSeriesKey].cv, 2) + '% CV';
+        if (worstSeries) {
+            document.getElementById('bestSeries').textContent = worstSeries.transformador;
+            document.getElementById('bestValue').textContent = this.safeToFixed(seriesStats[worstSeriesKey].cv, 2) + '% CV';
         }
         
         document.getElementById('activeSeries').textContent = Object.keys(seriesStats).length;
