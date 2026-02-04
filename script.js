@@ -32,6 +32,7 @@ async function testConnection() {
 window.addEventListener('load', () => {
     setTimeout(testConnection, 1000);
 });
+
 // Solo cambio en el constructor de ANDEDashboard:
 class ANDEDashboard {
     constructor() {
@@ -47,7 +48,10 @@ class ANDEDashboard {
         this.scatterChart = null;
         this.previousData = null;
         this.sortConfig = { column: null, direction: 'asc' };
-
+        
+        // Modos de selección
+        this.selectionMode = 'individual'; // 'individual' o 'range'
+        
         // Paleta de colores expandida para muchas series
         this.chartPalette = [
             '#FF0000', '#FF4500', '#FF8C00', '#FFD700', '#ADFF2F', '#32CD32', 
@@ -79,6 +83,7 @@ class ANDEDashboard {
         
         this.initialize();
     }
+    
     // ===================================
     // FUNCIÓN AUXILIAR PARA MANEJO SEGURO DE VALORES (CORRECCIÓN AGREGADA)
     // ===================================
@@ -93,7 +98,6 @@ class ANDEDashboard {
         }
     }
 
-
     async initialize() {
         this.showLoading(true);
         try {
@@ -104,6 +108,7 @@ class ANDEDashboard {
                 this.loadYearsAvailable()
             ]);
             this.setInitialDefaults();
+            this.addSelectionModeControls(); // NUEVO: Añadir controles de modo de selección
             await this.loadData();
             this.initializeEvents();
             this.startLiveUpdates();
@@ -115,6 +120,110 @@ class ANDEDashboard {
         } finally {
             this.showLoading(false);
         }
+    }
+
+    // ===================================
+    // NUEVO: CONTROLES DE MODO DE SELECCIÓN
+    // ===================================
+    addSelectionModeControls() {
+        // Crear controles para modo de selección
+        const alimentadorGroup = document.querySelector('#filterTransformador').closest('.filter-group');
+        
+        const modeControl = document.createElement('div');
+        modeControl.className = 'selection-mode-control';
+        modeControl.innerHTML = `
+            <div class="toggle-buttons" style="margin-top: 0.5rem;">
+                <button type="button" class="toggle-btn active" id="selectIndividual">
+                    <i class="fas fa-mouse-pointer"></i> Individual
+                </button>
+                <button type="button" class="toggle-btn" id="selectRange">
+                    <i class="fas fa-arrows-alt-h"></i> Rango
+                </button>
+            </div>
+            <small class="form-hint" id="selectionHint">
+                <i class="fas fa-info-circle"></i> 
+                <b>Individual:</b> Ctrl+Click para seleccionar | 
+                <b>Rango:</b> Click + Shift+Click para rango
+            </small>
+        `;
+        
+        alimentadorGroup.querySelector('.form-hint').insertAdjacentElement('afterend', modeControl);
+        
+        // Eventos para controles de selección
+        document.getElementById('selectIndividual').addEventListener('click', () => {
+            this.setSelectionMode('individual');
+        });
+        
+        document.getElementById('selectRange').addEventListener('click', () => {
+            this.setSelectionMode('range');
+        });
+        
+        // Configurar selección de alimentadores
+        this.setupAlimentadorSelection();
+    }
+
+    setSelectionMode(mode) {
+        this.selectionMode = mode;
+        
+        const individualBtn = document.getElementById('selectIndividual');
+        const rangeBtn = document.getElementById('selectRange');
+        const hint = document.getElementById('selectionHint');
+        
+        if (mode === 'individual') {
+            individualBtn.classList.add('active');
+            rangeBtn.classList.remove('active');
+            hint.innerHTML = `
+                <i class="fas fa-info-circle"></i> 
+                <b>Modo Individual:</b> Usa Ctrl+Click (Cmd+Click en Mac) para seleccionar 
+                alimentadores específicos (ej: ACY1 y ACY5)
+            `;
+        } else {
+            individualBtn.classList.remove('active');
+            rangeBtn.classList.add('active');
+            hint.innerHTML = `
+                <i class="fas fa-info-circle"></i> 
+                <b>Modo Rango:</b> Click en el primero + Shift+Click en el último para 
+                seleccionar un rango completo (ej: ACY1 a ACY5)
+            `;
+        }
+        
+        this.showNotification(`Modo de selección: ${mode === 'individual' ? 'Individual' : 'Rango'}`, "info");
+    }
+
+    setupAlimentadorSelection() {
+        const select = document.getElementById('filterTransformador');
+        let lastSelectedIndex = -1;
+        
+        select.addEventListener('click', (e) => {
+            if (this.selectionMode === 'range' && e.shiftKey && lastSelectedIndex !== -1) {
+                e.preventDefault();
+                
+                const currentIndex = Array.from(select.options).indexOf(e.target);
+                const start = Math.min(lastSelectedIndex, currentIndex);
+                const end = Math.max(lastSelectedIndex, currentIndex);
+                
+                // Seleccionar el rango
+                for (let i = start; i <= end; i++) {
+                    select.options[i].selected = true;
+                }
+                
+                this.syncFilters();
+                this.updateComparisonTags();
+            } else if (e.target.tagName === 'OPTION') {
+                lastSelectedIndex = Array.from(select.options).indexOf(e.target);
+            }
+        });
+        
+        // Permitir Ctrl+Click para selección individual incluso en modo rango
+        select.addEventListener('mousedown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                // Permitir selección individual con Ctrl/Cmd
+                e.target.selected = !e.target.selected;
+                e.preventDefault();
+                this.syncFilters();
+                this.updateComparisonTags();
+            }
+        });
     }
 
     showLoading(show) {
@@ -249,6 +358,9 @@ class ANDEDashboard {
     }
 
     filterAlimentadoresByEstacion(estacion) {
+        const select = document.getElementById('filterTransformador');
+        const selectedValues = Array.from(select.selectedOptions).map(o => o.value);
+        
         if (!estacion) {
             // Mostrar todos los alimentadores
             this.fillMultiSelect('filterTransformador', this.allSecciones);
@@ -259,6 +371,18 @@ class ANDEDashboard {
             );
             this.fillMultiSelect('filterTransformador', filteredSecciones);
         }
+        
+        // Restaurar selecciones previas si existen en la nueva lista
+        if (selectedValues.length > 0) {
+            selectedValues.forEach(value => {
+                const option = Array.from(select.options).find(o => o.value === value);
+                if (option) {
+                    option.selected = true;
+                }
+            });
+        }
+        
+        this.syncFilters();
     }
 
     async loadYearsAvailable() {
@@ -298,7 +422,7 @@ class ANDEDashboard {
     }
 
     // ===================================
-    // NUEVO: MÉTODOS PARA MODO GLOBAL
+    // MÉTODOS PARA MODO GLOBAL
     // ===================================
     
     setGlobalComparisonMode(mode) {
@@ -363,7 +487,7 @@ class ANDEDashboard {
     setInitialDefaults() {
         console.log("🔧 Configurando valores predeterminados para comparación...");
         
-        // Configurar modo global único por defecto - NUEVO
+        // Configurar modo global único por defecto
         this.setGlobalComparisonMode('unique');
         
         // Seleccionar algunos valores por defecto para demostración
@@ -525,7 +649,7 @@ class ANDEDashboard {
         try {
             this.previousData = this.data.length > 0 ? [...this.data] : null;
             
-            // Validar según modo global - NUEVO
+            // Validar según modo global
             if (this.globalComparisonMode === 'unique') {
                 // En modo único, validar que haya al menos un valor en cada filtro
                 if (!this.filters.transformador[0] || !this.filters.year[0] || !this.filters.tipoMedicion[0]) {
@@ -633,51 +757,56 @@ class ANDEDashboard {
         }
     }
 
-    loadDemoComparisonData() {
-        console.log("📂 Cargando datos de demostración para comparación...");
-        
-        const demoData = [];
-        const years = this.filters.year.length > 0 ? this.filters.year : ['2024'];
-        const alimentadores = this.filters.transformador.length > 0 ? 
-            this.filters.transformador : ['ACY1'];
-        const tipos = this.filters.tipoMedicion.length > 0 ? 
-            this.filters.tipoMedicion : ['TOTAL PENEF'];
-        
-        let idCounter = 0;
-        
-        years.forEach(year => {
-            tipos.forEach(tipo => {
-                alimentadores.forEach(alimentador => {
-                    for (let month = 1; month <= 12; month++) {
-                        demoData.push({
-                            id: idCounter++,
-                            transformador: alimentador,
-                            frecuencia: this.generateComparisonValue(year, tipo, alimentador, month),
-                            fecha: `${year}-${String(month).padStart(2, '0')}-01`,
-                            tipo: tipo,
-                            departamento: 'ALTO PARANÁ',
-                            combinationKey: `${alimentador}-${year}-${tipo}`,
-                            combinationLabel: this.getCombinationLabel(alimentador, year, tipo),
-                            year: year
-                        });
-                    }
-                });
+ loadDemoComparisonData() {
+    console.log("📂 Cargando datos de demostración para comparación...");
+    
+    const demoData = [];
+    const years = this.filters.year.length > 0 ? this.filters.year : ['2024'];
+    const alimentadores = this.filters.transformador.length > 0 ? 
+        this.filters.transformador : ['ACY1'];
+    const tipos = this.filters.tipoMedicion.length > 0 ? 
+        this.filters.tipoMedicion : ['TOTAL PENEF'];
+    
+    let idCounter = 0;
+    
+    years.forEach(year => {
+        tipos.forEach(tipo => {
+            alimentadores.forEach(alimentador => {
+                for (let month = 1; month <= 12; month++) {
+                    demoData.push({
+                        id: idCounter++,
+                        transformador: alimentador,
+                        frecuencia: this.generateComparisonValue(year, tipo, alimentador, month),
+                        fecha: `${year}-${String(month).padStart(2, '0')}-01`,
+                        tipo: tipo,
+                        departamento: 'ALTO PARANÁ',
+                        combinationKey: `${alimentador}-${year}-${tipo}`,
+                        combinationLabel: this.getCombinationLabel(alimentador, year, tipo),
+                        year: year
+                    });
+                }
             });
         });
-        
-        this.data = demoData;
-        this.filteredData = [...demoData];
-        
-        console.log("📊 Datos demo generados:", demoData.length, "registros de",
-                   years.length * tipos.length * alimentadores.length, "combinaciones");
-        
-        this.updateStats();
-        this.updateKPIs();
+    });
+    
+    this.data = demoData;
+    this.filteredData = [...demoData];
+    
+    console.log("📊 Datos demo generados:", demoData.length, "registros de",
+               years.length * tipos.length * alimentadores.length, "combinaciones");
+    
+    this.updateStats();
+    this.updateKPIs();
+    
+    // Solo actualizar gráficos y KPIs si hay datos
+    if (demoData.length > 0) {
         this.updateCharts();
-        this.updateTable();
-        
-        this.showNotification("Usando datos de demostración para comparación", "warning");
     }
+    
+    this.updateTable();
+    
+    this.showNotification("Usando datos de demostración para comparación", "warning");
+}
     
     generateComparisonValue(year, tipo, alimentador, month) {
         // Valores base por tipo
@@ -1289,64 +1418,86 @@ class ANDEDashboard {
         }
     }
 
-    updateComparisonKPIs(seriesStats) {
-        if (!seriesStats || Object.keys(seriesStats).length === 0) {
-            return;
-        }
-        
-        // Calcular estadísticas globales
-        const allAverages = Object.values(seriesStats).map(s => s.avg);
-        const allMins = Object.values(seriesStats).map(s => s.min);
-        const allMaxs = Object.values(seriesStats).map(s => s.max);
-        const allCVs = Object.values(seriesStats).map(s => s.cv);
-        
-        const globalAvg = allAverages.reduce((a, b) => a + b, 0) / allAverages.length;
-        const globalMin = Math.min(...allMins);
-        const globalMax = Math.max(...allMaxs);
-        const globalRange = globalMax - globalMin;
-        const avgCV = allCVs.reduce((a, b) => a + b, 0) / allCVs.length;
-        
-        // Encontrar la mejor serie (menor CV = más estable)
-        let bestSeriesKey = Object.keys(seriesStats)[0];
-        let bestCV = seriesStats[bestSeriesKey].cv;
-        
-        Object.entries(seriesStats).forEach(([key, stats]) => {
-            if (stats.cv < bestCV) {
-                bestCV = stats.cv;
-                bestSeriesKey = key;
-            }
-        });
-        
-        const bestSeries = this.data.find(d => d.combinationKey === bestSeriesKey);
-        
-        // Actualizar elementos
-        document.getElementById('rangeValue').textContent = this.safeToFixed(globalRange);
-        document.getElementById('rangeInfo').textContent = `${this.safeToFixed(globalMin, 0)}-${this.safeToFixed(globalMax, 0)}`;
-        
-        document.getElementById('variabilityValue').textContent = this.safeToFixed(avgCV, 2) + '%';
-        const variabilityBadge = document.getElementById('variabilityBadge');
-        if (avgCV < 10) {
-            variabilityBadge.textContent = 'Excelente';
-            variabilityBadge.style.background = 'rgba(16, 185, 129, 0.1)';
-            variabilityBadge.style.color = 'var(--success)';
-        } else if (avgCV < 20) {
-            variabilityBadge.textContent = 'Buena';
-            variabilityBadge.style.background = 'rgba(245, 158, 11, 0.1)';
-            variabilityBadge.style.color = 'var(--warning)';
-        } else {
-            variabilityBadge.textContent = 'Alta';
-            variabilityBadge.style.background = 'rgba(239, 68, 68, 0.1)';
-            variabilityBadge.style.color = 'var(--danger)';
-        }
-        
-        if (bestSeries) {
-            document.getElementById('bestSeries').textContent = bestSeries.transformador;
-            document.getElementById('bestValue').textContent = this.safeToFixed(seriesStats[bestSeriesKey].cv, 2) + '% CV';
-        }
-        
-        document.getElementById('activeSeries').textContent = Object.keys(seriesStats).length;
+updateComparisonKPIs(seriesStats) {
+    if (!seriesStats || Object.keys(seriesStats).length === 0) {
+        return;
     }
-
+    
+    // Calcular estadísticas globales
+    const allAverages = Object.values(seriesStats).map(s => s.avg);
+    const allMins = Object.values(seriesStats).map(s => s.min);
+    const allMaxs = Object.values(seriesStats).map(s => s.max);
+    const allCVs = Object.values(seriesStats).map(s => s.cv);
+    
+    const globalAvg = allAverages.reduce((a, b) => a + b, 0) / allAverages.length;
+    const globalMin = Math.min(...allMins);
+    const globalMax = Math.max(...allMaxs);
+    const globalRange = globalMax - globalMin;
+    const avgCV = allCVs.reduce((a, b) => a + b, 0) / allCVs.length;
+    
+    // Encontrar la PEOR serie (mayor CV = menos estable)
+    let worstSeriesKey = Object.keys(seriesStats)[0];
+    let worstCV = seriesStats[worstSeriesKey].cv;
+    
+    Object.entries(seriesStats).forEach(([key, stats]) => {
+        if (stats.cv > worstCV) {
+            worstCV = stats.cv;
+            worstSeriesKey = key;
+        }
+    });
+    
+    const worstSeries = this.data.find(d => d.combinationKey === worstSeriesKey);
+    
+    // Actualizar elementos - CON VERIFICACIÓN DE NULL
+    const rangeValueEl = document.getElementById('rangeValue');
+    const rangeInfoEl = document.getElementById('rangeInfo');
+    const variabilityValueEl = document.getElementById('variabilityValue');
+    const variabilityBadgeEl = document.getElementById('variabilityBadge');
+    const worstSeriesEl = document.getElementById('worstSeries');
+    const worstValueEl = document.getElementById('worstValue');
+    
+    if (rangeValueEl) {
+        rangeValueEl.textContent = this.safeToFixed(globalRange);
+    }
+    if (rangeInfoEl) {
+        rangeInfoEl.textContent = `${this.safeToFixed(globalMin, 0)}-${this.safeToFixed(globalMax, 0)}`;
+    }
+    if (variabilityValueEl) {
+        variabilityValueEl.textContent = this.safeToFixed(avgCV, 2) + '%';
+    }
+    if (variabilityBadgeEl) {
+        if (avgCV < 10) {
+            variabilityBadgeEl.textContent = 'Excelente';
+            variabilityBadgeEl.style.background = 'rgba(16, 185, 129, 0.1)';
+            variabilityBadgeEl.style.color = 'var(--success)';
+        } else if (avgCV < 20) {
+            variabilityBadgeEl.textContent = 'Buena';
+            variabilityBadgeEl.style.background = 'rgba(245, 158, 11, 0.1)';
+            variabilityBadgeEl.style.color = 'var(--warning)';
+        } else {
+            variabilityBadgeEl.textContent = 'Alta';
+            variabilityBadgeEl.style.background = 'rgba(239, 68, 68, 0.1)';
+            variabilityBadgeEl.style.color = 'var(--danger)';
+        }
+    }
+    
+    // Actualizar KPI de peor desempeño - CON VERIFICACIÓN DE NULL
+    if (worstSeriesEl && worstValueEl) {
+        if (worstSeries) {
+            worstSeriesEl.textContent = worstSeries.transformador;
+            worstValueEl.textContent = this.safeToFixed(worstCV, 2) + '% CV';
+        } else {
+            worstSeriesEl.textContent = '--';
+            worstValueEl.textContent = '--';
+        }
+    }
+    
+    // Actualizar contador de series activas
+    const activeSeriesEl = document.getElementById('activeSeries');
+    if (activeSeriesEl) {
+        activeSeriesEl.textContent = Object.keys(seriesStats).length;
+    }
+}
     // --- TABLA MEJORADA ---
     updateTable() {
         const tbody = document.getElementById('dataTable');
@@ -1552,7 +1703,7 @@ class ANDEDashboard {
             // Restaurar todos los alimentadores cuando se limpia la estación
             this.filterAlimentadoresByEstacion('');
             
-            // Restaurar modo único global - NUEVO
+            // Restaurar modo único global
             this.setGlobalComparisonMode('unique');
             
             this.syncFilters();
@@ -1756,7 +1907,7 @@ class ANDEDashboard {
             });
         });
 
-        // NUEVO: Eventos para modo global único/múltiple
+        // Eventos para modo global único/múltiple
         document.getElementById('globalModeUnique').addEventListener('click', () => {
             this.setGlobalComparisonMode('unique');
         });
@@ -1765,7 +1916,7 @@ class ANDEDashboard {
             this.setGlobalComparisonMode('multiple');
         });
         
-        // NUEVO: Eventos para selectores múltiples que respeten el modo global
+        // Eventos para selectores múltiples que respeten el modo global
         ['filterYear', 'filterTipoMedicion', 'filterTransformador', 'filterMonth'].forEach(selectId => {
             const select = document.getElementById(selectId);
             if (select) {
