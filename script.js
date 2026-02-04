@@ -114,12 +114,25 @@ class ANDEDashboard {
             this.startLiveUpdates();
             this.updateTime();
             this.updateComparisonTags();
+            
+            // Depuración
+            this.debugElementIds(); // Añade esta línea para verificar IDs
+            
         } catch (error) {
             console.error("Error inicializando:", error);
             this.showNotification("Error inicializando el sistema", "error");
         } finally {
             this.showLoading(false);
         }
+    }
+
+    // ===================================
+    // NUEVO: FUNCIÓN DE DEPURACIÓN
+    // ===================================
+    debugElementIds() {
+        console.log("🔍 Verificando IDs de elementos KPI:");
+        console.log("worstSeries:", document.getElementById('worstSeries'));
+        console.log("worstValue:", document.getElementById('worstValue'));
     }
 
     // ===================================
@@ -563,6 +576,8 @@ class ANDEDashboard {
 
     updateComparisonTags() {
         const tagsContainer = document.getElementById('comparisonTags');
+        if (!tagsContainer) return;
+        
         tagsContainer.innerHTML = '';
         
         let hasSelections = false;
@@ -641,7 +656,10 @@ class ANDEDashboard {
                                  this.filters.transformador.length * 
                                  this.filters.tipoMedicion.length * 
                                  monthMultiplier;
-        document.getElementById('activeSeries').textContent = totalCombinations;
+        const activeSeriesEl = document.getElementById('activeSeries');
+        if (activeSeriesEl) {
+            activeSeriesEl.textContent = totalCombinations;
+        }
     }
 
     async loadData() {
@@ -757,56 +775,56 @@ class ANDEDashboard {
         }
     }
 
- loadDemoComparisonData() {
-    console.log("📂 Cargando datos de demostración para comparación...");
-    
-    const demoData = [];
-    const years = this.filters.year.length > 0 ? this.filters.year : ['2024'];
-    const alimentadores = this.filters.transformador.length > 0 ? 
-        this.filters.transformador : ['ACY1'];
-    const tipos = this.filters.tipoMedicion.length > 0 ? 
-        this.filters.tipoMedicion : ['TOTAL PENEF'];
-    
-    let idCounter = 0;
-    
-    years.forEach(year => {
-        tipos.forEach(tipo => {
-            alimentadores.forEach(alimentador => {
-                for (let month = 1; month <= 12; month++) {
-                    demoData.push({
-                        id: idCounter++,
-                        transformador: alimentador,
-                        frecuencia: this.generateComparisonValue(year, tipo, alimentador, month),
-                        fecha: `${year}-${String(month).padStart(2, '0')}-01`,
-                        tipo: tipo,
-                        departamento: 'ALTO PARANÁ',
-                        combinationKey: `${alimentador}-${year}-${tipo}`,
-                        combinationLabel: this.getCombinationLabel(alimentador, year, tipo),
-                        year: year
-                    });
-                }
+    loadDemoComparisonData() {
+        console.log("📂 Cargando datos de demostración para comparación...");
+        
+        const demoData = [];
+        const years = this.filters.year.length > 0 ? this.filters.year : ['2024'];
+        const alimentadores = this.filters.transformador.length > 0 ? 
+            this.filters.transformador : ['ACY1'];
+        const tipos = this.filters.tipoMedicion.length > 0 ? 
+            this.filters.tipoMedicion : ['TOTAL PENEF'];
+        
+        let idCounter = 0;
+        
+        years.forEach(year => {
+            tipos.forEach(tipo => {
+                alimentadores.forEach(alimentador => {
+                    for (let month = 1; month <= 12; month++) {
+                        demoData.push({
+                            id: idCounter++,
+                            transformador: alimentador,
+                            frecuencia: this.generateComparisonValue(year, tipo, alimentador, month),
+                            fecha: `${year}-${String(month).padStart(2, '0')}-01`,
+                            tipo: tipo,
+                            departamento: 'ALTO PARANÁ',
+                            combinationKey: `${alimentador}-${year}-${tipo}`,
+                            combinationLabel: this.getCombinationLabel(alimentador, year, tipo),
+                            year: year
+                        });
+                    }
+                });
             });
         });
-    });
-    
-    this.data = demoData;
-    this.filteredData = [...demoData];
-    
-    console.log("📊 Datos demo generados:", demoData.length, "registros de",
-               years.length * tipos.length * alimentadores.length, "combinaciones");
-    
-    this.updateStats();
-    this.updateKPIs();
-    
-    // Solo actualizar gráficos y KPIs si hay datos
-    if (demoData.length > 0) {
-        this.updateCharts();
+        
+        this.data = demoData;
+        this.filteredData = [...demoData];
+        
+        console.log("📊 Datos demo generados:", demoData.length, "registros de",
+                   years.length * tipos.length * alimentadores.length, "combinaciones");
+        
+        this.updateStats();
+        this.updateKPIs();
+        
+        // Solo actualizar gráficos y KPIs si hay datos
+        if (demoData.length > 0) {
+            this.updateCharts();
+        }
+        
+        this.updateTable();
+        
+        this.showNotification("Usando datos de demostración para comparación", "warning");
     }
-    
-    this.updateTable();
-    
-    this.showNotification("Usando datos de demostración para comparación", "warning");
-}
     
     generateComparisonValue(year, tipo, alimentador, month) {
         // Valores base por tipo
@@ -854,18 +872,25 @@ class ANDEDashboard {
         const totalPoints = this.data.length;
         const uniqueCombinations = [...new Set(this.data.map(d => d.combinationKey))].length;
         
-        document.getElementById('dataCount').textContent = totalPoints.toLocaleString();
-        document.getElementById('seriesCount').textContent = uniqueCombinations;
-        document.getElementById('loadedSeries').textContent = uniqueCombinations;
-        document.getElementById('totalPoints').textContent = totalPoints;
-        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('es-ES', {
+        const dataCountEl = document.getElementById('dataCount');
+        const seriesCountEl = document.getElementById('seriesCount');
+        const loadedSeriesEl = document.getElementById('loadedSeries');
+        const totalPointsEl = document.getElementById('totalPoints');
+        const lastUpdateEl = document.getElementById('lastUpdate');
+        const updateTimeEl = document.getElementById('updateTime');
+        
+        if (dataCountEl) dataCountEl.textContent = totalPoints.toLocaleString();
+        if (seriesCountEl) seriesCountEl.textContent = uniqueCombinations;
+        if (loadedSeriesEl) loadedSeriesEl.textContent = uniqueCombinations;
+        if (totalPointsEl) totalPointsEl.textContent = totalPoints;
+        
+        const timeStr = new Date().toLocaleTimeString('es-ES', {
             hour: '2-digit',
             minute: '2-digit'
         });
-        document.getElementById('updateTime').textContent = new Date().toLocaleTimeString('es-ES', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        
+        if (lastUpdateEl) lastUpdateEl.textContent = timeStr;
+        if (updateTimeEl) updateTimeEl.textContent = timeStr;
     }
 
     // --- GRÁFICOS MEJORADOS PARA COMPARACIÓN ---
@@ -1181,12 +1206,15 @@ class ANDEDashboard {
                 const min = Math.min(...valores);
                 const std = Math.sqrt(valores.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / valores.length);
                 
+                // Evitar división por cero en CV
+                const cv = avg !== 0 ? (std / avg) * 100 : 0;
+                
                 seriesStats[combination] = {
                     avg: avg,
                     min: min,
                     max: max,
                     std: std,
-                    cv: (std / avg) * 100, // Coeficiente de variación
+                    cv: cv, // Coeficiente de variación
                     count: valores.length
                 };
             }
@@ -1264,14 +1292,18 @@ class ANDEDashboard {
             console.error("❌ Error al actualizar gráfico principal:", error);
         }
         
-        // Actualizar gráfico de ranking
-        this.updateRankingChart(seriesStats);
+        // Actualizar gráfico de ranking solo si hay estadísticas
+        if (Object.keys(seriesStats).length > 0) {
+            this.updateRankingChart(seriesStats);
+        }
         
         // Actualizar gráfico de dispersión
         this.updateScatterChart();
         
-        // Actualizar KPIs
-        this.updateComparisonKPIs(seriesStats);
+        // Actualizar KPIs solo si hay estadísticas
+        if (Object.keys(seriesStats).length > 0) {
+            this.updateComparisonKPIs(seriesStats);
+        }
     }
 
     updateRankingChart(seriesStats) {
@@ -1418,89 +1450,114 @@ class ANDEDashboard {
         }
     }
 
-updateComparisonKPIs(seriesStats) {
-    if (!seriesStats || Object.keys(seriesStats).length === 0) {
-        return;
-    }
-    
-    // Calcular estadísticas globales
-    const allAverages = Object.values(seriesStats).map(s => s.avg);
-    const allMins = Object.values(seriesStats).map(s => s.min);
-    const allMaxs = Object.values(seriesStats).map(s => s.max);
-    const allCVs = Object.values(seriesStats).map(s => s.cv);
-    
-    const globalAvg = allAverages.reduce((a, b) => a + b, 0) / allAverages.length;
-    const globalMin = Math.min(...allMins);
-    const globalMax = Math.max(...allMaxs);
-    const globalRange = globalMax - globalMin;
-    const avgCV = allCVs.reduce((a, b) => a + b, 0) / allCVs.length;
-    
-    // Encontrar la PEOR serie (mayor CV = menos estable)
-    let worstSeriesKey = Object.keys(seriesStats)[0];
-    let worstCV = seriesStats[worstSeriesKey].cv;
-    
-    Object.entries(seriesStats).forEach(([key, stats]) => {
-        if (stats.cv > worstCV) {
-            worstCV = stats.cv;
-            worstSeriesKey = key;
+    updateComparisonKPIs(seriesStats) {
+        if (!seriesStats || Object.keys(seriesStats).length === 0) {
+            console.warn("No hay estadísticas para actualizar KPIs");
+            return;
         }
-    });
-    
-    const worstSeries = this.data.find(d => d.combinationKey === worstSeriesKey);
-    
-    // Actualizar elementos - CON VERIFICACIÓN DE NULL
-    const rangeValueEl = document.getElementById('rangeValue');
-    const rangeInfoEl = document.getElementById('rangeInfo');
-    const variabilityValueEl = document.getElementById('variabilityValue');
-    const variabilityBadgeEl = document.getElementById('variabilityBadge');
-    const worstSeriesEl = document.getElementById('worstSeries');
-    const worstValueEl = document.getElementById('worstValue');
-    
-    if (rangeValueEl) {
-        rangeValueEl.textContent = this.safeToFixed(globalRange);
-    }
-    if (rangeInfoEl) {
-        rangeInfoEl.textContent = `${this.safeToFixed(globalMin, 0)}-${this.safeToFixed(globalMax, 0)}`;
-    }
-    if (variabilityValueEl) {
-        variabilityValueEl.textContent = this.safeToFixed(avgCV, 2) + '%';
-    }
-    if (variabilityBadgeEl) {
-        if (avgCV < 10) {
-            variabilityBadgeEl.textContent = 'Excelente';
-            variabilityBadgeEl.style.background = 'rgba(16, 185, 129, 0.1)';
-            variabilityBadgeEl.style.color = 'var(--success)';
-        } else if (avgCV < 20) {
-            variabilityBadgeEl.textContent = 'Buena';
-            variabilityBadgeEl.style.background = 'rgba(245, 158, 11, 0.1)';
-            variabilityBadgeEl.style.color = 'var(--warning)';
-        } else {
-            variabilityBadgeEl.textContent = 'Alta';
-            variabilityBadgeEl.style.background = 'rgba(239, 68, 68, 0.1)';
-            variabilityBadgeEl.style.color = 'var(--danger)';
+        
+        console.log("📊 Actualizando KPIs de comparación...");
+        console.log("Series disponibles:", Object.keys(seriesStats).length);
+        
+        // Calcular estadísticas globales
+        const allAverages = Object.values(seriesStats).map(s => s.avg);
+        const allMins = Object.values(seriesStats).map(s => s.min);
+        const allMaxs = Object.values(seriesStats).map(s => s.max);
+        const allCVs = Object.values(seriesStats).map(s => s.cv);
+        
+        const globalAvg = allAverages.reduce((a, b) => a + b, 0) / allAverages.length;
+        const globalMin = Math.min(...allMins);
+        const globalMax = Math.max(...allMaxs);
+        const globalRange = globalMax - globalMin;
+        const avgCV = allCVs.reduce((a, b) => a + b, 0) / allCVs.length;
+        
+        // DEPURACIÓN: Verificar IDs en el DOM
+        console.log("🔍 Verificando IDs de elementos KPI en el DOM:");
+        console.log("worstSeries:", document.getElementById('worstSeries'));
+        console.log("worstValue:", document.getElementById('worstValue'));
+        
+        // Encontrar la PEOR serie (mayor CV = menos estable = PEOR desempeño)
+        let worstSeriesKey = Object.keys(seriesStats)[0];
+        let worstCV = seriesStats[worstSeriesKey]?.cv || 0;
+        
+        Object.entries(seriesStats).forEach(([key, stats]) => {
+            if (stats.cv > worstCV) {
+                worstCV = stats.cv;
+                worstSeriesKey = key;
+            }
+        });
+        
+        const worstSeries = this.data.find(d => d.combinationKey === worstSeriesKey);
+        
+        console.log("📉 Peor serie encontrada:", {
+            key: worstSeriesKey,
+            cv: worstCV,
+            alimentador: worstSeries?.transformador
+        });
+        
+        // Actualizar elementos
+        const rangeValueEl = document.getElementById('rangeValue');
+        const rangeInfoEl = document.getElementById('rangeInfo');
+        const variabilityValueEl = document.getElementById('variabilityValue');
+        const variabilityBadgeEl = document.getElementById('variabilityBadge');
+        const worstSeriesEl = document.getElementById('worstSeries');
+        const worstValueEl = document.getElementById('worstValue');
+        
+        // Verificar que todos los elementos existan
+        if (!worstSeriesEl || !worstValueEl) {
+            console.error("❌ ERROR: Elementos para 'Peor Desempeño' no encontrados en el DOM");
+            console.log("worstSeriesEl:", worstSeriesEl);
+            console.log("worstValueEl:", worstValueEl);
+            return;
         }
-    }
-    
-    // Actualizar KPI de peor desempeño - CON VERIFICACIÓN DE NULL
-    if (worstSeriesEl && worstValueEl) {
+        
+        if (rangeValueEl) {
+            rangeValueEl.textContent = this.safeToFixed(globalRange);
+        }
+        if (rangeInfoEl) {
+            rangeInfoEl.textContent = `${this.safeToFixed(globalMin, 0)}-${this.safeToFixed(globalMax, 0)}`;
+        }
+        if (variabilityValueEl) {
+            variabilityValueEl.textContent = this.safeToFixed(avgCV, 2) + '%';
+        }
+        if (variabilityBadgeEl) {
+            if (avgCV < 10) {
+                variabilityBadgeEl.textContent = 'Excelente';
+                variabilityBadgeEl.style.background = 'rgba(16, 185, 129, 0.1)';
+                variabilityBadgeEl.style.color = 'var(--success)';
+            } else if (avgCV < 20) {
+                variabilityBadgeEl.textContent = 'Buena';
+                variabilityBadgeEl.style.background = 'rgba(245, 158, 11, 0.1)';
+                variabilityBadgeEl.style.color = 'var(--warning)';
+            } else {
+                variabilityBadgeEl.textContent = 'Alta';
+                variabilityBadgeEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                variabilityBadgeEl.style.color = 'var(--danger)';
+            }
+        }
+        
+        // Actualizar KPI de peor desempeño
         if (worstSeries) {
             worstSeriesEl.textContent = worstSeries.transformador;
             worstValueEl.textContent = this.safeToFixed(worstCV, 2) + '% CV';
+            console.log("✅ KPI actualizado:", worstSeries.transformador, "con CV:", worstCV + '%');
         } else {
             worstSeriesEl.textContent = '--';
             worstValueEl.textContent = '--';
         }
+        
+        // Actualizar contador de series activas
+        const activeSeriesEl = document.getElementById('activeSeries');
+        if (activeSeriesEl) {
+            activeSeriesEl.textContent = Object.keys(seriesStats).length;
+        }
     }
-    
-    // Actualizar contador de series activas
-    const activeSeriesEl = document.getElementById('activeSeries');
-    if (activeSeriesEl) {
-        activeSeriesEl.textContent = Object.keys(seriesStats).length;
-    }
-}
+
     // --- TABLA MEJORADA ---
     updateTable() {
         const tbody = document.getElementById('dataTable');
+        if (!tbody) return;
+        
         tbody.innerHTML = '';
         const start = (this.pagination.currentPage - 1) * this.pagination.rowsPerPage;
         const end = start + this.pagination.rowsPerPage;
@@ -1591,6 +1648,8 @@ updateComparisonKPIs(seriesStats) {
         const std = Math.sqrt(valores.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / valores.length);
         
         const modalBody = document.getElementById('modalBody');
+        if (!modalBody) return;
+        
         modalBody.innerHTML = `
             <div class="series-details">
                 <div class="series-header" style="display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem;">
@@ -1627,7 +1686,10 @@ updateComparisonKPIs(seriesStats) {
             </div>
         `;
         
-        document.getElementById('seriesModal').style.display = 'flex';
+        const modal = document.getElementById('seriesModal');
+        if (modal) {
+            modal.style.display = 'flex';
+        }
     }
 
     isolateSeries(combinationKey) {
@@ -1646,145 +1708,212 @@ updateComparisonKPIs(seriesStats) {
     // --- EVENTOS MEJORADOS ---
     initializeEvents() {
         // Aplicar filtros
-        document.getElementById('applyFilters').addEventListener('click', () => {
-            this.syncFilters();
-            
-            // Validar según modo global
-            if (this.globalComparisonMode === 'unique') {
-                // En modo único, validar que haya al menos un valor en cada filtro
-                if (!this.filters.transformador[0] || !this.filters.year[0] || !this.filters.tipoMedicion[0]) {
-                    this.showNotification("Selecciona un valor en cada filtro", "warning");
-                    return;
+        const applyFiltersBtn = document.getElementById('applyFilters');
+        if (applyFiltersBtn) {
+            applyFiltersBtn.addEventListener('click', () => {
+                this.syncFilters();
+                
+                // Validar según modo global
+                if (this.globalComparisonMode === 'unique') {
+                    // En modo único, validar que haya al menos un valor en cada filtro
+                    if (!this.filters.transformador[0] || !this.filters.year[0] || !this.filters.tipoMedicion[0]) {
+                        this.showNotification("Selecciona un valor en cada filtro", "warning");
+                        return;
+                    }
+                } else {
+                    // En modo múltiple, validar que haya al menos una selección
+                    if (this.filters.transformador.length === 0) {
+                        this.showNotification("Selecciona al menos un alimentador", "warning");
+                        return;
+                    }
+                    if (this.filters.year.length === 0) {
+                        this.showNotification("Selecciona al menos un año", "warning");
+                        return;
+                    }
+                    if (this.filters.tipoMedicion.length === 0) {
+                        this.showNotification("Selecciona al menos un tipo de medición", "warning");
+                        return;
+                    }
                 }
-            } else {
-                // En modo múltiple, validar que haya al menos una selección
-                if (this.filters.transformador.length === 0) {
-                    this.showNotification("Selecciona al menos un alimentador", "warning");
-                    return;
+                
+                if(window.innerWidth <= 768) {
+                    const sidebar = document.getElementById('sidebar');
+                    if (sidebar) sidebar.classList.remove('active');
                 }
-                if (this.filters.year.length === 0) {
-                    this.showNotification("Selecciona al menos un año", "warning");
-                    return;
-                }
-                if (this.filters.tipoMedicion.length === 0) {
-                    this.showNotification("Selecciona al menos un tipo de medición", "warning");
-                    return;
-                }
-            }
-            
-            if(window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('active');
-            this.loadData();
-            this.updateComparisonTags();
-        });
+                this.loadData();
+                this.updateComparisonTags();
+            });
+        }
 
         // Restablecer filtros
-        document.getElementById('resetFilters').addEventListener('click', () => {
-            this.setInitialDefaults();
-            this.loadData();
-            this.showNotification("Filtros restablecidos", "success");
-        });
+        const resetFiltersBtn = document.getElementById('resetFilters');
+        if (resetFiltersBtn) {
+            resetFiltersBtn.addEventListener('click', () => {
+                this.setInitialDefaults();
+                this.loadData();
+                this.showNotification("Filtros restablecidos", "success");
+            });
+        }
 
         // Limpiar todo
-        document.getElementById('clearAll').addEventListener('click', () => {
-            document.getElementById('filterTipoMedicion').selectedIndex = -1;
-            document.getElementById('filterYear').selectedIndex = -1;
-            document.getElementById('filterTransformador').selectedIndex = -1;
-            document.getElementById('filterMonth').selectedIndex = -1;
-            document.getElementById('filterEstacion').value = '';
-            document.getElementById('filterPeriodo').value = 'select_months';
-            
-            // Limpiar botones de meses
-            this.clearMonthSelection();
-            
-            // Mostrar selectores de mes
-            document.getElementById('monthModeGroup').style.display = 'block';
-            document.getElementById('monthSelectorGroup').style.display = 'block';
-            
-            // Restaurar todos los alimentadores cuando se limpia la estación
-            this.filterAlimentadoresByEstacion('');
-            
-            // Restaurar modo único global
-            this.setGlobalComparisonMode('unique');
-            
-            this.syncFilters();
-            this.updateComparisonTags();
-            this.showNotification("Filtros limpiados", "info");
-        });
+        const clearAllBtn = document.getElementById('clearAll');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', () => {
+                const tipoMedicionSel = document.getElementById('filterTipoMedicion');
+                const yearSel = document.getElementById('filterYear');
+                const transformadorSel = document.getElementById('filterTransformador');
+                const monthSel = document.getElementById('filterMonth');
+                const estacionSel = document.getElementById('filterEstacion');
+                const periodoSel = document.getElementById('filterPeriodo');
+                
+                if (tipoMedicionSel) tipoMedicionSel.selectedIndex = -1;
+                if (yearSel) yearSel.selectedIndex = -1;
+                if (transformadorSel) transformadorSel.selectedIndex = -1;
+                if (monthSel) monthSel.selectedIndex = -1;
+                if (estacionSel) estacionSel.value = '';
+                if (periodoSel) periodoSel.value = 'select_months';
+                
+                // Limpiar botones de meses
+                this.clearMonthSelection();
+                
+                // Mostrar selectores de mes
+                const monthModeGroup = document.getElementById('monthModeGroup');
+                const monthSelectorGroup = document.getElementById('monthSelectorGroup');
+                if (monthModeGroup) monthModeGroup.style.display = 'block';
+                if (monthSelectorGroup) monthSelectorGroup.style.display = 'block';
+                
+                // Restaurar todos los alimentadores cuando se limpia la estación
+                this.filterAlimentadoresByEstacion('');
+                
+                // Restaurar modo único global
+                this.setGlobalComparisonMode('unique');
+                
+                this.syncFilters();
+                this.updateComparisonTags();
+                this.showNotification("Filtros limpiados", "info");
+            });
+        }
 
         // Cambiar tipo de gráfico
-        document.getElementById('chartType').addEventListener('change', () => {
-            this.updateCharts();
-        });
+        const chartTypeSel = document.getElementById('chartType');
+        if (chartTypeSel) {
+            chartTypeSel.addEventListener('change', () => {
+                this.updateCharts();
+            });
+        }
 
         // Cambiar agrupación
-        document.getElementById('groupBy').addEventListener('change', () => {
-            this.syncFilters();
-            this.loadData();
-        });
+        const groupBySel = document.getElementById('groupBy');
+        if (groupBySel) {
+            groupBySel.addEventListener('change', () => {
+                this.syncFilters();
+                this.loadData();
+            });
+        }
 
         // Cambiar ranking
-        document.getElementById('rankingSort').addEventListener('change', () => {
-            this.updateCharts();
-        });
+        const rankingSortSel = document.getElementById('rankingSort');
+        if (rankingSortSel) {
+            rankingSortSel.addEventListener('change', () => {
+                this.updateCharts();
+            });
+        }
 
         // Cambiar scatter plot
-        document.getElementById('scatterX').addEventListener('change', () => {
-            this.updateCharts();
-        });
-        document.getElementById('scatterY').addEventListener('change', () => {
-            this.updateCharts();
-        });
+        const scatterXSel = document.getElementById('scatterX');
+        const scatterYSel = document.getElementById('scatterY');
+        if (scatterXSel) {
+            scatterXSel.addEventListener('change', () => {
+                this.updateCharts();
+            });
+        }
+        if (scatterYSel) {
+            scatterYSel.addEventListener('change', () => {
+                this.updateCharts();
+            });
+        }
 
         // Control del sidebar
-        document.getElementById('sidebarToggle').addEventListener('click', () => {
-            document.getElementById('sidebar').classList.add('active');
-        });
-        document.getElementById('sidebarClose').addEventListener('click', () => {
-            document.getElementById('sidebar').classList.remove('active');
-        });
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                const sidebar = document.getElementById('sidebar');
+                if (sidebar) sidebar.classList.add('active');
+            });
+        }
+        
+        const sidebarClose = document.getElementById('sidebarClose');
+        if (sidebarClose) {
+            sidebarClose.addEventListener('click', () => {
+                const sidebar = document.getElementById('sidebar');
+                if (sidebar) sidebar.classList.remove('active');
+            });
+        }
 
         // Paginación
-        document.getElementById('firstPage').addEventListener('click', () => {
-            this.pagination.currentPage = 1;
-            this.updateTable();
-        });
-        document.getElementById('prevPage').addEventListener('click', () => {
-            if(this.pagination.currentPage > 1) { 
-                this.pagination.currentPage--; 
-                this.updateTable(); 
-            }
-        });
-        document.getElementById('nextPage').addEventListener('click', () => {
-            const maxPage = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
-            if(this.pagination.currentPage < maxPage) { 
-                this.pagination.currentPage++; 
-                this.updateTable(); 
-            }
-        });
-        document.getElementById('lastPage').addEventListener('click', () => {
-            this.pagination.currentPage = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
-            this.updateTable();
-        });
+        const firstPageBtn = document.getElementById('firstPage');
+        const prevPageBtn = document.getElementById('prevPage');
+        const nextPageBtn = document.getElementById('nextPage');
+        const lastPageBtn = document.getElementById('lastPage');
+        
+        if (firstPageBtn) {
+            firstPageBtn.addEventListener('click', () => {
+                this.pagination.currentPage = 1;
+                this.updateTable();
+            });
+        }
+        
+        if (prevPageBtn) {
+            prevPageBtn.addEventListener('click', () => {
+                if(this.pagination.currentPage > 1) { 
+                    this.pagination.currentPage--; 
+                    this.updateTable(); 
+                }
+            });
+        }
+        
+        if (nextPageBtn) {
+            nextPageBtn.addEventListener('click', () => {
+                const maxPage = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
+                if(this.pagination.currentPage < maxPage) { 
+                    this.pagination.currentPage++; 
+                    this.updateTable(); 
+                }
+            });
+        }
+        
+        if (lastPageBtn) {
+            lastPageBtn.addEventListener('click', () => {
+                this.pagination.currentPage = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
+                this.updateTable();
+            });
+        }
 
         // Filas por página
-        document.getElementById('rowsPerPage').addEventListener('change', (e) => {
-            this.pagination.rowsPerPage = parseInt(e.target.value);
-            this.pagination.currentPage = 1;
-            this.updateTable();
-        });
+        const rowsPerPageSel = document.getElementById('rowsPerPage');
+        if (rowsPerPageSel) {
+            rowsPerPageSel.addEventListener('change', (e) => {
+                this.pagination.rowsPerPage = parseInt(e.target.value);
+                this.pagination.currentPage = 1;
+                this.updateTable();
+            });
+        }
 
         // Búsqueda en tabla
-        document.getElementById('tableSearch').addEventListener('keyup', (e) => {
-            const term = e.target.value.toLowerCase();
-            this.filteredData = this.data.filter(d => 
-                d.transformador.toLowerCase().includes(term) ||
-                d.combinationLabel.toLowerCase().includes(term) ||
-                d.tipo.toLowerCase().includes(term) ||
-                d.frecuencia.toString().includes(term)
-            );
-            this.pagination.currentPage = 1;
-            this.updateTable();
-        });
+        const tableSearchInput = document.getElementById('tableSearch');
+        if (tableSearchInput) {
+            tableSearchInput.addEventListener('keyup', (e) => {
+                const term = e.target.value.toLowerCase();
+                this.filteredData = this.data.filter(d => 
+                    d.transformador.toLowerCase().includes(term) ||
+                    d.combinationLabel.toLowerCase().includes(term) ||
+                    d.tipo.toLowerCase().includes(term) ||
+                    d.frecuencia.toString().includes(term)
+                );
+                this.pagination.currentPage = 1;
+                this.updateTable();
+            });
+        }
 
         // Ordenar tabla
         document.querySelectorAll('.data-table th[data-sort]').forEach(th => {
@@ -1794,111 +1923,161 @@ updateComparisonKPIs(seriesStats) {
         });
 
         // Control de zoom de gráficos
-        document.getElementById('zoomIn').addEventListener('click', () => {
-            if (this.mainChart.scales.y) {
-                const currentMin = this.mainChart.scales.y.min;
-                const currentMax = this.mainChart.scales.y.max;
-                const range = currentMax - currentMin;
-                this.mainChart.scales.y.min = currentMin + range * 0.1;
-                this.mainChart.scales.y.max = currentMax - range * 0.1;
-                this.mainChart.update();
-            }
-        });
-
-        document.getElementById('zoomOut').addEventListener('click', () => {
-            if (this.mainChart.scales.y) {
-                const currentMin = this.mainChart.scales.y.min;
-                const currentMax = this.mainChart.scales.y.max;
-                const range = currentMax - currentMin;
-                this.mainChart.scales.y.min = currentMin - range * 0.1;
-                this.mainChart.scales.y.max = currentMax + range * 0.1;
-                this.mainChart.update();
-            }
-        });
-
-        document.getElementById('resetZoom').addEventListener('click', () => {
-            if (this.mainChart.scales.y) {
-                this.mainChart.scales.y.min = null;
-                this.mainChart.scales.y.max = null;
-                this.mainChart.update();
-            }
-        });
+        const zoomInBtn = document.getElementById('zoomIn');
+        const zoomOutBtn = document.getElementById('zoomOut');
+        const resetZoomBtn = document.getElementById('resetZoom');
+        
+        if (zoomInBtn) {
+            zoomInBtn.addEventListener('click', () => {
+                if (this.mainChart && this.mainChart.scales.y) {
+                    const currentMin = this.mainChart.scales.y.min;
+                    const currentMax = this.mainChart.scales.y.max;
+                    const range = currentMax - currentMin;
+                    this.mainChart.scales.y.min = currentMin + range * 0.1;
+                    this.mainChart.scales.y.max = currentMax - range * 0.1;
+                    this.mainChart.update();
+                }
+            });
+        }
+        
+        if (zoomOutBtn) {
+            zoomOutBtn.addEventListener('click', () => {
+                if (this.mainChart && this.mainChart.scales.y) {
+                    const currentMin = this.mainChart.scales.y.min;
+                    const currentMax = this.mainChart.scales.y.max;
+                    const range = currentMax - currentMin;
+                    this.mainChart.scales.y.min = currentMin - range * 0.1;
+                    this.mainChart.scales.y.max = currentMax + range * 0.1;
+                    this.mainChart.update();
+                }
+            });
+        }
+        
+        if (resetZoomBtn) {
+            resetZoomBtn.addEventListener('click', () => {
+                if (this.mainChart && this.mainChart.scales.y) {
+                    this.mainChart.scales.y.min = null;
+                    this.mainChart.scales.y.max = null;
+                    this.mainChart.update();
+                }
+            });
+        }
 
         // Exportar datos
-        document.getElementById('exportData').addEventListener('click', () => {
-            this.exportData();
-        });
+        const exportDataBtn = document.getElementById('exportData');
+        if (exportDataBtn) {
+            exportDataBtn.addEventListener('click', () => {
+                this.exportData();
+            });
+        }
 
         // Pantalla completa
-        document.getElementById('fullscreenToggle').addEventListener('click', () => {
-            this.toggleFullscreen();
-        });
-
-        // Nuevo: Alternar leyenda
-        document.getElementById('toggleLegend').addEventListener('click', () => {
-            const legend = this.mainChart.options.plugins.legend;
-            legend.display = !legend.display;
-            this.mainChart.update();
-        });
-
-        // Nuevo: Alternar puntos
-        document.getElementById('togglePoints').addEventListener('click', () => {
-            const datasets = this.mainChart.data.datasets;
-            const showPoints = datasets[0]?.pointRadius > 0;
-            
-            datasets.forEach(dataset => {
-                dataset.pointRadius = showPoints ? 0 : 4;
-                dataset.pointHoverRadius = showPoints ? 0 : 8;
+        const fullscreenToggleBtn = document.getElementById('fullscreenToggle');
+        if (fullscreenToggleBtn) {
+            fullscreenToggleBtn.addEventListener('click', () => {
+                this.toggleFullscreen();
             });
-            
-            this.mainChart.update();
-        });
+        }
+
+        // Alternar leyenda
+        const toggleLegendBtn = document.getElementById('toggleLegend');
+        if (toggleLegendBtn) {
+            toggleLegendBtn.addEventListener('click', () => {
+                if (this.mainChart) {
+                    const legend = this.mainChart.options.plugins.legend;
+                    legend.display = !legend.display;
+                    this.mainChart.update();
+                }
+            });
+        }
+
+        // Alternar puntos
+        const togglePointsBtn = document.getElementById('togglePoints');
+        if (togglePointsBtn) {
+            togglePointsBtn.addEventListener('click', () => {
+                if (this.mainChart && this.mainChart.data.datasets.length > 0) {
+                    const datasets = this.mainChart.data.datasets;
+                    const showPoints = datasets[0]?.pointRadius > 0;
+                    
+                    datasets.forEach(dataset => {
+                        dataset.pointRadius = showPoints ? 0 : 4;
+                        dataset.pointHoverRadius = showPoints ? 0 : 8;
+                    });
+                    
+                    this.mainChart.update();
+                }
+            });
+        }
 
         // Cerrar modal
-        document.getElementById('modalClose').addEventListener('click', () => {
-            document.getElementById('seriesModal').style.display = 'none';
-        });
+        const modalCloseBtn = document.getElementById('modalClose');
+        if (modalCloseBtn) {
+            modalCloseBtn.addEventListener('click', () => {
+                const modal = document.getElementById('seriesModal');
+                if (modal) modal.style.display = 'none';
+            });
+        }
 
         // Cerrar modal al hacer clic fuera
-        document.getElementById('seriesModal').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('seriesModal')) {
-                document.getElementById('seriesModal').style.display = 'none';
-            }
-        });
+        const modal = document.getElementById('seriesModal');
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        }
 
         // Filtro de estación
-        document.getElementById('filterEstacion').addEventListener('change', (e) => {
-            const estacion = e.target.value;
-            this.filters.estacion = estacion;
-            this.filterAlimentadoresByEstacion(estacion);
-            this.showNotification(`Filtro de estación: ${estacion || 'Todas'}`, "info");
-        });
+        const estacionSel = document.getElementById('filterEstacion');
+        if (estacionSel) {
+            estacionSel.addEventListener('change', (e) => {
+                const estacion = e.target.value;
+                this.filters.estacion = estacion;
+                this.filterAlimentadoresByEstacion(estacion);
+                this.showNotification(`Filtro de estación: ${estacion || 'Todas'}`, "info");
+            });
+        }
 
         // Filtro de período
-        document.getElementById('filterPeriodo').addEventListener('change', (e) => {
-            const periodo = e.target.value;
-            this.filters.periodo = periodo;
-            
-            if (periodo === 'select_months') {
-                // Mostrar selectores de modo y meses
-                document.getElementById('monthModeGroup').style.display = 'block';
-                document.getElementById('monthSelectorGroup').style.display = 'block';
-            } else {
-                // Ocultar selectores y aplicar período predefinido
-                document.getElementById('monthModeGroup').style.display = 'none';
-                document.getElementById('monthSelectorGroup').style.display = 'none';
-                this.applyPeriodoFilter(periodo);
-            }
-        });
+        const periodoSel = document.getElementById('filterPeriodo');
+        if (periodoSel) {
+            periodoSel.addEventListener('change', (e) => {
+                const periodo = e.target.value;
+                this.filters.periodo = periodo;
+                
+                if (periodo === 'select_months') {
+                    // Mostrar selectores de modo y meses
+                    const monthModeGroup = document.getElementById('monthModeGroup');
+                    const monthSelectorGroup = document.getElementById('monthSelectorGroup');
+                    if (monthModeGroup) monthModeGroup.style.display = 'block';
+                    if (monthSelectorGroup) monthSelectorGroup.style.display = 'block';
+                } else {
+                    // Ocultar selectores y aplicar período predefinido
+                    const monthModeGroup = document.getElementById('monthModeGroup');
+                    const monthSelectorGroup = document.getElementById('monthSelectorGroup');
+                    if (monthModeGroup) monthModeGroup.style.display = 'none';
+                    if (monthSelectorGroup) monthSelectorGroup.style.display = 'none';
+                    this.applyPeriodoFilter(periodo);
+                }
+            });
+        }
         
         // Eventos para botones de modo (único/múltiple) para meses
-        document.getElementById('modeUnique').addEventListener('click', () => {
-            this.setMonthSelectionMode('unique');
-        });
+        const modeUniqueBtn = document.getElementById('modeUnique');
+        const modeMultipleBtn = document.getElementById('modeMultiple');
         
-        document.getElementById('modeMultiple').addEventListener('click', () => {
-            this.setMonthSelectionMode('multiple');
-        });
+        if (modeUniqueBtn) {
+            modeUniqueBtn.addEventListener('click', () => {
+                this.setMonthSelectionMode('unique');
+            });
+        }
+        
+        if (modeMultipleBtn) {
+            modeMultipleBtn.addEventListener('click', () => {
+                this.setMonthSelectionMode('multiple');
+            });
+        }
         
         // Eventos para botones de meses
         document.querySelectorAll('.month-btn').forEach(btn => {
@@ -1908,13 +2087,20 @@ updateComparisonKPIs(seriesStats) {
         });
 
         // Eventos para modo global único/múltiple
-        document.getElementById('globalModeUnique').addEventListener('click', () => {
-            this.setGlobalComparisonMode('unique');
-        });
+        const globalModeUniqueBtn = document.getElementById('globalModeUnique');
+        const globalModeMultipleBtn = document.getElementById('globalModeMultiple');
         
-        document.getElementById('globalModeMultiple').addEventListener('click', () => {
-            this.setGlobalComparisonMode('multiple');
-        });
+        if (globalModeUniqueBtn) {
+            globalModeUniqueBtn.addEventListener('click', () => {
+                this.setGlobalComparisonMode('unique');
+            });
+        }
+        
+        if (globalModeMultipleBtn) {
+            globalModeMultipleBtn.addEventListener('click', () => {
+                this.setGlobalComparisonMode('multiple');
+            });
+        }
         
         // Eventos para selectores múltiples que respeten el modo global
         ['filterYear', 'filterTipoMedicion', 'filterTransformador', 'filterMonth'].forEach(selectId => {
@@ -1936,9 +2122,9 @@ updateComparisonKPIs(seriesStats) {
             const sidebarToggle = document.getElementById('sidebarToggle');
             
             if (window.innerWidth <= 768 && 
-                sidebar.classList.contains('active') && 
+                sidebar && sidebar.classList.contains('active') && 
                 !sidebar.contains(e.target) && 
-                !sidebarToggle.contains(e.target) &&
+                (!sidebarToggle || !sidebarToggle.contains(e.target)) &&
                 !e.target.closest('.sidebar-toggle-btn')) {
                 sidebar.classList.remove('active');
             }
@@ -1946,8 +2132,9 @@ updateComparisonKPIs(seriesStats) {
 
         // Tecla Escape para cerrar sidebar
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && document.getElementById('sidebar').classList.contains('active')) {
-                document.getElementById('sidebar').classList.remove('active');
+            const sidebar = document.getElementById('sidebar');
+            if (e.key === 'Escape' && sidebar && sidebar.classList.contains('active')) {
+                sidebar.classList.remove('active');
             }
         });
     }
@@ -1988,28 +2175,42 @@ updateComparisonKPIs(seriesStats) {
         document.querySelectorAll('.data-table th').forEach(th => {
             const icon = th.querySelector('i');
             if (th.dataset.sort === this.sortConfig.column) {
-                icon.className = this.sortConfig.direction === 'asc' ? 
-                    'fas fa-sort-up' : 'fas fa-sort-down';
+                if (icon) {
+                    icon.className = this.sortConfig.direction === 'asc' ? 
+                        'fas fa-sort-up' : 'fas fa-sort-down';
+                }
             } else {
-                icon.className = 'fas fa-sort';
+                if (icon) {
+                    icon.className = 'fas fa-sort';
+                }
             }
         });
     }
 
     updatePaginationInfo(start, end, total) {
-        document.getElementById('rowsShownStart').textContent = Math.min(start, total);
-        document.getElementById('rowsShownEnd').textContent = Math.min(end, total);
-        document.getElementById('rowsTotal').textContent = total;
-        document.getElementById('currentPage').textContent = this.pagination.currentPage;
+        const rowsShownStartEl = document.getElementById('rowsShownStart');
+        const rowsShownEndEl = document.getElementById('rowsShownEnd');
+        const rowsTotalEl = document.getElementById('rowsTotal');
+        const currentPageEl = document.getElementById('currentPage');
+        
+        if (rowsShownStartEl) rowsShownStartEl.textContent = Math.min(start, total);
+        if (rowsShownEndEl) rowsShownEndEl.textContent = Math.min(end, total);
+        if (rowsTotalEl) rowsTotalEl.textContent = total;
+        if (currentPageEl) currentPageEl.textContent = this.pagination.currentPage;
     }
 
     updatePaginationButtons() {
         const totalPages = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
         
-        document.getElementById('firstPage').disabled = this.pagination.currentPage === 1;
-        document.getElementById('prevPage').disabled = this.pagination.currentPage === 1;
-        document.getElementById('nextPage').disabled = this.pagination.currentPage === totalPages || totalPages === 0;
-        document.getElementById('lastPage').disabled = this.pagination.currentPage === totalPages || totalPages === 0;
+        const firstPageBtn = document.getElementById('firstPage');
+        const prevPageBtn = document.getElementById('prevPage');
+        const nextPageBtn = document.getElementById('nextPage');
+        const lastPageBtn = document.getElementById('lastPage');
+        
+        if (firstPageBtn) firstPageBtn.disabled = this.pagination.currentPage === 1;
+        if (prevPageBtn) prevPageBtn.disabled = this.pagination.currentPage === 1;
+        if (nextPageBtn) nextPageBtn.disabled = this.pagination.currentPage === totalPages || totalPages === 0;
+        if (lastPageBtn) lastPageBtn.disabled = this.pagination.currentPage === totalPages || totalPages === 0;
     }
 
     showDetails(alimentador, fecha) {
@@ -2051,10 +2252,16 @@ updateComparisonKPIs(seriesStats) {
             elem.requestFullscreen().catch(err => {
                 console.error(`Error al activar pantalla completa: ${err.message}`);
             });
-            document.getElementById('fullscreenToggle').innerHTML = '<i class="fas fa-compress"></i>';
+            const fullscreenToggleBtn = document.getElementById('fullscreenToggle');
+            if (fullscreenToggleBtn) {
+                fullscreenToggleBtn.innerHTML = '<i class="fas fa-compress"></i>';
+            }
         } else {
             document.exitFullscreen();
-            document.getElementById('fullscreenToggle').innerHTML = '<i class="fas fa-expand"></i>';
+            const fullscreenToggleBtn = document.getElementById('fullscreenToggle');
+            if (fullscreenToggleBtn) {
+                fullscreenToggleBtn.innerHTML = '<i class="fas fa-expand"></i>';
+            }
         }
     }
 
@@ -2076,26 +2283,34 @@ updateComparisonKPIs(seriesStats) {
         this.monthSelectionMode = mode;
         
         // Actualizar botones de modo
+        const modeUniqueBtn = document.getElementById('modeUnique');
+        const modeMultipleBtn = document.getElementById('modeMultiple');
+        const monthHintEl = document.getElementById('monthHint');
+        
         if (mode === 'unique') {
-            document.getElementById('modeUnique').classList.add('active');
-            document.getElementById('modeMultiple').classList.remove('active');
+            if (modeUniqueBtn) modeUniqueBtn.classList.add('active');
+            if (modeMultipleBtn) modeMultipleBtn.classList.remove('active');
             
             // En modo único, mantener solo un mes seleccionado
             const selectedMonths = Array.from(document.querySelectorAll('.month-btn.selected'));
             if (selectedMonths.length > 1) {
                 // Deseleccionar todos excepto el primero
-                selectedMonths.slice(1).forEach(btn => btn.classList.remove('selected'));
+                selectedMonths.slice(1).forEach(btn => {
+                    btn.classList.remove('selected');
+                });
                 this.syncMonthsToHiddenSelect();
             }
             
-            document.getElementById('monthHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo único: selecciona un mes';
+            if (monthHintEl) {
+                monthHintEl.innerHTML = '<i class="fas fa-info-circle"></i> Modo único: selecciona un mes';
+            }
         } else {
-            document.getElementById('modeUnique').classList.remove('active');
-            document.getElementById('modeMultiple').classList.add('active');
+            if (modeUniqueBtn) modeUniqueBtn.classList.remove('active');
+            if (modeMultipleBtn) modeMultipleBtn.classList.add('active');
             
-            document.getElementById('monthHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios meses para comparar';
+            if (monthHintEl) {
+                monthHintEl.innerHTML = '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios meses para comparar';
+            }
         }
         
         this.showNotification(`Modo ${mode === 'unique' ? 'único' : 'múltiple'} activado`, "info");
@@ -2127,6 +2342,7 @@ updateComparisonKPIs(seriesStats) {
         const selectedMonths = Array.from(selectedBtns).map(btn => btn.dataset.month);
         
         const hiddenSelect = document.getElementById('filterMonth');
+        if (!hiddenSelect) return;
         
         // Deseleccionar todas las opciones
         Array.from(hiddenSelect.options).forEach(option => {
