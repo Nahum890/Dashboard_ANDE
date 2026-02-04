@@ -32,10 +32,14 @@ async function testConnection() {
 window.addEventListener('load', () => {
     setTimeout(testConnection, 1000);
 });
+// Solo cambio en el constructor de ANDEDashboard:
 class ANDEDashboard {
     constructor() {
         // Esta línea detecta si estás en tu PC o en Render
-        this.apiBaseUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.origin;
+        // MODIFICADO: Para PostgreSQL, mantenemos la misma lógica
+        this.apiBaseUrl = window.location.hostname === 'localhost' 
+            ? 'http://localhost:10000'  // Puerto actualizado a 10000
+            : window.location.origin;
         this.data = [];
         this.filteredData = [];
         this.mainChart = null;
