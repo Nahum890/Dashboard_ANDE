@@ -58,6 +58,7 @@ class ANDEDashboard {
         this.estaciones = []; // Lista de estaciones únicas (primeras 3 letras)
         this.monthSelectionMode = 'unique'; // 'unique' o 'multiple'
         this.globalComparisonMode = 'unique'; // 'unique' o 'multiple' - NUEVO: Modo global
+        this.lastSelectedMonth = null;
 
         this.filters = {
             tipoMedicion: [],    // Array
@@ -299,6 +300,8 @@ class ANDEDashboard {
     
     setGlobalComparisonMode(mode) {
         this.globalComparisonMode = mode;
+        document.body.classList.remove('global-mode-unique', 'global-mode-multiple');
+        document.body.classList.add(mode === 'unique' ? 'global-mode-unique' : 'global-mode-multiple');
         
         // Actualizar botones de modo global
         if (mode === 'unique') {
@@ -320,7 +323,7 @@ class ANDEDashboard {
             document.getElementById('globalModeUnique').classList.remove('active');
             document.getElementById('globalModeMultiple').classList.add('active');
             document.getElementById('globalModeHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios valores para comparar';
+                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios valores (Ctrl + Click / Shift + Click)';
             
             // Permitir múltiples selecciones
             this.allowMultipleSelections('filterYear');
@@ -331,6 +334,8 @@ class ANDEDashboard {
             // Permitir múltiples selecciones en meses
             this.setMonthSelectionMode('multiple');
         }
+
+        this.updateMonthModeVisibility();
         
         this.showNotification(`Modo de comparación: ${mode === 'unique' ? 'único' : 'múltiple'}`, "info");
     }
@@ -400,12 +405,9 @@ class ANDEDashboard {
         
         // Establecer modo único por defecto para meses
         this.monthSelectionMode = 'unique';
-        document.getElementById('modeUnique').classList.add('active');
-        document.getElementById('modeMultiple').classList.remove('active');
         
         // Mostrar los selectores de mes
-        document.getElementById('monthModeGroup').style.display = 'block';
-        document.getElementById('monthSelectorGroup').style.display = 'block';
+        this.updateMonthModeVisibility();
 
         this.syncFilters();
         this.updateComparisonTags();
@@ -1336,8 +1338,8 @@ class ANDEDashboard {
         }
         
         if (worstSeries) {
-            document.getElementById('bestSeries').textContent = worstSeries.transformador;
-            document.getElementById('bestValue').textContent = this.safeToFixed(seriesStats[worstSeriesKey].cv, 2) + '% CV';
+            document.getElementById('worstSeries').textContent = worstSeries.transformador;
+            document.getElementById('worstValue').textContent = this.safeToFixed(seriesStats[worstSeriesKey].cv, 2) + '% CV';
         }
         
         document.getElementById('activeSeries').textContent = Object.keys(seriesStats).length;
@@ -1726,8 +1728,7 @@ class ANDEDashboard {
             
             if (periodo === 'select_months') {
                 // Mostrar selectores de modo y meses
-                document.getElementById('monthModeGroup').style.display = 'block';
-                document.getElementById('monthSelectorGroup').style.display = 'block';
+                this.updateMonthModeVisibility();
             } else {
                 // Ocultar selectores y aplicar período predefinido
                 document.getElementById('monthModeGroup').style.display = 'none';
@@ -1736,19 +1737,10 @@ class ANDEDashboard {
             }
         });
         
-        // Eventos para botones de modo (único/múltiple) para meses
-        document.getElementById('modeUnique').addEventListener('click', () => {
-            this.setMonthSelectionMode('unique');
-        });
-        
-        document.getElementById('modeMultiple').addEventListener('click', () => {
-            this.setMonthSelectionMode('multiple');
-        });
-        
         // Eventos para botones de meses
         document.querySelectorAll('.month-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                this.toggleMonthSelection(e.target.dataset.month);
+                this.toggleMonthSelection(e.target.dataset.month, e.shiftKey);
             });
         });
 
@@ -1920,11 +1912,7 @@ class ANDEDashboard {
     setMonthSelectionMode(mode) {
         this.monthSelectionMode = mode;
         
-        // Actualizar botones de modo
         if (mode === 'unique') {
-            document.getElementById('modeUnique').classList.add('active');
-            document.getElementById('modeMultiple').classList.remove('active');
-            
             // En modo único, mantener solo un mes seleccionado
             const selectedMonths = Array.from(document.querySelectorAll('.month-btn.selected'));
             if (selectedMonths.length > 1) {
@@ -1934,19 +1922,16 @@ class ANDEDashboard {
             }
             
             document.getElementById('monthHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo único: selecciona un mes';
+                '<i class="fas fa-info-circle"></i> Selecciona un mes';
         } else {
-            document.getElementById('modeUnique').classList.remove('active');
-            document.getElementById('modeMultiple').classList.add('active');
-            
             document.getElementById('monthHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios meses para comparar';
+                '<i class="fas fa-info-circle"></i> Selecciona varios meses (Ctrl + Click) o rangos (Shift + Click)';
         }
         
         this.showNotification(`Modo ${mode === 'unique' ? 'único' : 'múltiple'} activado`, "info");
     }
     
-    toggleMonthSelection(month) {
+    toggleMonthSelection(month, isRangeSelection = false) {
         const btn = document.querySelector(`.month-btn[data-month="${month}"]`);
         if (!btn) return;
         
@@ -1956,15 +1941,37 @@ class ANDEDashboard {
                 b.classList.remove('selected');
             });
             btn.classList.add('selected');
+            this.lastSelectedMonth = Number(month);
         } else {
-            // Modo múltiple: toggle del botón
-            btn.classList.toggle('selected');
+            const currentMonth = Number(month);
+            if (isRangeSelection && this.lastSelectedMonth) {
+                const start = Math.min(this.lastSelectedMonth, currentMonth);
+                const end = Math.max(this.lastSelectedMonth, currentMonth);
+                document.querySelectorAll('.month-btn').forEach(button => {
+                    const btnMonth = Number(button.dataset.month);
+                    if (btnMonth >= start && btnMonth <= end) {
+                        button.classList.add('selected');
+                    }
+                });
+            } else {
+                // Modo múltiple: toggle del botón
+                btn.classList.toggle('selected');
+            }
+            this.lastSelectedMonth = currentMonth;
         }
         
         // Sincronizar con el select oculto
         this.syncMonthsToHiddenSelect();
         this.syncFilters();
         this.updateComparisonTags();
+    }
+
+    updateMonthModeVisibility() {
+        const periodo = document.getElementById('filterPeriodo').value;
+        const shouldShowMonthSelectors = periodo === 'select_months';
+        const shouldShowGuide = this.globalComparisonMode === 'multiple' && shouldShowMonthSelectors;
+        document.getElementById('monthModeGroup').style.display = shouldShowGuide ? 'block' : 'none';
+        document.getElementById('monthSelectorGroup').style.display = shouldShowMonthSelectors ? 'block' : 'none';
     }
     
     syncMonthsToHiddenSelect() {

@@ -105,18 +105,15 @@
                     <small class="form-hint"><i class="fas fa-info-circle"></i> Selección de período temporal</small>
                 </div>
 
-                <!-- Modo de Selección de Meses - Nuevo -->
-                <div class="filter-group" id="monthModeGroup" style="display: none;">
-                    <label class="form-label"><i class="fas fa-toggle-on"></i> Modo de Selección</label>
-                    <div class="toggle-buttons">
-                        <button type="button" class="toggle-btn active" id="modeUnique" data-mode="unique">
-                            <i class="fas fa-check-circle"></i> Único
-                        </button>
-                        <button type="button" class="toggle-btn" id="modeMultiple" data-mode="multiple">
-                            <i class="fas fa-check-double"></i> Múltiple
-                        </button>
-                    </div>
-                    <small class="form-hint"><i class="fas fa-info-circle"></i> Único: un mes | Múltiple: comparar varios meses</small>
+                <!-- Guía de selección múltiple -->
+                <div class="filter-group selection-guide" id="monthModeGroup" style="display: none;">
+                    <label class="form-label"><i class="fas fa-list-check"></i> Guía de selección múltiple</label>
+                    <ul class="selection-steps">
+                        <li><i class="fas fa-mouse-pointer"></i> <strong>Ctrl + Click</strong> para agregar o quitar valores.</li>
+                        <li><i class="fas fa-arrows-left-right-to-line"></i> <strong>Shift + Click</strong> para seleccionar un rango de meses.</li>
+                        <li><i class="fas fa-check-double"></i> Usa este modo para comparar varios alimentadores, años o meses.</li>
+                    </ul>
+                    <small class="form-hint"><i class="fas fa-info-circle"></i> La guía aparece solo en modo de selección múltiple.</small>
                 </div>
 
                 <!-- Selector de Meses - Mejorado -->
@@ -275,10 +272,10 @@
                         <i class="fas fa-exclamation-triangle kpi-icon text-red"></i>
                      </div>
                      <div class="kpi-body">
-                         <span class="kpi-value" id="bestSeries">--</span>
-                         <span class="kpi-unit">serie</span>
+                         <span class="kpi-value" id="worstSeries">--</span>
+                         <span class="kpi-unit">alimentador</span>
                      </div>
-                     <div class="kpi-meta" id="bestValue">0.0000</div>
+                     <div class="kpi-meta" id="worstValue">0.0000</div>
                  </div>
              </div>
 
