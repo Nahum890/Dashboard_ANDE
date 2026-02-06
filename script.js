@@ -6,36 +6,10 @@ console.log("🔗 Protocolo:", window.location.protocol);
 console.log("🏠 Hostname:", window.location.hostname);
 console.log("🚪 Puerto:", window.location.port);
 
-// Función para probar conexión
-async function testConnection() {
-    console.log("🔍 Probando conexión con backend...");
-    
-    const testUrls = [
-        '/api/health',
-        '/api/test',
-        '/api/tipos-medicion'
-    ];
-    
-    for (const url of testUrls) {
-        try {
-            console.log(`📡 Intentando conectar a: ${url}`);
-            const response = await fetch(url);
-            const data = await response.json();
-            console.log(`✅ ${url}:`, data);
-        } catch (error) {
-            console.error(`❌ Error en ${url}:`, error.message);
-        }
-    }
-}
-
-// Ejecutar test al cargar
-window.addEventListener('load', () => {
-    setTimeout(testConnection, 1000);
-});
 class ANDEDashboard {
     constructor() {
-        // Esta línea detecta si estás en tu PC o en Render
-        this.apiBaseUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.origin;
+        // Usa mismo origen por defecto; permite override opcional con window.API_BASE_URL
+        this.apiBaseUrl = window.API_BASE_URL || window.location.origin;
         this.data = [];
         this.filteredData = [];
         this.mainChart = null;
@@ -1671,6 +1645,18 @@ class ANDEDashboard {
             }
         });
 
+        // Ir a sección de importación Excel
+        const goToExcelUpload = document.getElementById('goToExcelUpload');
+        if (goToExcelUpload) {
+            goToExcelUpload.addEventListener('click', () => {
+                const section = document.getElementById('excelUploadSection');
+                if (section) {
+                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    this.showNotification('Apartado de análisis y extracción de Excel visible', 'info');
+                }
+            });
+        }
+
         // Exportar datos
         document.getElementById('exportData').addEventListener('click', () => {
             this.exportData();
@@ -1736,6 +1722,22 @@ class ANDEDashboard {
                 this.applyPeriodoFilter(periodo);
             }
         });
+
+        // Carga de Excel
+        const uploadExcelBtn = document.getElementById('uploadExcelBtn');
+        if (uploadExcelBtn) {
+            uploadExcelBtn.addEventListener('click', () => this.handleExcelUpload());
+        }
+
+        const previewDeleteBtn = document.getElementById('previewDeleteBtn');
+        if (previewDeleteBtn) {
+            previewDeleteBtn.addEventListener('click', () => this.handleDeleteByDate(true));
+        }
+
+        const deleteByDateBtn = document.getElementById('deleteByDateBtn');
+        if (deleteByDateBtn) {
+            deleteByDateBtn.addEventListener('click', () => this.handleDeleteByDate(false));
+        }
         
         // Eventos para botones de meses
         document.querySelectorAll('.month-btn').forEach(btn => {
@@ -1824,9 +1826,12 @@ class ANDEDashboard {
     updateSortIndicators() {
         document.querySelectorAll('.data-table th').forEach(th => {
             const icon = th.querySelector('i');
+            if (!icon || !th.dataset.sort) return;
+
             if (th.dataset.sort === this.sortConfig.column) {
-                icon.className = this.sortConfig.direction === 'asc' ? 
-                    'fas fa-sort-up' : 'fas fa-sort-down';
+                icon.className = this.sortConfig.direction === 'asc'
+                    ? 'fas fa-sort-up'
+                    : 'fas fa-sort-down';
             } else {
                 icon.className = 'fas fa-sort';
             }
@@ -2118,6 +2123,157 @@ class ANDEDashboard {
                     btn.classList.add('selected');
                 }
             });
+        }
+    }
+
+    setExcelStatus(message, type = 'info') {
+        const statusEl = document.getElementById('excelUploadStatus');
+        if (!statusEl) return;
+
+        const colorMap = {
+            info: 'var(--text-muted)',
+            success: 'var(--success)',
+            error: 'var(--danger)',
+            warning: 'var(--warning)'
+        };
+
+        statusEl.textContent = message;
+        statusEl.style.color = colorMap[type] || colorMap.info;
+    }
+
+    async handleExcelUpload() {
+        const fileInput = document.getElementById('excelFileInput');
+        const uploadBtn = document.getElementById('uploadExcelBtn');
+        const file = fileInput?.files?.[0];
+
+        if (!file) {
+            this.setExcelStatus('Selecciona un archivo .xlsx antes de subir.', 'warning');
+            this.showNotification('Selecciona un archivo .xlsx', 'warning');
+            return;
+        }
+
+        if (!file.name.toLowerCase().endsWith('.xlsx')) {
+            this.setExcelStatus('Archivo inválido. Solo se admiten archivos .xlsx.', 'error');
+            this.showNotification('Formato inválido, usa .xlsx', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('archivo', file);
+
+        try {
+            uploadBtn.disabled = true;
+            this.setExcelStatus('Subiendo archivo y procesando datos...', 'info');
+
+            const response = await fetch(`${this.apiBaseUrl}/api/subir-excel`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || result.error || 'No se pudo procesar el archivo');
+            }
+
+            this.setExcelStatus(`Carga completada. Insertadas: ${result.insertadas}, ignoradas: ${result.ignoradas}.`, 'success');
+            this.showNotification('Excel cargado correctamente', 'success');
+            await this.loadData();
+        } catch (error) {
+            console.error('Error al subir Excel:', error);
+            this.setExcelStatus(`Error: ${error.message}`, 'error');
+            this.showNotification('Error al cargar Excel', 'error');
+        } finally {
+            uploadBtn.disabled = false;
+        }
+    }
+
+    setDeleteStatus(message, type = 'info') {
+        const statusEl = document.getElementById('excelDeleteStatus');
+        if (!statusEl) return;
+
+        const colorMap = {
+            info: 'var(--text-muted)',
+            success: 'var(--success)',
+            error: 'var(--danger)',
+            warning: 'var(--warning)'
+        };
+
+        statusEl.textContent = message;
+        statusEl.style.color = colorMap[type] || colorMap.info;
+    }
+
+    async handleDeleteByDate(previewOnly = false) {
+        const fromDate = document.getElementById('deleteFromDate')?.value;
+        const toDate = document.getElementById('deleteToDate')?.value;
+        const seccion = document.getElementById('deleteSeccion')?.value?.trim() || null;
+        const tipoMedicion = document.getElementById('deleteTipoMedicion')?.value?.trim() || null;
+
+        if (!fromDate || !toDate) {
+            this.setDeleteStatus('Debes seleccionar fecha desde y hasta.', 'warning');
+            this.showNotification('Completa el rango de fechas', 'warning');
+            return;
+        }
+
+        if (fromDate > toDate) {
+            this.setDeleteStatus('Rango inválido: Desde no puede ser mayor que Hasta.', 'error');
+            this.showNotification('Rango de fechas inválido', 'error');
+            return;
+        }
+
+        if (!previewOnly) {
+            const confirmDelete = window.confirm('¿Seguro que deseas borrar los registros del rango seleccionado? Esta acción no se puede deshacer.');
+            if (!confirmDelete) {
+                this.setDeleteStatus('Borrado cancelado por el usuario.', 'info');
+                return;
+            }
+        }
+
+        const payload = {
+            fromDate,
+            toDate,
+            seccion,
+            tipo_medicion: tipoMedicion,
+            previewOnly
+        };
+
+        const deleteBtn = document.getElementById('deleteByDateBtn');
+        const previewBtn = document.getElementById('previewDeleteBtn');
+
+        try {
+            if (deleteBtn) deleteBtn.disabled = true;
+            if (previewBtn) previewBtn.disabled = true;
+
+            this.setDeleteStatus(previewOnly ? 'Calculando registros a eliminar...' : 'Eliminando registros...', 'info');
+
+            const response = await fetch(`${this.apiBaseUrl}/api/borrar-excel-por-fecha`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || result.error || 'No fue posible procesar el borrado');
+            }
+
+            if (previewOnly) {
+                this.setDeleteStatus(`Vista previa: ${result.registros} registros coinciden con el filtro.`, 'warning');
+                this.showNotification(`Coincidencias: ${result.registros}`, 'info');
+                return;
+            }
+
+            this.setDeleteStatus(`Borrado completado: ${result.registrosEliminados} registros eliminados.`, 'success');
+            this.showNotification('Registros eliminados correctamente', 'success');
+            await this.loadData();
+        } catch (error) {
+            console.error('Error borrando por fecha:', error);
+            this.setDeleteStatus(`Error: ${error.message}`, 'error');
+            this.showNotification('Error al borrar registros', 'error');
+        } finally {
+            if (deleteBtn) deleteBtn.disabled = false;
+            if (previewBtn) previewBtn.disabled = false;
         }
     }
 
