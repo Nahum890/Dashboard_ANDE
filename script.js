@@ -1671,6 +1671,18 @@ class ANDEDashboard {
             }
         });
 
+        // Ir a sección de importación Excel
+        const goToExcelUpload = document.getElementById('goToExcelUpload');
+        if (goToExcelUpload) {
+            goToExcelUpload.addEventListener('click', () => {
+                const section = document.getElementById('excelUploadSection');
+                if (section) {
+                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    this.showNotification('Sección de importación Excel visible', 'info');
+                }
+            });
+        }
+
         // Exportar datos
         document.getElementById('exportData').addEventListener('click', () => {
             this.exportData();
