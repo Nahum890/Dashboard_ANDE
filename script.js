@@ -1471,14 +1471,9 @@ class ANDEDashboard {
         const globalRange = globalMax - globalMin;
         const avgCV = allCVs.reduce((a, b) => a + b, 0) / allCVs.length;
         
-        // DEPURACIÓN: Verificar IDs en el DOM
-        console.log("🔍 Verificando IDs de elementos KPI en el DOM:");
-        console.log("worstSeries:", document.getElementById('worstSeries'));
-        console.log("worstValue:", document.getElementById('worstValue'));
-        
-        // Encontrar la PEOR serie (mayor CV = menos estable = PEOR desempeño)
+        // Encontrar la peor serie (mayor CV = menos estable)
         let worstSeriesKey = Object.keys(seriesStats)[0];
-        let worstCV = seriesStats[worstSeriesKey]?.cv || 0;
+        let worstCV = seriesStats[worstSeriesKey].cv;
         
         Object.entries(seriesStats).forEach(([key, stats]) => {
             if (stats.cv > worstCV) {
@@ -1489,61 +1484,29 @@ class ANDEDashboard {
         
         const worstSeries = this.data.find(d => d.combinationKey === worstSeriesKey);
         
-        console.log("📉 Peor serie encontrada:", {
-            key: worstSeriesKey,
-            cv: worstCV,
-            alimentador: worstSeries?.transformador
-        });
-        
         // Actualizar elementos
-        const rangeValueEl = document.getElementById('rangeValue');
-        const rangeInfoEl = document.getElementById('rangeInfo');
-        const variabilityValueEl = document.getElementById('variabilityValue');
-        const variabilityBadgeEl = document.getElementById('variabilityBadge');
-        const worstSeriesEl = document.getElementById('worstSeries');
-        const worstValueEl = document.getElementById('worstValue');
+        document.getElementById('rangeValue').textContent = this.safeToFixed(globalRange);
+        document.getElementById('rangeInfo').textContent = `${this.safeToFixed(globalMin, 0)}-${this.safeToFixed(globalMax, 0)}`;
         
-        // Verificar que todos los elementos existan
-        if (!worstSeriesEl || !worstValueEl) {
-            console.error("❌ ERROR: Elementos para 'Peor Desempeño' no encontrados en el DOM");
-            console.log("worstSeriesEl:", worstSeriesEl);
-            console.log("worstValueEl:", worstValueEl);
-            return;
-        }
-        
-        if (rangeValueEl) {
-            rangeValueEl.textContent = this.safeToFixed(globalRange);
-        }
-        if (rangeInfoEl) {
-            rangeInfoEl.textContent = `${this.safeToFixed(globalMin, 0)}-${this.safeToFixed(globalMax, 0)}`;
-        }
-        if (variabilityValueEl) {
-            variabilityValueEl.textContent = this.safeToFixed(avgCV, 2) + '%';
-        }
-        if (variabilityBadgeEl) {
-            if (avgCV < 10) {
-                variabilityBadgeEl.textContent = 'Excelente';
-                variabilityBadgeEl.style.background = 'rgba(16, 185, 129, 0.1)';
-                variabilityBadgeEl.style.color = 'var(--success)';
-            } else if (avgCV < 20) {
-                variabilityBadgeEl.textContent = 'Buena';
-                variabilityBadgeEl.style.background = 'rgba(245, 158, 11, 0.1)';
-                variabilityBadgeEl.style.color = 'var(--warning)';
-            } else {
-                variabilityBadgeEl.textContent = 'Alta';
-                variabilityBadgeEl.style.background = 'rgba(239, 68, 68, 0.1)';
-                variabilityBadgeEl.style.color = 'var(--danger)';
-            }
-        }
-        
-        // Actualizar KPI de peor desempeño
-        if (worstSeries) {
-            worstSeriesEl.textContent = worstSeries.transformador;
-            worstValueEl.textContent = this.safeToFixed(worstCV, 2) + '% CV';
-            console.log("✅ KPI actualizado:", worstSeries.transformador, "con CV:", worstCV + '%');
+        document.getElementById('variabilityValue').textContent = this.safeToFixed(avgCV, 2) + '%';
+        const variabilityBadge = document.getElementById('variabilityBadge');
+        if (avgCV < 10) {
+            variabilityBadge.textContent = 'Excelente';
+            variabilityBadge.style.background = 'rgba(16, 185, 129, 0.1)';
+            variabilityBadge.style.color = 'var(--success)';
+        } else if (avgCV < 20) {
+            variabilityBadge.textContent = 'Buena';
+            variabilityBadge.style.background = 'rgba(245, 158, 11, 0.1)';
+            variabilityBadge.style.color = 'var(--warning)';
         } else {
-            worstSeriesEl.textContent = '--';
-            worstValueEl.textContent = '--';
+            variabilityBadge.textContent = 'Alta';
+            variabilityBadge.style.background = 'rgba(239, 68, 68, 0.1)';
+            variabilityBadge.style.color = 'var(--danger)';
+        }
+        
+        if (worstSeries) {
+            document.getElementById('bestSeries').textContent = worstSeries.transformador;
+            document.getElementById('bestValue').textContent = this.safeToFixed(seriesStats[worstSeriesKey].cv, 2) + '% CV';
         }
         
         // Actualizar contador de series activas
