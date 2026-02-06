@@ -1744,3 +1744,118 @@ body {
         text-align: center;
     }
 }
+
+.excel-upload {
+    margin-top: 1.8rem;
+    margin-bottom: 1.5rem;
+    padding: 1.25rem;
+    border: 2px solid #22c55e;
+    background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+    box-shadow: 0 10px 25px rgba(34, 197, 94, 0.15);
+}
+
+.excel-upload-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.excel-upload-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: #166534;
+}
+
+.excel-upload-header small {
+    color: var(--text-muted);
+}
+
+.excel-upload-body {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.excel-upload-body input[type="file"] {
+    min-width: 260px;
+    max-width: 420px;
+}
+
+.excel-upload-status {
+    margin: 0.75rem 0 0;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+#goToExcelUpload {
+    color: #15803d;
+}
+
+#goToExcelUpload:hover {
+    color: #166534;
+    background: rgba(34, 197, 94, 0.12);
+}
+
+.excel-panel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+}
+
+.excel-panel-block {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 1rem;
+}
+
+.excel-panel-block h4 {
+    margin: 0 0 0.35rem;
+    font-size: 0.98rem;
+}
+
+.excel-panel-help {
+    margin: 0 0 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.excel-delete-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+    gap: 0.75rem;
+}
+
+.excel-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.excel-field label {
+    font-size: 0.82rem;
+    color: #334155;
+    font-weight: 600;
+}
+
+.excel-delete-actions {
+    margin-top: 0.9rem;
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.btn-danger {
+    background: #dc2626;
+    color: white;
+    border: 1px solid #dc2626;
+}
+
+.btn-danger:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
+}
