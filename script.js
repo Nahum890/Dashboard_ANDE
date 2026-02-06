@@ -1814,11 +1814,14 @@ class ANDEDashboard {
     }
 
     updateSortIndicators() {
-        document.querySelectorAll('.data-table th').forEach(th => {
+        document.querySelectorAll('.data-table th[data-sort]').forEach(th => {
             const icon = th.querySelector('i');
+            if (!icon) return;
+
             if (th.dataset.sort === this.sortConfig.column) {
-                icon.className = this.sortConfig.direction === 'asc' ? 
-                    'fas fa-sort-up' : 'fas fa-sort-down';
+                icon.className = this.sortConfig.direction === 'asc'
+                    ? 'fas fa-sort-up'
+                    : 'fas fa-sort-down';
             } else {
                 icon.className = 'fas fa-sort';
             }

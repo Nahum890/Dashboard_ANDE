@@ -443,6 +443,62 @@
                 </div>
             </div>
 
+            <section id="excelUploadSection" class="excel-upload card">
+                <div class="excel-upload-header">
+                    <h3><i class="fas fa-file-excel"></i> Apartado de análisis y extracción de datos Excel</h3>
+                    <small>Importación visible y gestión de borrado por fechas, justo debajo del historial de mediciones.</small>
+                </div>
+
+                <div class="excel-panel-grid">
+                    <div class="excel-panel-block">
+                        <h4><i class="fas fa-upload"></i> Importar archivo .xlsx</h4>
+                        <p class="excel-panel-help">Cabeceras requeridas: seccion, anio, mes, departamento, tipo_medicion, valor.</p>
+                        <div class="excel-upload-body">
+                            <input type="file" id="excelFileInput" accept=".xlsx" class="form-select" />
+                            <button id="uploadExcelBtn" class="btn btn-primary">
+                                <i class="fas fa-upload"></i> Subir Excel
+                            </button>
+                        </div>
+                        <p id="excelUploadStatus" class="excel-upload-status">Selecciona un archivo .xlsx para comenzar.</p>
+                    </div>
+
+                    <div class="excel-panel-block excel-delete-block">
+                        <h4><i class="fas fa-trash-alt"></i> Borrar registros por fecha</h4>
+                        <p class="excel-panel-help">Elimina registros de PostgreSQL por rango (año-mes) y filtros opcionales.</p>
+
+                        <div class="excel-delete-grid">
+                            <div class="excel-field">
+                                <label for="deleteFromDate">Desde (año-mes)</label>
+                                <input id="deleteFromDate" type="month" class="form-select" />
+                            </div>
+                            <div class="excel-field">
+                                <label for="deleteToDate">Hasta (año-mes)</label>
+                                <input id="deleteToDate" type="month" class="form-select" />
+                            </div>
+                            <div class="excel-field">
+                                <label for="deleteSeccion">Sección (opcional)</label>
+                                <input id="deleteSeccion" type="text" class="form-select" placeholder="Ej: ACY1" />
+                            </div>
+                            <div class="excel-field">
+                                <label for="deleteTipoMedicion">Tipo medición (opcional)</label>
+                                <input id="deleteTipoMedicion" type="text" class="form-select" placeholder="Ej: ACCID.FEP" />
+                            </div>
+                        </div>
+
+                        <div class="excel-delete-actions">
+                            <button id="previewDeleteBtn" class="btn btn-outline">
+                                <i class="fas fa-search"></i> Ver cuántos se borrarán
+                            </button>
+                            <button id="deleteByDateBtn" class="btn btn-danger">
+                                <i class="fas fa-trash"></i> Borrar registros
+                            </button>
+                        </div>
+
+                        <p id="excelDeleteStatus" class="excel-upload-status">Define un rango y usa vista previa antes de borrar.</p>
+                    </div>
+                </div>
+            </section>
+
             <div class="footer-info">
                 <div class="footer-text">
                     <i class="fas fa-shield-alt"></i> Sistema de Monitoreo ANDE v3.0 - Modo Comparación Avanzada
