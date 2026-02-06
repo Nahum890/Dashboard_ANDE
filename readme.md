@@ -55,11 +55,10 @@ La plataforma está orientada a análisis operativo con visualización avanzada,
 - Exportación de la vista filtrada en formato **JSON**.
 
 ### 6) Carga de Excel integrada
-- Sección en el frontend para subir archivos **`.xlsx`** (card visible en el contenido principal) y acceso rápido con botón de ícono Excel en la cabecera.
+- Sección en el frontend para subir archivos **`.xlsx`**.
 - Subida al endpoint `POST /api/subir-excel`.
 - Validación de archivo y feedback visual de estado (éxito/error/progreso).
 - Al terminar una carga exitosa, el dashboard recarga datos automáticamente.
-- Incluye apartado de **borrado por rango de fechas** con vista previa de cuántos registros serán eliminados.
 
 ---
 
@@ -116,9 +115,6 @@ Restricción de unicidad:
 - `POST /api/subir-excel`
   - `multipart/form-data`
   - campo de archivo: `archivo`
-- `POST /api/borrar-excel-por-fecha`
-  - `application/json`
-  - body: `fromDate`, `toDate`, `seccion?`, `tipo_medicion?`, `previewOnly?`
 
 ---
 
