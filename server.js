@@ -2,8 +2,19 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
+const multer = require("multer");
+const XLSX = require("xlsx");
+const { Pool } = require("pg");
 
 const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
+
+const pgPool = process.env.DATABASE_URL
+    ? new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
+    })
+    : null;
 
 // ========================
 // 1. MIDDLEWARES
@@ -278,6 +289,88 @@ app.get("/api/datos", (req, res) => {
         
         res.json(datos);
     });
+});
+
+// Subida de Excel (PostgreSQL)
+app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
+    if (!pgPool) {
+        return res.status(500).json({
+            error: "Conexión PostgreSQL no configurada",
+            message: "Define DATABASE_URL para habilitar la carga de Excel"
+        });
+    }
+
+    if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ error: "No se recibió ningún archivo .xlsx" });
+    }
+
+    const client = await pgPool.connect();
+
+    try {
+        const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+        const firstSheetName = workbook.SheetNames[0];
+
+        if (!firstSheetName) {
+            return res.status(400).json({ error: "El Excel no contiene hojas" });
+        }
+
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+
+        if (!rows.length) {
+            return res.status(400).json({ error: "El Excel no contiene filas de datos" });
+        }
+
+        await client.query("BEGIN");
+
+        const insertQuery = `
+            INSERT INTO mediciones_completas
+                (seccion, anio, mes, departamento, tipo_medicion, valor)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT ON CONSTRAINT unique_medicion DO NOTHING
+        `;
+
+        let insertadas = 0;
+        let ignoradas = 0;
+
+        for (const row of rows) {
+            const valores = [
+                row.seccion,
+                row.anio,
+                row.mes,
+                row.departamento,
+                row.tipo_medicion,
+                row.valor
+            ];
+
+            if (valores.some((value) => value === undefined)) {
+                throw new Error("Formato inválido: verifica cabeceras requeridas (seccion, anio, mes, departamento, tipo_medicion, valor)");
+            }
+
+            const result = await client.query(insertQuery, valores);
+            if (result.rowCount === 1) {
+                insertadas += 1;
+            } else {
+                ignoradas += 1;
+            }
+        }
+
+        await client.query("COMMIT");
+        return res.json({
+            message: "Carga procesada correctamente",
+            totalFilas: rows.length,
+            insertadas,
+            ignoradas
+        });
+    } catch (error) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+            error: "Error procesando el archivo Excel",
+            message: error.message
+        });
+    } finally {
+        client.release();
+    }
 });
 
 // ========================
