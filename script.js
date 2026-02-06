@@ -1671,6 +1671,18 @@ class ANDEDashboard {
             }
         });
 
+        // Ir a sección de importación Excel
+        const goToExcelUpload = document.getElementById('goToExcelUpload');
+        if (goToExcelUpload) {
+            goToExcelUpload.addEventListener('click', () => {
+                const section = document.getElementById('excelUploadSection');
+                if (section) {
+                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    this.showNotification('Sección de importación Excel visible', 'info');
+                }
+            });
+        }
+
         // Exportar datos
         document.getElementById('exportData').addEventListener('click', () => {
             this.exportData();
@@ -1736,6 +1748,12 @@ class ANDEDashboard {
                 this.applyPeriodoFilter(periodo);
             }
         });
+
+        // Carga de Excel
+        const uploadExcelBtn = document.getElementById('uploadExcelBtn');
+        if (uploadExcelBtn) {
+            uploadExcelBtn.addEventListener('click', () => this.handleExcelUpload());
+        }
         
         // Eventos para botones de meses
         document.querySelectorAll('.month-btn').forEach(btn => {
@@ -2118,6 +2136,68 @@ class ANDEDashboard {
                     btn.classList.add('selected');
                 }
             });
+        }
+    }
+
+    setExcelStatus(message, type = 'info') {
+        const statusEl = document.getElementById('excelUploadStatus');
+        if (!statusEl) return;
+
+        const colorMap = {
+            info: 'var(--text-muted)',
+            success: 'var(--success)',
+            error: 'var(--danger)',
+            warning: 'var(--warning)'
+        };
+
+        statusEl.textContent = message;
+        statusEl.style.color = colorMap[type] || colorMap.info;
+    }
+
+    async handleExcelUpload() {
+        const fileInput = document.getElementById('excelFileInput');
+        const uploadBtn = document.getElementById('uploadExcelBtn');
+        const file = fileInput?.files?.[0];
+
+        if (!file) {
+            this.setExcelStatus('Selecciona un archivo .xlsx antes de subir.', 'warning');
+            this.showNotification('Selecciona un archivo .xlsx', 'warning');
+            return;
+        }
+
+        if (!file.name.toLowerCase().endsWith('.xlsx')) {
+            this.setExcelStatus('Archivo inválido. Solo se admiten archivos .xlsx.', 'error');
+            this.showNotification('Formato inválido, usa .xlsx', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('archivo', file);
+
+        try {
+            uploadBtn.disabled = true;
+            this.setExcelStatus('Subiendo archivo y procesando datos...', 'info');
+
+            const response = await fetch(`${this.apiBaseUrl}/api/subir-excel`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || result.error || 'No se pudo procesar el archivo');
+            }
+
+            this.setExcelStatus(`Carga completada. Insertadas: ${result.insertadas}, ignoradas: ${result.ignoradas}.`, 'success');
+            this.showNotification('Excel cargado correctamente', 'success');
+            await this.loadData();
+        } catch (error) {
+            console.error('Error al subir Excel:', error);
+            this.setExcelStatus(`Error: ${error.message}`, 'error');
+            this.showNotification('Error al cargar Excel', 'error');
+        } finally {
+            uploadBtn.disabled = false;
         }
     }
 
