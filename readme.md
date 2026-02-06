@@ -55,7 +55,7 @@ La plataforma está orientada a análisis operativo con visualización avanzada,
 - Exportación de la vista filtrada en formato **JSON**.
 
 ### 6) Carga de Excel integrada
-- Sección en el frontend para subir archivos **`.xlsx`** (card visible en el contenido principal) y acceso rápido con botón de ícono Excel en la cabecera.
+- Sección en el frontend para subir archivos **`.xlsx`**.
 - Subida al endpoint `POST /api/subir-excel`.
 - Validación de archivo y feedback visual de estado (éxito/error/progreso).
 - Al terminar una carga exitosa, el dashboard recarga datos automáticamente.

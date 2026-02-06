@@ -1785,12 +1785,3 @@ body {
     font-size: 0.9rem;
     color: var(--text-muted);
 }
-
-#goToExcelUpload {
-    color: #15803d;
-}
-
-#goToExcelUpload:hover {
-    color: #166534;
-    background: rgba(34, 197, 94, 0.12);
-}
