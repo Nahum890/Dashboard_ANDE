@@ -66,6 +66,7 @@ class ANDEDashboard {
         this.estaciones = []; // Lista de estaciones únicas (primeras 3 letras)
         this.monthSelectionMode = 'unique'; // 'unique' o 'multiple'
         this.globalComparisonMode = 'unique'; // 'unique' o 'multiple' - NUEVO: Modo global
+        this.lastSelectedMonth = null;
 
         this.filters = {
             tipoMedicion: [],    // Array
@@ -440,6 +441,8 @@ class ANDEDashboard {
     
     setGlobalComparisonMode(mode) {
         this.globalComparisonMode = mode;
+        document.body.classList.remove('global-mode-unique', 'global-mode-multiple');
+        document.body.classList.add(mode === 'unique' ? 'global-mode-unique' : 'global-mode-multiple');
         
         // Actualizar botones de modo global
         if (mode === 'unique') {
@@ -461,7 +464,7 @@ class ANDEDashboard {
             document.getElementById('globalModeUnique').classList.remove('active');
             document.getElementById('globalModeMultiple').classList.add('active');
             document.getElementById('globalModeHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios valores para comparar';
+                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios valores (Ctrl + Click / Shift + Click)';
             
             // Permitir múltiples selecciones
             this.allowMultipleSelections('filterYear');
@@ -472,6 +475,8 @@ class ANDEDashboard {
             // Permitir múltiples selecciones en meses
             this.setMonthSelectionMode('multiple');
         }
+
+        this.updateMonthModeVisibility();
         
         this.showNotification(`Modo de comparación: ${mode === 'unique' ? 'único' : 'múltiple'}`, "info");
     }
@@ -541,12 +546,9 @@ class ANDEDashboard {
         
         // Establecer modo único por defecto para meses
         this.monthSelectionMode = 'unique';
-        document.getElementById('modeUnique').classList.add('active');
-        document.getElementById('modeMultiple').classList.remove('active');
         
         // Mostrar los selectores de mes
-        document.getElementById('monthModeGroup').style.display = 'block';
-        document.getElementById('monthSelectorGroup').style.display = 'block';
+        this.updateMonthModeVisibility();
 
         this.syncFilters();
         this.updateComparisonTags();
@@ -1505,8 +1507,8 @@ class ANDEDashboard {
         }
         
         if (worstSeries) {
-            document.getElementById('bestSeries').textContent = worstSeries.transformador;
-            document.getElementById('bestValue').textContent = this.safeToFixed(seriesStats[worstSeriesKey].cv, 2) + '% CV';
+            document.getElementById('worstSeries').textContent = worstSeries.transformador;
+            document.getElementById('worstValue').textContent = this.safeToFixed(seriesStats[worstSeriesKey].cv, 2) + '% CV';
         }
         
         // Actualizar contador de series activas
@@ -1886,42 +1888,44 @@ class ANDEDashboard {
         });
 
         // Control de zoom de gráficos
-        const zoomInBtn = document.getElementById('zoomIn');
-        const zoomOutBtn = document.getElementById('zoomOut');
-        const resetZoomBtn = document.getElementById('resetZoom');
-        
-        if (zoomInBtn) {
-            zoomInBtn.addEventListener('click', () => {
-                if (this.mainChart && this.mainChart.scales.y) {
-                    const currentMin = this.mainChart.scales.y.min;
-                    const currentMax = this.mainChart.scales.y.max;
-                    const range = currentMax - currentMin;
-                    this.mainChart.scales.y.min = currentMin + range * 0.1;
-                    this.mainChart.scales.y.max = currentMax - range * 0.1;
-                    this.mainChart.update();
-                }
-            });
-        }
-        
-        if (zoomOutBtn) {
-            zoomOutBtn.addEventListener('click', () => {
-                if (this.mainChart && this.mainChart.scales.y) {
-                    const currentMin = this.mainChart.scales.y.min;
-                    const currentMax = this.mainChart.scales.y.max;
-                    const range = currentMax - currentMin;
-                    this.mainChart.scales.y.min = currentMin - range * 0.1;
-                    this.mainChart.scales.y.max = currentMax + range * 0.1;
-                    this.mainChart.update();
-                }
-            });
-        }
-        
-        if (resetZoomBtn) {
-            resetZoomBtn.addEventListener('click', () => {
-                if (this.mainChart && this.mainChart.scales.y) {
-                    this.mainChart.scales.y.min = null;
-                    this.mainChart.scales.y.max = null;
-                    this.mainChart.update();
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            if (this.mainChart.scales.y) {
+                const currentMin = this.mainChart.scales.y.min;
+                const currentMax = this.mainChart.scales.y.max;
+                const range = currentMax - currentMin;
+                this.mainChart.scales.y.min = currentMin + range * 0.1;
+                this.mainChart.scales.y.max = currentMax - range * 0.1;
+                this.mainChart.update();
+            }
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            if (this.mainChart.scales.y) {
+                const currentMin = this.mainChart.scales.y.min;
+                const currentMax = this.mainChart.scales.y.max;
+                const range = currentMax - currentMin;
+                this.mainChart.scales.y.min = currentMin - range * 0.1;
+                this.mainChart.scales.y.max = currentMax + range * 0.1;
+                this.mainChart.update();
+            }
+        });
+
+        document.getElementById('resetZoom').addEventListener('click', () => {
+            if (this.mainChart.scales.y) {
+                this.mainChart.scales.y.min = null;
+                this.mainChart.scales.y.max = null;
+                this.mainChart.update();
+            }
+        });
+
+        // Ir a sección de importación Excel
+        const goToExcelUpload = document.getElementById('goToExcelUpload');
+        if (goToExcelUpload) {
+            goToExcelUpload.addEventListener('click', () => {
+                const section = document.getElementById('excelUploadSection');
+                if (section) {
+                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    this.showNotification('Sección de importación Excel visible', 'info');
                 }
             });
         }
@@ -2003,49 +2007,31 @@ class ANDEDashboard {
         }
 
         // Filtro de período
-        const periodoSel = document.getElementById('filterPeriodo');
-        if (periodoSel) {
-            periodoSel.addEventListener('change', (e) => {
-                const periodo = e.target.value;
-                this.filters.periodo = periodo;
-                
-                if (periodo === 'select_months') {
-                    // Mostrar selectores de modo y meses
-                    const monthModeGroup = document.getElementById('monthModeGroup');
-                    const monthSelectorGroup = document.getElementById('monthSelectorGroup');
-                    if (monthModeGroup) monthModeGroup.style.display = 'block';
-                    if (monthSelectorGroup) monthSelectorGroup.style.display = 'block';
-                } else {
-                    // Ocultar selectores y aplicar período predefinido
-                    const monthModeGroup = document.getElementById('monthModeGroup');
-                    const monthSelectorGroup = document.getElementById('monthSelectorGroup');
-                    if (monthModeGroup) monthModeGroup.style.display = 'none';
-                    if (monthSelectorGroup) monthSelectorGroup.style.display = 'none';
-                    this.applyPeriodoFilter(periodo);
-                }
-            });
-        }
-        
-        // Eventos para botones de modo (único/múltiple) para meses
-        const modeUniqueBtn = document.getElementById('modeUnique');
-        const modeMultipleBtn = document.getElementById('modeMultiple');
-        
-        if (modeUniqueBtn) {
-            modeUniqueBtn.addEventListener('click', () => {
-                this.setMonthSelectionMode('unique');
-            });
-        }
-        
-        if (modeMultipleBtn) {
-            modeMultipleBtn.addEventListener('click', () => {
-                this.setMonthSelectionMode('multiple');
-            });
+        document.getElementById('filterPeriodo').addEventListener('change', (e) => {
+            const periodo = e.target.value;
+            this.filters.periodo = periodo;
+            
+            if (periodo === 'select_months') {
+                // Mostrar selectores de modo y meses
+                this.updateMonthModeVisibility();
+            } else {
+                // Ocultar selectores y aplicar período predefinido
+                document.getElementById('monthModeGroup').style.display = 'none';
+                document.getElementById('monthSelectorGroup').style.display = 'none';
+                this.applyPeriodoFilter(periodo);
+            }
+        });
+
+        // Carga de Excel
+        const uploadExcelBtn = document.getElementById('uploadExcelBtn');
+        if (uploadExcelBtn) {
+            uploadExcelBtn.addEventListener('click', () => this.handleExcelUpload());
         }
         
         // Eventos para botones de meses
         document.querySelectorAll('.month-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                this.toggleMonthSelection(e.target.dataset.month);
+                this.toggleMonthSelection(e.target.dataset.month, e.shiftKey);
             });
         });
 
@@ -2245,15 +2231,7 @@ class ANDEDashboard {
     setMonthSelectionMode(mode) {
         this.monthSelectionMode = mode;
         
-        // Actualizar botones de modo
-        const modeUniqueBtn = document.getElementById('modeUnique');
-        const modeMultipleBtn = document.getElementById('modeMultiple');
-        const monthHintEl = document.getElementById('monthHint');
-        
         if (mode === 'unique') {
-            if (modeUniqueBtn) modeUniqueBtn.classList.add('active');
-            if (modeMultipleBtn) modeMultipleBtn.classList.remove('active');
-            
             // En modo único, mantener solo un mes seleccionado
             const selectedMonths = Array.from(document.querySelectorAll('.month-btn.selected'));
             if (selectedMonths.length > 1) {
@@ -2264,22 +2242,17 @@ class ANDEDashboard {
                 this.syncMonthsToHiddenSelect();
             }
             
-            if (monthHintEl) {
-                monthHintEl.innerHTML = '<i class="fas fa-info-circle"></i> Modo único: selecciona un mes';
-            }
+            document.getElementById('monthHint').innerHTML = 
+                '<i class="fas fa-info-circle"></i> Selecciona un mes';
         } else {
-            if (modeUniqueBtn) modeUniqueBtn.classList.remove('active');
-            if (modeMultipleBtn) modeMultipleBtn.classList.add('active');
-            
-            if (monthHintEl) {
-                monthHintEl.innerHTML = '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios meses para comparar';
-            }
+            document.getElementById('monthHint').innerHTML = 
+                '<i class="fas fa-info-circle"></i> Selecciona varios meses (Ctrl + Click) o rangos (Shift + Click)';
         }
         
         this.showNotification(`Modo ${mode === 'unique' ? 'único' : 'múltiple'} activado`, "info");
     }
     
-    toggleMonthSelection(month) {
+    toggleMonthSelection(month, isRangeSelection = false) {
         const btn = document.querySelector(`.month-btn[data-month="${month}"]`);
         if (!btn) return;
         
@@ -2289,15 +2262,37 @@ class ANDEDashboard {
                 b.classList.remove('selected');
             });
             btn.classList.add('selected');
+            this.lastSelectedMonth = Number(month);
         } else {
-            // Modo múltiple: toggle del botón
-            btn.classList.toggle('selected');
+            const currentMonth = Number(month);
+            if (isRangeSelection && this.lastSelectedMonth) {
+                const start = Math.min(this.lastSelectedMonth, currentMonth);
+                const end = Math.max(this.lastSelectedMonth, currentMonth);
+                document.querySelectorAll('.month-btn').forEach(button => {
+                    const btnMonth = Number(button.dataset.month);
+                    if (btnMonth >= start && btnMonth <= end) {
+                        button.classList.add('selected');
+                    }
+                });
+            } else {
+                // Modo múltiple: toggle del botón
+                btn.classList.toggle('selected');
+            }
+            this.lastSelectedMonth = currentMonth;
         }
         
         // Sincronizar con el select oculto
         this.syncMonthsToHiddenSelect();
         this.syncFilters();
         this.updateComparisonTags();
+    }
+
+    updateMonthModeVisibility() {
+        const periodo = document.getElementById('filterPeriodo').value;
+        const shouldShowMonthSelectors = periodo === 'select_months';
+        const shouldShowGuide = this.globalComparisonMode === 'multiple' && shouldShowMonthSelectors;
+        document.getElementById('monthModeGroup').style.display = shouldShowGuide ? 'block' : 'none';
+        document.getElementById('monthSelectorGroup').style.display = shouldShowMonthSelectors ? 'block' : 'none';
     }
     
     syncMonthsToHiddenSelect() {
@@ -2445,6 +2440,68 @@ class ANDEDashboard {
                     btn.classList.add('selected');
                 }
             });
+        }
+    }
+
+    setExcelStatus(message, type = 'info') {
+        const statusEl = document.getElementById('excelUploadStatus');
+        if (!statusEl) return;
+
+        const colorMap = {
+            info: 'var(--text-muted)',
+            success: 'var(--success)',
+            error: 'var(--danger)',
+            warning: 'var(--warning)'
+        };
+
+        statusEl.textContent = message;
+        statusEl.style.color = colorMap[type] || colorMap.info;
+    }
+
+    async handleExcelUpload() {
+        const fileInput = document.getElementById('excelFileInput');
+        const uploadBtn = document.getElementById('uploadExcelBtn');
+        const file = fileInput?.files?.[0];
+
+        if (!file) {
+            this.setExcelStatus('Selecciona un archivo .xlsx antes de subir.', 'warning');
+            this.showNotification('Selecciona un archivo .xlsx', 'warning');
+            return;
+        }
+
+        if (!file.name.toLowerCase().endsWith('.xlsx')) {
+            this.setExcelStatus('Archivo inválido. Solo se admiten archivos .xlsx.', 'error');
+            this.showNotification('Formato inválido, usa .xlsx', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('archivo', file);
+
+        try {
+            uploadBtn.disabled = true;
+            this.setExcelStatus('Subiendo archivo y procesando datos...', 'info');
+
+            const response = await fetch(`${this.apiBaseUrl}/api/subir-excel`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || result.error || 'No se pudo procesar el archivo');
+            }
+
+            this.setExcelStatus(`Carga completada. Insertadas: ${result.insertadas}, ignoradas: ${result.ignoradas}.`, 'success');
+            this.showNotification('Excel cargado correctamente', 'success');
+            await this.loadData();
+        } catch (error) {
+            console.error('Error al subir Excel:', error);
+            this.setExcelStatus(`Error: ${error.message}`, 'error');
+            this.showNotification('Error al cargar Excel', 'error');
+        } finally {
+            uploadBtn.disabled = false;
         }
     }
 
