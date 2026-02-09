@@ -1785,3 +1785,170 @@ body {
     font-size: 0.9rem;
     color: var(--text-muted);
 }
+/* Estilos para la sección de Excel */
+.excel-upload {
+    margin: 1.5rem 0;
+}
+
+.excel-upload-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.excel-upload-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.excel-upload-header small {
+    color: var(--text-light);
+    font-size: 0.85rem;
+}
+
+.excel-upload-body {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.excel-upload-body input[type="file"] {
+    min-width: 260px;
+    max-width: 420px;
+    padding: 0.8rem;
+}
+
+.excel-upload-progress {
+    display: none;
+    margin-top: 1rem;
+}
+
+.progress-bar {
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+#excelProgress {
+    height: 100%;
+    background: var(--primary);
+    width: 0%;
+    transition: width 0.3s;
+}
+
+#excelResult {
+    margin-top: 1rem;
+    display: none;
+}
+
+/* Estilos para modo global */
+.mode-unique-tag {
+    background: rgba(37, 99, 235, 0.15);
+    color: var(--primary);
+    border: 1px solid rgba(37, 99, 235, 0.3);
+    font-weight: 700;
+}
+
+.mode-multiple-tag {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    font-weight: 700;
+}
+
+/* Botones de modo global */
+#globalModeUnique.active {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: white;
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+#globalModeMultiple.active {
+    background: linear-gradient(135deg, #10b981 0%, #0da06e 100%);
+    color: white;
+    border-color: var(--success);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+/* Estilos para gestión de cargas */
+.modal-content.large {
+    max-width: 900px;
+    max-height: 80vh;
+}
+
+#cargaDetalles {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+/* Botón flotante para cargas */
+#openCargasModal {
+    position: relative;
+    width: auto;
+    height: auto;
+}
+
+/* Mejoras para gráficos */
+.chart-wrapper canvas {
+    max-height: 400px;
+}
+
+#fullChartModal .modal-body {
+    height: calc(100% - 120px);
+}
+
+#fullChartModal .chart-wrapper {
+    height: 100%;
+    min-height: 500px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .kpi-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .excel-upload-body {
+        flex-direction: column;
+    }
+    
+    .excel-upload-body input[type="file"] {
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.delay-1 { animation: fadeIn 0.3s ease 0.1s both; }
+.delay-2 { animation: fadeIn 0.3s ease 0.2s both; }
+.delay-3 { animation: fadeIn 0.3s ease 0.3s both; }
+.delay-4 { animation: fadeIn 0.3s ease 0.4s both; }
+.delay-5 { animation: fadeIn 0.3s ease 0.5s both; }
+.delay-6 { animation: fadeIn 0.3s ease 0.6s both; }
+.delay-7 { animation: fadeIn 0.3s ease 0.7s both; }

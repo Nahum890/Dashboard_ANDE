@@ -1,93 +1,45 @@
 // script.js
-console.log("🚀 Dashboard iniciando...");
-console.log("📍 URL actual:", window.location.href);
-console.log("🌐 Origen:", window.location.origin);
-console.log("🔗 Protocolo:", window.location.protocol);
-console.log("🏠 Hostname:", window.location.hostname);
-console.log("🚪 Puerto:", window.location.port);
+console.log("🚀 Dashboard ANDE v3.1 iniciando...");
 
-// Función para probar conexión
-async function testConnection() {
-    console.log("🔍 Probando conexión con backend...");
-    
-    const testUrls = [
-        '/api/health',
-        '/api/test',
-        '/api/tipos-medicion'
-    ];
-    
-    for (const url of testUrls) {
-        try {
-            console.log(`📡 Intentando conectar a: ${url}`);
-            const response = await fetch(url);
-            const data = await response.json();
-            console.log(`✅ ${url}:`, data);
-        } catch (error) {
-            console.error(`❌ Error en ${url}:`, error.message);
-        }
-    }
-}
-
-// Ejecutar test al cargar
-window.addEventListener('load', () => {
-    setTimeout(testConnection, 1000);
-});
-
-// Solo cambio en el constructor de ANDEDashboard:
 class ANDEDashboard {
     constructor() {
-        // Esta línea detecta si estás en tu PC o en Render
-        // MODIFICADO: Para PostgreSQL, mantenemos la misma lógica
         this.apiBaseUrl = window.location.hostname === 'localhost' 
-            ? 'http://localhost:10000'  // Puerto actualizado a 10000
+            ? 'http://localhost:10000'
             : window.location.origin;
         this.data = [];
         this.filteredData = [];
         this.mainChart = null;
         this.rankingChart = null;
-        this.scatterChart = null;
-        this.previousData = null;
+        this.fullChart = null;
         this.sortConfig = { column: null, direction: 'asc' };
         
-        // Modos de selección
-        this.selectionMode = 'individual'; // 'individual' o 'range'
-        
-        // Paleta de colores expandida para muchas series
         this.chartPalette = [
             '#FF0000', '#FF4500', '#FF8C00', '#FFD700', '#ADFF2F', '#32CD32', 
             '#00FA9A', '#00CED1', '#1E90FF', '#4169E1', '#8A2BE2', '#DA70D6',
             '#FF1493', '#FF69B4', '#C71585', '#8B0000', '#B22222', '#DC143C',
-            '#FF6347', '#FF7F50', '#FFA500', '#FFD700', '#FFFF00', '#9ACD32',
-            '#6B8E23', '#228B22', '#008000', '#006400', '#2E8B57', '#20B2AA'
+            '#FF6347', '#FF7F50', '#FFA500', '#FFD700', '#FFFF00', '#9ACD32'
         ];
         this.activeColorMap = {};
-        this.seriesMap = {}; // Mapa de series únicas
-        this.allSecciones = []; // Todas las secciones disponibles
-        this.estaciones = []; // Lista de estaciones únicas (primeras 3 letras)
-        this.monthSelectionMode = 'unique'; // 'unique' o 'multiple'
-        this.globalComparisonMode = 'unique'; // 'unique' o 'multiple' - NUEVO: Modo global
-        this.lastSelectedMonth = null;
-
+        
+        this.allSecciones = [];
+        this.estaciones = [];
+        
         this.filters = {
-            tipoMedicion: [],    // Array
-            transformador: [],   // Array
-            year: [],            // Array
-            month: [],           // Array para selección múltiple
-            estacion: '',        // Filtro de estación
-            periodo: 'select_months'  // Por defecto "Seleccionar Meses"
+            tipoMedicion: 'all',
+            transformador: 'all',
+            year: 'all',
+            month: 'all',
+            estacion: '',
+            periodo: 'all'
         };
 
-        this.groupBy = 'alimentador'; // Por defecto agrupar por alimentador
+        this.groupBy = 'alimentador';
         
         this.pagination = { currentPage: 1, rowsPerPage: 25, totalPages: 1 };
-        this.chartZoom = { min: null, max: null };
         
         this.initialize();
     }
     
-    // ===================================
-    // FUNCIÓN AUXILIAR PARA MANEJO SEGURO DE VALORES (CORRECCIÓN AGREGADA)
-    // ===================================
     safeToFixed(value, decimals = 4) {
         if (value === null || value === undefined || isNaN(value)) {
             return 'N/A';
@@ -100,24 +52,14 @@ class ANDEDashboard {
     }
 
     async initialize() {
-        this.showLoading(true);
+        this.showLoading(true, "Inicializando dashboard...");
         try {
             this.initCharts();
-            await Promise.all([
-                this.loadTiposMedicion(),
-                this.loadSeccionesDisponibles(),
-                this.loadYearsAvailable()
-            ]);
-            this.setInitialDefaults();
-            this.addSelectionModeControls(); // NUEVO: Añadir controles de modo de selección
-            await this.loadData();
-            this.initializeEvents();
-            this.startLiveUpdates();
+            await this.loadInitialData();
+            this.setupEventListeners();
             this.updateTime();
-            this.updateComparisonTags();
-            
-            // Depuración
-            this.debugElementIds(); // Añade esta línea para verificar IDs
+            this.startLiveUpdates();
+            this.showNotification("Dashboard cargado correctamente", "success");
             
         } catch (error) {
             console.error("Error inicializando:", error);
@@ -127,131 +69,1131 @@ class ANDEDashboard {
         }
     }
 
-    // ===================================
-    // NUEVO: FUNCIÓN DE DEPURACIÓN
-    // ===================================
-    debugElementIds() {
-        console.log("🔍 Verificando IDs de elementos KPI:");
-        console.log("worstSeries:", document.getElementById('worstSeries'));
-        console.log("worstValue:", document.getElementById('worstValue'));
+    async loadInitialData() {
+        try {
+            await Promise.all([
+                this.loadTiposMedicion(),
+                this.loadSeccionesDisponibles(),
+                this.loadYearsAvailable(),
+                this.loadCargas()
+            ]);
+            
+            // Cargar datos iniciales
+            await this.loadData();
+            
+        } catch (error) {
+            console.error("Error cargando datos iniciales:", error);
+            throw error;
+        }
     }
 
-    // ===================================
-    // NUEVO: CONTROLES DE MODO DE SELECCIÓN
-    // ===================================
-    addSelectionModeControls() {
-        // Crear controles para modo de selección
-        const alimentadorGroup = document.querySelector('#filterTransformador').closest('.filter-group');
+    setupEventListeners() {
+        // Filtros
+        document.getElementById('applyFilters').addEventListener('click', () => this.applyFilters());
+        document.getElementById('resetFilters').addEventListener('click', () => this.resetFilters());
+        document.getElementById('refreshData').addEventListener('click', () => this.loadData());
         
-        const modeControl = document.createElement('div');
-        modeControl.className = 'selection-mode-control';
-        modeControl.innerHTML = `
-            <div class="toggle-buttons" style="margin-top: 0.5rem;">
-                <button type="button" class="toggle-btn active" id="selectIndividual">
-                    <i class="fas fa-mouse-pointer"></i> Individual
-                </button>
-                <button type="button" class="toggle-btn" id="selectRange">
-                    <i class="fas fa-arrows-alt-h"></i> Rango
-                </button>
-            </div>
-            <small class="form-hint" id="selectionHint">
-                <i class="fas fa-info-circle"></i> 
-                <b>Individual:</b> Ctrl+Click para seleccionar | 
-                <b>Rango:</b> Click + Shift+Click para rango
-            </small>
-        `;
-        
-        alimentadorGroup.querySelector('.form-hint').insertAdjacentElement('afterend', modeControl);
-        
-        // Eventos para controles de selección
-        document.getElementById('selectIndividual').addEventListener('click', () => {
-            this.setSelectionMode('individual');
+        // Período
+        document.getElementById('filterPeriodo').addEventListener('change', (e) => {
+            const periodo = e.target.value;
+            document.getElementById('specificMonthGroup').style.display = 
+                periodo === 'specific' ? 'block' : 'none';
+            if (periodo !== 'specific') {
+                document.getElementById('filterMonth').value = 'all';
+            }
         });
         
-        document.getElementById('selectRange').addEventListener('click', () => {
-            this.setSelectionMode('range');
+        // Estación
+        document.getElementById('filterEstacion').addEventListener('change', (e) => {
+            const estacion = e.target.value;
+            this.filterAlimentadoresByEstacion(estacion);
         });
         
-        // Configurar selección de alimentadores
-        this.setupAlimentadorSelection();
+        // Excel
+        document.getElementById('uploadExcelBtn').addEventListener('click', () => this.handleExcelUpload());
+        
+        // Gráficos
+        document.getElementById('chartType').addEventListener('change', () => this.updateCharts());
+        document.getElementById('rankingSort').addEventListener('change', () => this.updateCharts());
+        document.getElementById('openFullChart').addEventListener('click', () => this.openFullChart());
+        
+        // Modal de cargas
+        document.getElementById('openCargasModal').addEventListener('click', () => this.openCargasModal());
+        document.getElementById('cargasModalClose').addEventListener('click', () => this.closeCargasModal());
+        document.getElementById('closeCargasModal').addEventListener('click', () => this.closeCargasModal());
+        
+        // Modal de gráfico completo
+        document.getElementById('fullChartModalClose').addEventListener('click', () => this.closeFullChart());
+        
+        // Sidebar
+        document.getElementById('sidebarToggle').addEventListener('click', () => this.toggleSidebar());
+        document.getElementById('sidebarClose').addEventListener('click', () => this.closeSidebar());
+        
+        // Exportar
+        document.getElementById('exportData').addEventListener('click', () => this.exportData());
+        
+        // Buscar en tabla
+        document.getElementById('tableSearch').addEventListener('keyup', (e) => this.searchTable(e.target.value));
+        
+        // Paginación
+        document.getElementById('firstPage').addEventListener('click', () => this.goToPage(1));
+        document.getElementById('prevPage').addEventListener('click', () => this.goToPage(this.pagination.currentPage - 1));
+        document.getElementById('nextPage').addEventListener('click', () => this.goToPage(this.pagination.currentPage + 1));
+        document.getElementById('lastPage').addEventListener('click', () => this.goToPage(this.pagination.totalPages));
+        document.getElementById('rowsPerPage').addEventListener('change', (e) => {
+            this.pagination.rowsPerPage = parseInt(e.target.value);
+            this.pagination.currentPage = 1;
+            this.updateTable();
+        });
     }
 
-    setSelectionMode(mode) {
-        this.selectionMode = mode;
+    async loadTiposMedicion() {
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/tipos-medicion`);
+            const tipos = await res.json();
+            
+            const select = document.getElementById('filterTipoMedicion');
+            tipos.forEach(tipo => {
+                const option = document.createElement('option');
+                option.value = tipo;
+                option.textContent = tipo;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error("Error cargando tipos de medición:", error);
+        }
+    }
+
+    async loadSeccionesDisponibles() {
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/secciones`);
+            const secciones = await res.json();
+            
+            this.allSecciones = secciones;
+            
+            // Extraer estaciones
+            const estacionesSet = new Set();
+            secciones.forEach(seccion => {
+                if (seccion && seccion.length >= 3) {
+                    estacionesSet.add(seccion.substring(0, 3));
+                }
+            });
+            this.estaciones = Array.from(estacionesSet).sort();
+            
+            // Llenar estaciones
+            const estacionSelect = document.getElementById('filterEstacion');
+            this.estaciones.forEach(estacion => {
+                const option = document.createElement('option');
+                option.value = estacion;
+                option.textContent = estacion;
+                estacionSelect.appendChild(option);
+            });
+            
+            // Llenar alimentadores
+            this.filterAlimentadoresByEstacion('');
+            
+        } catch (error) {
+            console.error("Error cargando secciones:", error);
+        }
+    }
+
+    filterAlimentadoresByEstacion(estacion) {
+        const select = document.getElementById('filterTransformador');
         
-        const individualBtn = document.getElementById('selectIndividual');
-        const rangeBtn = document.getElementById('selectRange');
-        const hint = document.getElementById('selectionHint');
+        // Mantener opciones especiales
+        const specialOptions = Array.from(select.querySelectorAll('option[value^="all"]'));
+        select.innerHTML = '';
+        specialOptions.forEach(opt => select.appendChild(opt.cloneNode(true)));
         
-        if (mode === 'individual') {
-            individualBtn.classList.add('active');
-            rangeBtn.classList.remove('active');
-            hint.innerHTML = `
-                <i class="fas fa-info-circle"></i> 
-                <b>Modo Individual:</b> Usa Ctrl+Click (Cmd+Click en Mac) para seleccionar 
-                alimentadores específicos (ej: ACY1 y ACY5)
-            `;
-        } else {
-            individualBtn.classList.remove('active');
-            rangeBtn.classList.add('active');
-            hint.innerHTML = `
-                <i class="fas fa-info-circle"></i> 
-                <b>Modo Rango:</b> Click en el primero + Shift+Click en el último para 
-                seleccionar un rango completo (ej: ACY1 a ACY5)
-            `;
+        // Agregar alimentadores filtrados
+        const alimentadores = estacion 
+            ? this.allSecciones.filter(s => s.startsWith(estacion))
+            : this.allSecciones;
+            
+        alimentadores.forEach(alimentador => {
+            const option = document.createElement('option');
+            option.value = alimentador;
+            option.textContent = alimentador;
+            select.appendChild(option);
+        });
+    }
+
+    async loadYearsAvailable() {
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/anios`);
+            const years = await res.json();
+            
+            const select = document.getElementById('filterYear');
+            years.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error("Error cargando años:", error);
+        }
+    }
+
+    async loadCargas() {
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/cargas`);
+            const cargas = await res.json();
+            this.displayCargas(cargas);
+        } catch (error) {
+            console.error("Error cargando cargas:", error);
+        }
+    }
+
+    displayCargas(cargas) {
+        const tbody = document.getElementById('cargasTable');
+        if (!tbody) return;
+        
+        if (cargas.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;">No hay cargas registradas</td></tr>`;
+            return;
         }
         
-        this.showNotification(`Modo de selección: ${mode === 'individual' ? 'Individual' : 'Rango'}`, "info");
+        tbody.innerHTML = cargas.map(carga => `
+            <tr>
+                <td>${carga.id}</td>
+                <td>${carga.nombre_archivo}</td>
+                <td>${new Date(carga.fecha_carga).toLocaleString()}</td>
+                <td>${carga.total_filas}</td>
+                <td>${carga.insertadas}</td>
+                <td>${carga.actualizadas}</td>
+                <td>${carga.errores}</td>
+                <td><span class="status-indicator ${carga.estado === 'completado' ? 'status-optimal' : 'status-critical'}">
+                    ${carga.estado}
+                </span></td>
+                <td>
+                    <button class="btn-icon small" onclick="dashboard.verDetallesCarga(${carga.id})" title="Ver detalles">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="btn-icon small" onclick="dashboard.eliminarCarga(${carga.id})" title="Eliminar carga">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
     }
 
-    setupAlimentadorSelection() {
-        const select = document.getElementById('filterTransformador');
-        let lastSelectedIndex = -1;
+    async verDetallesCarga(id) {
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/cargas/${id}`);
+            const carga = await res.json();
+            
+            const content = document.getElementById('cargaDetallesContent');
+            content.innerHTML = `
+                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                    <h4>Información de la Carga</h4>
+                    <p><strong>Archivo:</strong> ${carga.nombre_archivo}</p>
+                    <p><strong>Fecha:</strong> ${new Date(carga.fecha_carga).toLocaleString()}</p>
+                    <p><strong>Total filas:</strong> ${carga.total_filas}</p>
+                    <p><strong>Insertadas:</strong> ${carga.insertadas}</p>
+                    <p><strong>Actualizadas:</strong> ${carga.actualizadas}</p>
+                    <p><strong>Errores:</strong> ${carga.errores}</p>
+                    <p><strong>Estado:</strong> ${carga.estado}</p>
+                </div>
+                <div style="background: #f8fafc; padding: 1rem; border-radius: 8px;">
+                    <h4>Estadísticas</h4>
+                    <p><strong>Alimentadores únicos:</strong> ${carga.estadisticas.alimentadores_unicos || 0}</p>
+                    <p><strong>Tipos únicos:</strong> ${carga.estadisticas.tipos_unicos || 0}</p>
+                    <p><strong>Año mínimo:</strong> ${carga.estadisticas.anio_minimo || 'N/A'}</p>
+                    <p><strong>Año máximo:</strong> ${carga.estadisticas.anio_maximo || 'N/A'}</p>
+                </div>
+            `;
+            
+            document.getElementById('cargaDetalles').style.display = 'block';
+        } catch (error) {
+            console.error("Error cargando detalles:", error);
+            this.showNotification("Error al cargar detalles de la carga", "error");
+        }
+    }
+
+    async eliminarCarga(id) {
+        if (!confirm('¿Estás seguro de eliminar esta carga? Se eliminarán todos los datos asociados.')) {
+            return;
+        }
         
-        select.addEventListener('click', (e) => {
-            if (this.selectionMode === 'range' && e.shiftKey && lastSelectedIndex !== -1) {
-                e.preventDefault();
-                
-                const currentIndex = Array.from(select.options).indexOf(e.target);
-                const start = Math.min(lastSelectedIndex, currentIndex);
-                const end = Math.max(lastSelectedIndex, currentIndex);
-                
-                // Seleccionar el rango
-                for (let i = start; i <= end; i++) {
-                    select.options[i].selected = true;
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/cargas/${id}`, {
+                method: 'DELETE'
+            });
+            
+            if (res.ok) {
+                this.showNotification("Carga eliminada correctamente", "success");
+                this.loadCargas();
+                // Recargar datos si la carga eliminada afecta a los datos actuales
+                this.loadData();
+            } else {
+                throw new Error("Error al eliminar carga");
+            }
+        } catch (error) {
+            console.error("Error eliminando carga:", error);
+            this.showNotification("Error al eliminar la carga", "error");
+        }
+    }
+
+    openCargasModal() {
+        document.getElementById('cargasModal').style.display = 'flex';
+        this.loadCargas();
+    }
+
+    closeCargasModal() {
+        document.getElementById('cargasModal').style.display = 'none';
+        document.getElementById('cargaDetalles').style.display = 'none';
+    }
+
+    toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('active');
+    }
+
+    closeSidebar() {
+        document.getElementById('sidebar').classList.remove('active');
+    }
+
+    applyFilters() {
+        this.filters = {
+            tipoMedicion: document.getElementById('filterTipoMedicion').value,
+            transformador: document.getElementById('filterTransformador').value,
+            year: document.getElementById('filterYear').value,
+            month: document.getElementById('filterMonth').value,
+            estacion: document.getElementById('filterEstacion').value,
+            periodo: document.getElementById('filterPeriodo').value
+        };
+        
+        this.groupBy = document.getElementById('groupBy').value;
+        
+        if (window.innerWidth <= 768) {
+            this.closeSidebar();
+        }
+        
+        this.loadData();
+    }
+
+    resetFilters() {
+        document.getElementById('filterTipoMedicion').value = 'all';
+        document.getElementById('filterTransformador').value = 'all';
+        document.getElementById('filterYear').value = 'all';
+        document.getElementById('filterEstacion').value = '';
+        document.getElementById('filterPeriodo').value = 'all';
+        document.getElementById('filterMonth').value = 'all';
+        document.getElementById('specificMonthGroup').style.display = 'none';
+        document.getElementById('groupBy').value = 'alimentador';
+        
+        this.filterAlimentadoresByEstacion('');
+        
+        this.showNotification("Filtros restablecidos", "success");
+        this.applyFilters();
+    }
+
+    async loadData() {
+        this.showLoading(true, "Cargando datos...");
+        
+        try {
+            const params = new URLSearchParams();
+            
+            if (this.filters.tipoMedicion !== 'all') {
+                params.append('tipo_medicion', this.filters.tipoMedicion);
+            } else {
+                params.append('tipo_medicion', 'all');
+            }
+            
+            if (this.filters.transformador !== 'all') {
+                params.append('seccion', this.filters.transformador);
+            } else {
+                params.append('seccion', 'all');
+            }
+            
+            if (this.filters.year !== 'all') {
+                params.append('anio', this.filters.year);
+            } else {
+                params.append('anio', 'all');
+            }
+            
+            if (this.filters.month !== 'all' && this.filters.periodo === 'specific') {
+                params.append('mes', this.filters.month);
+            } else {
+                params.append('mes', 'all');
+            }
+            
+            if (this.filters.periodo !== 'all' && this.filters.periodo !== 'specific') {
+                params.append('periodo', this.filters.periodo);
+            }
+            
+            if (this.filters.estacion) {
+                params.append('estacion', this.filters.estacion);
+            }
+            
+            const url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
+            console.log("📥 Cargando datos desde:", url);
+            
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            
+            this.data = await res.json();
+            this.filteredData = [...this.data];
+            
+            console.log(`✅ Datos cargados: ${this.data.length} registros`);
+            
+            this.updateStats();
+            this.updateKPIs();
+            this.updateCharts();
+            this.pagination.currentPage = 1;
+            this.updateTable();
+            
+            this.showNotification(`Datos cargados: ${this.data.length} registros`, "success");
+            
+        } catch (error) {
+            console.error("❌ Error cargando datos:", error);
+            this.showNotification("Error cargando datos del servidor", "error");
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    updateStats() {
+        const totalPoints = this.data.length;
+        const uniqueCombinations = [...new Set(this.data.map(d => d.combinationKey))].length;
+        
+        // Actualizar contadores
+        document.getElementById('dataCount').textContent = totalPoints.toLocaleString();
+        document.getElementById('seriesCount').textContent = uniqueCombinations;
+        document.getElementById('loadedSeries').textContent = uniqueCombinations;
+        document.getElementById('totalPoints').textContent = totalPoints.toLocaleString();
+        
+        // Actualizar tiempo
+        const timeStr = new Date().toLocaleTimeString('es-ES', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        document.getElementById('lastUpdate').textContent = timeStr;
+        document.getElementById('updateTime').textContent = timeStr;
+    }
+
+    updateKPIs() {
+        if (this.data.length === 0) {
+            // Resetear KPIs si no hay datos
+            document.getElementById('activeSeries').textContent = '0';
+            document.getElementById('rangeValue').textContent = '0.0000';
+            document.getElementById('rangeInfo').textContent = 'Sin datos';
+            document.getElementById('variabilityValue').textContent = '0.00%';
+            document.getElementById('variabilityBadge').textContent = '--';
+            document.getElementById('worstSeries').textContent = '--';
+            document.getElementById('worstValue').textContent = '0.0000';
+            return;
+        }
+        
+        // Calcular estadísticas
+        const uniqueSeries = [...new Set(this.data.map(d => d.combinationKey))];
+        document.getElementById('activeSeries').textContent = uniqueSeries.length;
+        
+        // Calcular rango global
+        const valores = this.data.map(d => d.frecuencia).filter(v => !isNaN(v));
+        if (valores.length > 0) {
+            const min = Math.min(...valores);
+            const max = Math.max(...valores);
+            const range = max - min;
+            
+            document.getElementById('rangeValue').textContent = this.safeToFixed(range);
+            document.getElementById('rangeInfo').textContent = `${this.safeToFixed(min)}-${this.safeToFixed(max)}`;
+            
+            // Calcular variabilidad (coeficiente de variación)
+            const avg = valores.reduce((a, b) => a + b, 0) / valores.length;
+            const std = Math.sqrt(valores.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / valores.length);
+            const cv = avg !== 0 ? (std / avg) * 100 : 0;
+            
+            document.getElementById('variabilityValue').textContent = this.safeToFixed(cv, 2) + '%';
+            
+            const badge = document.getElementById('variabilityBadge');
+            if (cv < 10) {
+                badge.textContent = 'Baja';
+                badge.className = 'kpi-badge';
+                badge.style.background = 'rgba(16, 185, 129, 0.1)';
+                badge.style.color = 'var(--success)';
+            } else if (cv < 20) {
+                badge.textContent = 'Media';
+                badge.className = 'kpi-badge';
+                badge.style.background = 'rgba(245, 158, 11, 0.1)';
+                badge.style.color = 'var(--warning)';
+            } else {
+                badge.textContent = 'Alta';
+                badge.className = 'kpi-badge';
+                badge.style.background = 'rgba(239, 68, 68, 0.1)';
+                badge.style.color = 'var(--danger)';
+            }
+            
+            // CALCULAR PEOR DESEMPEÑO (CORREGIDO)
+            // Agrupar por alimentador y calcular promedio
+            const alimentadores = {};
+            this.data.forEach(item => {
+                if (!alimentadores[item.transformador]) {
+                    alimentadores[item.transformador] = {
+                        valores: [],
+                        avg: 0
+                    };
+                }
+                alimentadores[item.transformador].valores.push(item.frecuencia);
+            });
+            
+            // Calcular promedio por alimentador
+            Object.keys(alimentadores).forEach(key => {
+                const vals = alimentadores[key].valores;
+                alimentadores[key].avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+            });
+            
+            // Encontrar el PEOR desempeño (MAYOR valor promedio)
+            let worstAlimentador = null;
+            let worstValue = -Infinity;
+            
+            Object.keys(alimentadores).forEach(key => {
+                if (alimentadores[key].avg > worstValue) {
+                    worstValue = alimentadores[key].avg;
+                    worstAlimentador = key;
+                }
+            });
+            
+            if (worstAlimentador) {
+                document.getElementById('worstSeries').textContent = worstAlimentador;
+                document.getElementById('worstValue').textContent = this.safeToFixed(worstValue);
+            }
+        }
+    }
+
+    initCharts() {
+        Chart.defaults.font.family = "'Inter', 'Segoe UI', system-ui, sans-serif";
+        Chart.defaults.color = '#64748b';
+        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.95)';
+        
+        // Gráfico principal
+        const ctxMain = document.getElementById('mainChart').getContext('2d');
+        this.mainChart = new Chart(ctxMain, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                    legend: { 
+                        display: true,
+                        position: 'top',
+                        labels: { boxWidth: 12, padding: 15, font: { size: 11 } }
+                    },
+                    tooltip: { 
+                        mode: 'index', 
+                        intersect: false,
+                        callbacks: {
+                            title: (context) => context[0].dataset.label,
+                            label: (context) => {
+                                const value = context.parsed.y;
+                                const date = context.label;
+                                return `${date}: ${this.safeToFixed(value)}`;
+                            }
+                        }
+                    }
+                },
+                scales: { 
+                    y: { 
+                        beginAtZero: false,
+                        title: { display: true, text: 'Valor' },
+                        ticks: { callback: this.formatValueCallback }
+                    }, 
+                    x: { 
+                        ticks: {
+                            callback: (value, index, values) => {
+                                const label = this.mainChart.data.labels[index];
+                                if (!label) return '';
+                                
+                                try {
+                                    const [year, month] = label.split('-');
+                                    const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                                    return `${months[parseInt(month)-1]} ${year}`;
+                                } catch (e) {
+                                    return label;
+                                }
+                            }
+                        }
+                    } 
+                }
+            }
+        });
+        
+        // Gráfico de ranking
+        const ctxRank = document.getElementById('rankingChart').getContext('2d');
+        this.rankingChart = new Chart(ctxRank, {
+            type: 'bar',
+            data: { labels: [], datasets: [] },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { 
+                    x: { title: { display: true, text: 'Valor Promedio' } },
+                    y: { ticks: { font: { size: 11 } } }
+                }
+            }
+        });
+        
+        // Gráfico completo
+        const ctxFull = document.getElementById('fullChart').getContext('2d');
+        this.fullChart = new Chart(ctxFull, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true },
+                    tooltip: { mode: 'index', intersect: false }
+                }
+            }
+        });
+    }
+
+    updateCharts() {
+        if (!this.mainChart || this.data.length === 0) {
+            console.warn("⚠️ No hay datos para mostrar en gráficos");
+            return;
+        }
+        
+        // Preparar datos para gráficos
+        const groupedData = this.groupDataForCharts();
+        
+        // Actualizar gráfico principal
+        this.updateMainChart(groupedData);
+        
+        // Actualizar gráfico de ranking
+        this.updateRankingChart(groupedData);
+    }
+
+    groupDataForCharts() {
+        const grouped = {};
+        
+        this.data.forEach(item => {
+            let key;
+            
+            switch(this.groupBy) {
+                case 'alimentador':
+                    key = item.transformador;
+                    break;
+                case 'year':
+                    key = `${item.year}`;
+                    break;
+                case 'tipo':
+                    key = item.tipo;
+                    break;
+                case 'month':
+                    const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                    key = `${months[item.month - 1]} ${item.year}`;
+                    break;
+                case 'combinado':
+                default:
+                    key = `${item.transformador}-${item.year}-${item.tipo}`;
+            }
+            
+            if (!grouped[key]) {
+                grouped[key] = {
+                    label: key,
+                    values: [],
+                    dates: [],
+                    avg: 0
+                };
+            }
+            
+            grouped[key].values.push(item.frecuencia);
+            grouped[key].dates.push(item.fecha);
+        });
+        
+        // Calcular promedios
+        Object.keys(grouped).forEach(key => {
+            const vals = grouped[key].values;
+            grouped[key].avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+        });
+        
+        return grouped;
+    }
+
+    updateMainChart(groupedData) {
+        // Obtener todas las fechas únicas ordenadas
+        const allDates = [...new Set(this.data.map(d => d.fecha))].sort();
+        
+        // Preparar datasets
+        const datasets = Object.keys(groupedData).map((key, idx) => {
+            const group = groupedData[key];
+            const color = this.chartPalette[idx % this.chartPalette.length];
+            
+            // Crear array de valores para cada fecha
+            const valuesByDate = {};
+            this.data.forEach(item => {
+                let itemKey;
+                switch(this.groupBy) {
+                    case 'alimentador':
+                        itemKey = item.transformador;
+                        break;
+                    case 'year':
+                        itemKey = `${item.year}`;
+                        break;
+                    case 'tipo':
+                        itemKey = item.tipo;
+                        break;
+                    case 'month':
+                        const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                        itemKey = `${months[item.month - 1]} ${item.year}`;
+                        break;
+                    default:
+                        itemKey = `${item.transformador}-${item.year}-${item.tipo}`;
                 }
                 
-                this.syncFilters();
-                this.updateComparisonTags();
-            } else if (e.target.tagName === 'OPTION') {
-                lastSelectedIndex = Array.from(select.options).indexOf(e.target);
-            }
+                if (itemKey === key) {
+                    valuesByDate[item.fecha] = item.frecuencia;
+                }
+            });
+            
+            const data = allDates.map(date => valuesByDate[date] !== undefined ? valuesByDate[date] : null);
+            
+            return {
+                label: group.label,
+                data: data,
+                borderColor: color,
+                backgroundColor: color + '20',
+                borderWidth: 2,
+                tension: 0.3,
+                fill: false,
+                pointRadius: 3,
+                pointHoverRadius: 6
+            };
         });
         
-        // Permitir Ctrl+Click para selección individual incluso en modo rango
-        select.addEventListener('mousedown', (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                // Permitir selección individual con Ctrl/Cmd
-                e.target.selected = !e.target.selected;
-                e.preventDefault();
-                this.syncFilters();
-                this.updateComparisonTags();
-            }
-        });
+        // Actualizar gráfico
+        this.mainChart.data.labels = allDates;
+        this.mainChart.data.datasets = datasets;
+        
+        // Cambiar tipo de gráfico si es necesario
+        const chartType = document.getElementById('chartType').value;
+        this.mainChart.config.type = chartType;
+        
+        this.mainChart.update();
     }
 
-    showLoading(show) {
+    updateRankingChart(groupedData) {
+        const sortMethod = document.getElementById('rankingSort').value;
+        
+        // Ordenar series según método seleccionado
+        let sortedKeys = Object.keys(groupedData);
+        
+        switch(sortMethod) {
+            case 'worst':
+                // Peor primero (mayor valor promedio)
+                sortedKeys.sort((a, b) => groupedData[b].avg - groupedData[a].avg);
+                break;
+            case 'best':
+                // Mejor primero (menor valor promedio)
+                sortedKeys.sort((a, b) => groupedData[a].avg - groupedData[b].avg);
+                break;
+            case 'variability':
+                // Por variabilidad (coeficiente de variación)
+                sortedKeys.sort((a, b) => {
+                    const cvA = this.calculateCV(groupedData[a].values);
+                    const cvB = this.calculateCV(groupedData[b].values);
+                    return cvB - cvA; // Mayor variabilidad primero
+                });
+                break;
+            case 'avg':
+            default:
+                // Por promedio (mayor primero)
+                sortedKeys.sort((a, b) => groupedData[b].avg - groupedData[a].avg);
+        }
+        
+        // Limitar a 15 series para mejor visualización
+        if (sortedKeys.length > 15) {
+            sortedKeys = sortedKeys.slice(0, 15);
+        }
+        
+        const labels = sortedKeys.map(key => {
+            const label = groupedData[key].label;
+            return label.length > 30 ? label.substring(0, 30) + '...' : label;
+        });
+        
+        const data = sortedKeys.map(key => groupedData[key].avg);
+        const colors = sortedKeys.map((key, idx) => this.chartPalette[idx % this.chartPalette.length]);
+        
+        this.rankingChart.data.labels = labels;
+        this.rankingChart.data.datasets = [{
+            label: 'Promedio',
+            data: data,
+            backgroundColor: colors,
+            borderColor: colors.map(c => c + 'CC'),
+            borderWidth: 1
+        }];
+        
+        this.rankingChart.update();
+    }
+
+    calculateCV(values) {
+        const avg = values.reduce((a, b) => a + b, 0) / values.length;
+        const std = Math.sqrt(values.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / values.length);
+        return avg !== 0 ? (std / avg) * 100 : 0;
+    }
+
+    openFullChart() {
+        // Copiar datos del gráfico principal al gráfico completo
+        this.fullChart.data = JSON.parse(JSON.stringify(this.mainChart.data));
+        this.fullChart.options = JSON.parse(JSON.stringify(this.mainChart.options));
+        
+        // Ajustar opciones para pantalla completa
+        this.fullChart.options.maintainAspectRatio = true;
+        this.fullChart.options.plugins.legend.display = true;
+        
+        // Mostrar modal
+        document.getElementById('fullChartModal').style.display = 'flex';
+        this.fullChart.update();
+    }
+
+    closeFullChart() {
+        document.getElementById('fullChartModal').style.display = 'none';
+    }
+
+    updateTable() {
+        const tbody = document.getElementById('dataTable');
+        if (!tbody) return;
+        
+        const start = (this.pagination.currentPage - 1) * this.pagination.rowsPerPage;
+        const end = start + this.pagination.rowsPerPage;
+        const pageData = this.filteredData.slice(start, end);
+        
+        this.pagination.totalPages = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
+
+        if (pageData.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" style="text-align:center; padding:3rem; color:#94a3b8;">
+                        <i class="fas fa-database" style="font-size:2rem; margin-bottom:1rem; display:block; opacity:0.5;"></i>
+                        No hay datos para mostrar con los filtros actuales
+                    </td>
+                </tr>`;
+        } else {
+            tbody.innerHTML = pageData.map(item => {
+                const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                const mesNombre = meses[item.month - 1] || 'Des';
+                
+                return `
+                    <tr>
+                        <td>${item.combinationLabel}</td>
+                        <td>${item.transformador}</td>
+                        <td>${item.year}</td>
+                        <td>${mesNombre}</td>
+                        <td>${item.tipo}</td>
+                        <td>${this.safeToFixed(item.frecuencia)}</td>
+                        <td>
+                            <span class="status-indicator status-optimal">
+                                <i class="fas fa-check-circle"></i> Normal
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn-icon small" title="Ver detalles" onclick="dashboard.showDetails('${item.transformador}', '${item.fecha}')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        this.updatePaginationInfo();
+    }
+
+    updatePaginationInfo() {
+        const start = (this.pagination.currentPage - 1) * this.pagination.rowsPerPage + 1;
+        const end = Math.min(this.pagination.currentPage * this.pagination.rowsPerPage, this.filteredData.length);
+        
+        document.getElementById('rowsShownStart').textContent = this.filteredData.length > 0 ? start : 0;
+        document.getElementById('rowsShownEnd').textContent = end;
+        document.getElementById('rowsTotal').textContent = this.filteredData.length;
+        document.getElementById('currentPage').textContent = this.pagination.currentPage;
+        
+        // Habilitar/deshabilitar botones
+        document.getElementById('firstPage').disabled = this.pagination.currentPage === 1;
+        document.getElementById('prevPage').disabled = this.pagination.currentPage === 1;
+        document.getElementById('nextPage').disabled = this.pagination.currentPage === this.pagination.totalPages || this.filteredData.length === 0;
+        document.getElementById('lastPage').disabled = this.pagination.currentPage === this.pagination.totalPages || this.filteredData.length === 0;
+    }
+
+    goToPage(page) {
+        page = Math.max(1, Math.min(page, this.pagination.totalPages));
+        this.pagination.currentPage = page;
+        this.updateTable();
+    }
+
+    searchTable(term) {
+        term = term.toLowerCase();
+        
+        if (!term) {
+            this.filteredData = [...this.data];
+        } else {
+            this.filteredData = this.data.filter(item =>
+                item.transformador.toLowerCase().includes(term) ||
+                item.tipo.toLowerCase().includes(term) ||
+                item.combinationLabel.toLowerCase().includes(term) ||
+                item.frecuencia.toString().includes(term)
+            );
+        }
+        
+        this.pagination.currentPage = 1;
+        this.updateTable();
+    }
+
+    async handleExcelUpload() {
+        const fileInput = document.getElementById('excelFileInput');
+        const uploadBtn = document.getElementById('uploadExcelBtn');
+        const progressContainer = document.querySelector('.excel-upload-progress');
+        const progressBar = document.getElementById('excelProgress');
+        const statusText = document.getElementById('excelStatus');
+        const percentText = document.getElementById('excelPercent');
+        const resultContainer = document.getElementById('excelResult');
+
+        const file = fileInput?.files?.[0];
+
+        if (!file) {
+            this.showNotification('Selecciona un archivo Excel antes de subir', 'warning');
+            return;
+        }
+
+        // Validar extensión
+        const validExtensions = ['.xlsx', '.xls'];
+        const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        
+        if (!validExtensions.includes(fileExtension)) {
+            this.showNotification('Formato inválido. Solo se aceptan archivos .xlsx o .xls', 'error');
+            return;
+        }
+
+        // Validar tamaño (máximo 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            this.showNotification('El archivo es demasiado grande (máximo 10MB)', 'error');
+            return;
+        }
+
+        // Preparar FormData
+        const formData = new FormData();
+        formData.append('archivo', file);
+        formData.append('usuario', 'admin');
+
+        try {
+            // Deshabilitar botón y mostrar progreso
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            percentText.textContent = '0%';
+            statusText.textContent = 'Iniciando carga...';
+            resultContainer.style.display = 'none';
+            resultContainer.innerHTML = '';
+
+            // Enviar archivo al servidor
+            const response = await fetch(`${this.apiBaseUrl}/api/subir-excel`, {
+                method: 'POST',
+                body: formData
+            });
+
+            // Actualizar progreso
+            progressBar.style.width = '50%';
+            percentText.textContent = '50%';
+            statusText.textContent = 'Procesando datos...';
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || result.error || 'Error en el servidor');
+            }
+
+            // Completar progreso
+            progressBar.style.width = '100%';
+            percentText.textContent = '100%';
+            statusText.textContent = '¡Completado!';
+            
+            // Mostrar resultados
+            resultContainer.style.display = 'block';
+            resultContainer.innerHTML = `
+                <div style="background: #f0f9ff; border-left: 4px solid var(--primary); padding: 1rem; border-radius: 8px;">
+                    <h4 style="margin-top: 0; color: var(--primary);">
+                        <i class="fas fa-check-circle"></i> Importación exitosa
+                    </h4>
+                    <p><strong>Archivo:</strong> ${file.name}</p>
+                    <p><strong>ID de carga:</strong> ${result.carga_id}</p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 0.5rem;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 2rem; font-weight: 700; color: var(--success);">${result.insertadas}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-light);">Insertadas</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 2rem; font-weight: 700; color: var(--warning);">${result.actualizadas}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-light);">Actualizadas</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 2rem; font-weight: 700; color: ${result.errores > 0 ? 'var(--danger)' : 'var(--text-light)'};">${result.errores}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-light);">Errores</div>
+                        </div>
+                    </div>
+                    ${result.errores_detalle ? `
+                        <div style="margin-top: 1rem; font-size: 0.9rem;">
+                            <details>
+                                <summary style="cursor: pointer; color: var(--danger); font-weight: 600;">
+                                    <i class="fas fa-exclamation-triangle"></i> Ver detalles de errores (${result.errores_detalle.length})
+                                </summary>
+                                <div style="margin-top: 0.5rem; max-height: 200px; overflow-y: auto; background: rgba(239, 68, 68, 0.05); padding: 0.5rem; border-radius: 4px;">
+                                    ${result.errores_detalle.map(error => `
+                                        <div style="padding: 0.25rem 0; border-bottom: 1px solid rgba(239, 68, 68, 0.1);">
+                                            <strong>Fila ${error.fila}:</strong> ${error.error}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </details>
+                        </div>
+                    ` : ''}
+                    <div style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-light); text-align: center;">
+                        <i class="fas fa-clock"></i> ${new Date().toLocaleTimeString('es-ES')}
+                    </div>
+                </div>
+            `;
+
+            // Mostrar notificación
+            this.showNotification(`Excel importado: ${result.insertadas} nuevas, ${result.actualizadas} actualizadas`, 'success');
+
+            // Recargar datos y cargas
+            setTimeout(() => {
+                this.loadData();
+                this.loadCargas();
+            }, 1000);
+
+        } catch (error) {
+            console.error('❌ Error al subir Excel:', error);
+            
+            progressBar.style.width = '100%';
+            percentText.textContent = '100%';
+            statusText.textContent = 'Error';
+            progressBar.style.background = 'var(--danger)';
+            
+            resultContainer.style.display = 'block';
+            resultContainer.innerHTML = `
+                <div style="background: #fef2f2; border-left: 4px solid var(--danger); padding: 1rem; border-radius: 8px;">
+                    <h4 style="margin-top: 0; color: var(--danger);">
+                        <i class="fas fa-times-circle"></i> Error en la importación
+                    </h4>
+                    <p style="margin: 0.5rem 0;">${error.message}</p>
+                    <p style="font-size: 0.85rem; color: var(--text-light); margin: 0;">
+                        Verifica que el archivo tenga el formato correcto y vuelve a intentar.
+                    </p>
+                </div>
+            `;
+
+            this.showNotification(`Error al importar Excel: ${error.message}`, 'error');
+        } finally {
+            // Restaurar botón y limpiar
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Subir Excel';
+            fileInput.value = '';
+            
+            // Ocultar progreso después de 5 segundos
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+                progressBar.style.background = 'var(--primary)';
+                progressBar.style.width = '0%';
+            }, 5000);
+        }
+    }
+
+    showDetails(alimentador, fecha) {
+        const detalles = this.data.find(d => d.transformador === alimentador && d.fecha === fecha);
+        if (detalles) {
+            alert(`📋 Detalles de ${alimentador} en ${fecha}\n\n` +
+                  `• Tipo: ${detalles.tipo}\n` +
+                  `• Valor: ${this.safeToFixed(detalles.frecuencia)}\n` +
+                  `• Departamento: ${detalles.departamento || 'N/A'}\n` +
+                  `• Año: ${detalles.year}\n` +
+                  `• Mes: ${detalles.month}`);
+        }
+    }
+
+    exportData() {
+        if (this.filteredData.length === 0) {
+            this.showNotification("No hay datos para exportar", "warning");
+            return;
+        }
+        
+        // Convertir a CSV
+        const headers = ['Alimentador', 'Año', 'Mes', 'Tipo', 'Valor', 'Departamento', 'Fecha'];
+        const csvRows = [
+            headers.join(','),
+            ...this.filteredData.map(item => [
+                item.transformador,
+                item.year,
+                item.month,
+                item.tipo,
+                item.frecuencia,
+                item.departamento || '',
+                item.fecha
+            ].join(','))
+        ];
+        
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ande-datos-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        this.showNotification("Datos exportados correctamente", "success");
+    }
+
+    formatValueCallback(value) {
+        if (value >= 1000000) {
+            return (value/1000000).toFixed(1) + 'M';
+        }
+        if (value >= 1000) {
+            return (value/1000).toFixed(0) + 'k';
+        }
+        if (Math.abs(value) < 0.001) {
+            return value.toExponential(1);
+        }
+        if (Math.abs(value) < 1) {
+            return value.toFixed(3);
+        }
+        if (Math.abs(value) < 10) {
+            return value.toFixed(2);
+        }
+        if (Math.abs(value) < 1000) {
+            return value.toFixed(1);
+        }
+        return value.toFixed(0);
+    }
+
+    showLoading(show, text = "Procesando...") {
         const overlay = document.getElementById('loadingOverlay');
-        overlay.style.display = show ? 'flex' : 'none';
+        const loadingText = document.getElementById('loadingText');
         
         if (show) {
+            loadingText.textContent = text;
+            overlay.style.display = 'flex';
+            
             let progress = 0;
             const progressBar = document.getElementById('loaderProgress');
             const interval = setInterval(() => {
-                progress += 10;
+                progress += 5;
                 progressBar.style.width = `${progress}%`;
                 if (progress >= 90) clearInterval(interval);
-            }, 200);
+            }, 100);
+        } else {
+            overlay.style.display = 'none';
+            document.getElementById('loaderProgress').style.width = '0%';
         }
     }
 
@@ -292,2237 +1234,17 @@ class ANDEDashboard {
         setTimeout(() => this.updateTime(), 1000);
     }
 
-    // --- CARGA DE SELECTORES ---
-    async loadTiposMedicion() {
-        try {
-            // CAMBIADO: Usar this.apiBaseUrl en lugar de URL relativa
-            const res = await fetch(`${this.apiBaseUrl}/api/tipos-medicion`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            
-            const tipos = await res.json();
-            
-            if (tipos && tipos.length > 0) {
-                console.log("✅ Tipos de medición cargados desde BD:", tipos);
-                this.fillMultiSelect('filterTipoMedicion', tipos);
-            } else {
-                throw new Error("No hay tipos de medición en la BD");
-            }
-        } catch (error) {
-            console.warn("⚠️  Usando tipos de medición por defecto:", error.message);
-            this.fillMultiSelect('filterTipoMedicion', [
-                'ACCID.DEP', 'ACCID.FEP', 'PROG.FEP', 'PROD.FEP', 'TOTAL FEP',
-                'ACCID.PENF', 'PROG.PENF', 'PROD.PENF', 'TOTAL PENEF', 'PROG.DEP',
-                'PROD.DEP', 'TOTAL DEP'
-            ]);
-        }
-    }
-
-    async loadSeccionesDisponibles() {
-        try {
-            // CAMBIADO: Usar this.apiBaseUrl en lugar de URL relativa
-            const res = await fetch(`${this.apiBaseUrl}/api/secciones`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            
-            const secciones = await res.json();
-            
-            if (secciones && secciones.length > 0) {
-                console.log("✅ Secciones cargadas desde BD:", secciones.length, "total");
-                this.allSecciones = secciones;
-                
-                // Extraer estaciones únicas (primeras 3 letras)
-                const estacionesSet = new Set();
-                secciones.forEach(seccion => {
-                    if (seccion && seccion.length >= 3) {
-                        estacionesSet.add(seccion.substring(0, 3));
-                    }
-                });
-                this.estaciones = Array.from(estacionesSet).sort();
-                
-                // Llenar select de estaciones
-                this.fillEstacionSelect();
-                
-                // Llenar select de alimentadores (inicialmente todos)
-                this.fillMultiSelect('filterTransformador', secciones);
-            } else {
-                throw new Error("No hay secciones en la BD");
-            }
-        } catch (error) {
-            console.warn("⚠️  Usando secciones por defecto:", error.message);
-            const defaultSecciones = [
-                'ACY1', 'ACY2', 'ACY3', 'ACY4', 'ACY5', 'ACY6'
-            ];
-            this.allSecciones = defaultSecciones;
-            this.estaciones = ['ACY'];
-            this.fillEstacionSelect();
-            this.fillMultiSelect('filterTransformador', defaultSecciones);
-        }
-    }
-
-    fillEstacionSelect() {
-        const selectEstacion = document.getElementById('filterEstacion');
-        // Limpiar opciones existentes excepto "Todas"
-        selectEstacion.innerHTML = '<option value="">Todas las estaciones</option>';
-        
-        this.estaciones.forEach(estacion => {
-            const option = document.createElement('option');
-            option.value = estacion;
-            option.textContent = estacion;
-            selectEstacion.appendChild(option);
-        });
-    }
-
-    filterAlimentadoresByEstacion(estacion) {
-        const select = document.getElementById('filterTransformador');
-        const selectedValues = Array.from(select.selectedOptions).map(o => o.value);
-        
-        if (!estacion) {
-            // Mostrar todos los alimentadores
-            this.fillMultiSelect('filterTransformador', this.allSecciones);
-        } else {
-            // Filtrar alimentadores que comienzan con la estación seleccionada
-            const filteredSecciones = this.allSecciones.filter(seccion => 
-                seccion.startsWith(estacion)
-            );
-            this.fillMultiSelect('filterTransformador', filteredSecciones);
-        }
-        
-        // Restaurar selecciones previas si existen en la nueva lista
-        if (selectedValues.length > 0) {
-            selectedValues.forEach(value => {
-                const option = Array.from(select.options).find(o => o.value === value);
-                if (option) {
-                    option.selected = true;
-                }
-            });
-        }
-        
-        this.syncFilters();
-    }
-
-    async loadYearsAvailable() {
-        try {
-            // CAMBIADO: Usar this.apiBaseUrl en lugar de URL relativa
-            const res = await fetch(`${this.apiBaseUrl}/api/anios`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            
-            const years = await res.json();
-            
-            if (years && years.length > 0) {
-                console.log("✅ Años cargados desde BD:", years);
-                years.sort((a, b) => b - a); // Ordenar descendente
-                this.fillMultiSelect('filterYear', years);
-            } else {
-                throw new Error("No hay años en la BD");
-            }
-        } catch (error) {
-            console.warn("⚠️  Usando años por defecto:", error.message);
-            const years = [2025, 2024, 2023, 2022, 2021, 2020, 2019];
-            this.fillMultiSelect('filterYear', years);
-        }
-    }
-
-    fillMultiSelect(id, data) {
-        const select = document.getElementById(id);
-        if (!select) return;
-        
-        select.innerHTML = '';
-        
-        data.forEach(item => {
-            const opt = document.createElement('option');
-            opt.value = item;
-            opt.textContent = item;
-            select.appendChild(opt);
-        });
-    }
-
-    // ===================================
-    // MÉTODOS PARA MODO GLOBAL
-    // ===================================
-    
-    setGlobalComparisonMode(mode) {
-        this.globalComparisonMode = mode;
-        document.body.classList.remove('global-mode-unique', 'global-mode-multiple');
-        document.body.classList.add(mode === 'unique' ? 'global-mode-unique' : 'global-mode-multiple');
-        
-        // Actualizar botones de modo global
-        if (mode === 'unique') {
-            document.getElementById('globalModeUnique').classList.add('active');
-            document.getElementById('globalModeMultiple').classList.remove('active');
-            document.getElementById('globalModeHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo único: selecciona un valor por filtro';
-            
-            // En modo único, limitar a una selección en todos los filtros
-            this.limitToSingleSelection('filterYear');
-            this.limitToSingleSelection('filterTipoMedicion');
-            this.limitToSingleSelection('filterTransformador');
-            this.limitToSingleSelection('filterMonth');
-            
-            // También forzar modo único en meses
-            this.setMonthSelectionMode('unique');
-            
-        } else {
-            document.getElementById('globalModeUnique').classList.remove('active');
-            document.getElementById('globalModeMultiple').classList.add('active');
-            document.getElementById('globalModeHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios valores (Ctrl + Click / Shift + Click)';
-            
-            // Permitir múltiples selecciones
-            this.allowMultipleSelections('filterYear');
-            this.allowMultipleSelections('filterTipoMedicion');
-            this.allowMultipleSelections('filterTransformador');
-            this.allowMultipleSelections('filterMonth');
-            
-            // Permitir múltiples selecciones en meses
-            this.setMonthSelectionMode('multiple');
-        }
-
-        this.updateMonthModeVisibility();
-        
-        this.showNotification(`Modo de comparación: ${mode === 'unique' ? 'único' : 'múltiple'}`, "info");
-    }
-
-    limitToSingleSelection(selectId) {
-        const select = document.getElementById(selectId);
-        if (!select) return;
-        
-        // Si hay más de uno seleccionado, dejar solo el primero
-        const selectedOptions = Array.from(select.selectedOptions);
-        if (selectedOptions.length > 1) {
-            // Deseleccionar todos excepto el primero
-            selectedOptions.slice(1).forEach(option => {
-                option.selected = false;
-            });
-        }
-    }
-
-    allowMultipleSelections(selectId) {
-        // En modo múltiple, no hacemos nada especial
-        // Los selectores múltiples ya permiten Ctrl+Click
-        console.log(`Permitiendo múltiples selecciones en: ${selectId}`);
-    }
-
-    // --- LÓGICA DE FILTROS MEJORADA ---
-    setInitialDefaults() {
-        console.log("🔧 Configurando valores predeterminados para comparación...");
-        
-        // Configurar modo global único por defecto
-        this.setGlobalComparisonMode('unique');
-        
-        // Seleccionar algunos valores por defecto para demostración
-        const tipoSel = document.getElementById('filterTipoMedicion');
-        const yearSel = document.getElementById('filterYear');
-        const transSel = document.getElementById('filterTransformador');
-        
-        // Seleccionar primer tipo (solo uno porque estamos en modo único)
-        if (tipoSel.options.length > 0) {
-            tipoSel.options[0].selected = true;
-        }
-        
-        // Seleccionar año 2025 por defecto (solo uno)
-        let found2025 = false;
-        for (let i = 0; i < yearSel.options.length; i++) {
-            if (yearSel.options[i].value === '2025') {
-                yearSel.options[i].selected = true;
-                found2025 = true;
-                break;
-            }
-        }
-        
-        // Si no existe 2025, seleccionar el primer año disponible
-        if (!found2025 && yearSel.options.length > 0) {
-            yearSel.options[0].selected = true;
-        }
-        
-        // Seleccionar primer alimentador (solo uno)
-        if (transSel.options.length > 0) {
-            transSel.options[0].selected = true;
-        }
-        
-        // Configurar agrupación
-        document.getElementById('groupBy').value = 'alimentador';
-        
-        // Configurar período en "Seleccionar Meses"
-        document.getElementById('filterPeriodo').value = 'select_months';
-        
-        // Establecer modo único por defecto para meses
-        this.monthSelectionMode = 'unique';
-        
-        // Mostrar los selectores de mes
-        this.updateMonthModeVisibility();
-
-        this.syncFilters();
-        this.updateComparisonTags();
-    }
-
-    syncFilters() {
-        const tipoOpts = Array.from(document.getElementById('filterTipoMedicion').selectedOptions);
-        const yearOpts = Array.from(document.getElementById('filterYear').selectedOptions);
-        const transOpts = Array.from(document.getElementById('filterTransformador').selectedOptions);
-        const monthOpts = Array.from(document.getElementById('filterMonth').selectedOptions);
-        
-        this.filters = {
-            tipoMedicion: tipoOpts.map(o => o.value),
-            transformador: transOpts.map(o => o.value),
-            year: yearOpts.map(o => o.value),
-            month: monthOpts.map(o => o.value), // Ahora es un array
-            estacion: document.getElementById('filterEstacion').value,
-            periodo: document.getElementById('filterPeriodo').value
-        };
-        
-        this.groupBy = document.getElementById('groupBy').value;
-        
-        console.log("📋 Filtros actualizados:", this.filters);
-        console.log("📊 Agrupar por:", this.groupBy);
-        console.log("🌐 Modo global:", this.globalComparisonMode);
-    }
-
-    updateComparisonTags() {
-        const tagsContainer = document.getElementById('comparisonTags');
-        if (!tagsContainer) return;
-        
-        tagsContainer.innerHTML = '';
-        
-        let hasSelections = false;
-        
-        // Modo global
-        const modeTag = document.createElement('span');
-        modeTag.className = this.globalComparisonMode === 'unique' ? 'tag mode-unique-tag' : 'tag mode-multiple-tag';
-        modeTag.innerHTML = `<i class="fas fa-exchange-alt"></i> Modo: ${this.globalComparisonMode === 'unique' ? 'Único' : 'Múltiple'}`;
-        tagsContainer.appendChild(modeTag);
-        hasSelections = true;
-        
-        // Años
-        if (this.filters.year.length > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'tag year-tag';
-            tag.innerHTML = `<i class="fas fa-calendar"></i> ${this.filters.year.length} año(s)`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Alimentadores
-        if (this.filters.transformador.length > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'tag transformer-tag';
-            tag.innerHTML = `<i class="fas fa-transformer"></i> ${this.filters.transformador.length} alimentador(es)`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Estación (si está seleccionada)
-        if (this.filters.estacion) {
-            const tag = document.createElement('span');
-            tag.className = 'tag station-tag';
-            tag.innerHTML = `<i class="fas fa-building"></i> Estación: ${this.filters.estacion}`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Tipos de medición
-        if (this.filters.tipoMedicion.length > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'tag type-tag';
-            tag.innerHTML = `<i class="fas fa-chart-line"></i> ${this.filters.tipoMedicion.length} tipo(s)`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Meses (si están seleccionados)
-        if (this.filters.month.length > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'tag month-tag';
-            tag.innerHTML = `<i class="fas fa-calendar-alt"></i> ${this.filters.month.length} mes(es)`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Período (si está seleccionado)
-        if (this.filters.periodo) {
-            const tag = document.createElement('span');
-            tag.className = 'tag period-tag';
-            tag.innerHTML = `<i class="fas fa-clock"></i> ${this.getPeriodoLabel(this.filters.periodo)}`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        if (!hasSelections) {
-            const tag = document.createElement('span');
-            tag.className = 'tag hint';
-            tag.textContent = 'Selecciona filtros para comparar';
-            tagsContainer.appendChild(tag);
-        }
-        
-        // Actualizar contador de series posibles
-        const monthMultiplier = this.filters.month.length > 0 ? this.filters.month.length : 1;
-        const totalCombinations = this.filters.year.length * 
-                                 this.filters.transformador.length * 
-                                 this.filters.tipoMedicion.length * 
-                                 monthMultiplier;
-        const activeSeriesEl = document.getElementById('activeSeries');
-        if (activeSeriesEl) {
-            activeSeriesEl.textContent = totalCombinations;
-        }
-    }
-
-    async loadData() {
-        this.showLoading(true);
-        try {
-            this.previousData = this.data.length > 0 ? [...this.data] : null;
-            
-            // Validar según modo global
-            if (this.globalComparisonMode === 'unique') {
-                // En modo único, validar que haya al menos un valor en cada filtro
-                if (!this.filters.transformador[0] || !this.filters.year[0] || !this.filters.tipoMedicion[0]) {
-                    console.log("⚠️  Faltan filtros en modo único");
-                    this.showNotification("Selecciona un valor en cada filtro", "warning");
-                    this.showLoading(false);
-                    return;
-                }
-            } else {
-                // En modo múltiple, validar que haya al menos una selección
-                if (this.filters.transformador.length === 0 || 
-                    this.filters.year.length === 0 || 
-                    this.filters.tipoMedicion.length === 0) {
-                    console.log("⚠️  No hay filtros seleccionados, cargando datos demo");
-                    this.loadDemoComparisonData();
-                    return;
-                }
-            }
-            
-            // Cargar datos para cada combinación
-            this.data = [];
-            const promises = [];
-            
-            // Determinar los meses a consultar
-            const monthsToQuery = this.filters.month.length > 0 ? this.filters.month : [null];
-            
-            // Crear combinaciones de filtros
-            for (const year of this.filters.year) {
-                for (const tipo of this.filters.tipoMedicion) {
-                    for (const seccion of this.filters.transformador) {
-                        for (const month of monthsToQuery) {
-                            promises.push(
-                                this.loadCombinationData(year, tipo, seccion, month)
-                            );
-                        }
-                    }
-                }
-            }
-            
-            // Esperar todas las peticiones
-            const results = await Promise.all(promises);
-            this.data = results.flat();
-            this.filteredData = [...this.data];
-
-            console.log("✅ Datos cargados:", this.data.length, "registros");
-
-            // Actualizar estadísticas
-            this.updateStats();
-            this.updateKPIs();
-            this.updateCharts();
-            this.pagination.currentPage = 1;
-            this.updateTable();
-            
-            this.showNotification(`Comparación cargada: ${this.data.length} registros`, "success");
-            
-        } catch (e) {
-            console.error('❌ Error cargando datos:', e);
-            this.showNotification("Error cargando datos del servidor", "error");
-            this.loadDemoComparisonData();
-        } finally { 
-            this.showLoading(false);
-        }
-    }
-
-    async loadCombinationData(year, tipoMedicion, seccion, month = null) {
-        const params = new URLSearchParams();
-        params.append('anio', year);
-        params.append('tipo_medicion', tipoMedicion.trim());
-        params.append('seccion', seccion.trim());
-        
-        if(month) params.append('mes', month);
-
-        // CAMBIADO: Usar this.apiBaseUrl en lugar de variable no definida API_BASE_URL
-        const url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
-        console.log("🌐 Solicitando combinación:", url);
-        
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status} para ${url}`);
-        
-        const data = await res.json();
-        
-        // Añadir metadatos de la combinación
-        return data.map(item => ({
-            ...item,
-            combinationKey: `${seccion}-${year}-${tipoMedicion}`,
-            combinationLabel: this.getCombinationLabel(seccion, year, tipoMedicion),
-            year: year,
-            tipo: tipoMedicion
-        }));
-    }
-
-    getCombinationLabel(alimentador, year, tipo) {
-        // Crear etiqueta basada en la configuración de agrupación
-        switch(this.groupBy) {
-            case 'alimentador':
-                return `${alimentador} (${year}, ${tipo})`;
-            case 'year':
-                return `${year} - ${alimentador} (${tipo})`;
-            case 'tipo':
-                return `${tipo} - ${alimentador} (${year})`;
-            case 'combinado':
-                return `${alimentador}/${year}/${tipo}`;
-            default:
-                return `${alimentador}-${year}-${tipo}`;
-        }
-    }
-
-    loadDemoComparisonData() {
-        console.log("📂 Cargando datos de demostración para comparación...");
-        
-        const demoData = [];
-        const years = this.filters.year.length > 0 ? this.filters.year : ['2024'];
-        const alimentadores = this.filters.transformador.length > 0 ? 
-            this.filters.transformador : ['ACY1'];
-        const tipos = this.filters.tipoMedicion.length > 0 ? 
-            this.filters.tipoMedicion : ['TOTAL PENEF'];
-        
-        let idCounter = 0;
-        
-        years.forEach(year => {
-            tipos.forEach(tipo => {
-                alimentadores.forEach(alimentador => {
-                    for (let month = 1; month <= 12; month++) {
-                        demoData.push({
-                            id: idCounter++,
-                            transformador: alimentador,
-                            frecuencia: this.generateComparisonValue(year, tipo, alimentador, month),
-                            fecha: `${year}-${String(month).padStart(2, '0')}-01`,
-                            tipo: tipo,
-                            departamento: 'ALTO PARANÁ',
-                            combinationKey: `${alimentador}-${year}-${tipo}`,
-                            combinationLabel: this.getCombinationLabel(alimentador, year, tipo),
-                            year: year
-                        });
-                    }
-                });
-            });
-        });
-        
-        this.data = demoData;
-        this.filteredData = [...demoData];
-        
-        console.log("📊 Datos demo generados:", demoData.length, "registros de",
-                   years.length * tipos.length * alimentadores.length, "combinaciones");
-        
-        this.updateStats();
-        this.updateKPIs();
-        
-        // Solo actualizar gráficos y KPIs si hay datos
-        if (demoData.length > 0) {
-            this.updateCharts();
-        }
-        
-        this.updateTable();
-        
-        this.showNotification("Usando datos de demostración para comparación", "warning");
-    }
-    
-    generateComparisonValue(year, tipo, alimentador, month) {
-        // Valores base por tipo
-        let baseValue;
-        switch(tipo) {
-            case 'TOTAL PENEF':
-            case 'TOTAL DEP':
-            case 'TOTAL FEP':
-                baseValue = 50000;
-                break;
-            case 'ACCID.DEP':
-            case 'ACCID.FEP':
-            case 'ACCID.PENF':
-                baseValue = 5;
-                break;
-            case 'PROG.DEP':
-            case 'PROG.FEP':
-            case 'PROG.PENF':
-                baseValue = 0.5;
-                break;
-            default:
-                baseValue = 50;
-        }
-        
-        // Variación por año
-        const yearFactor = parseInt(year) - 2020;
-        
-        // Variación por alimentador (basado en hash simple)
-        const alimentadorHash = alimentador.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const alimentadorFactor = (alimentadorHash % 10) / 10;
-        
-        // Variación por mes
-        const monthFactor = Math.sin(month * 0.5) * 0.3;
-        
-        // Variación aleatoria
-        const randomFactor = (Math.random() - 0.5) * 0.2;
-        
-        return baseValue * (1 + yearFactor * 0.05) * 
-               (1 + alimentadorFactor) * 
-               (1 + monthFactor) * 
-               (1 + randomFactor);
-    }
-
-    updateStats() {
-        const totalPoints = this.data.length;
-        const uniqueCombinations = [...new Set(this.data.map(d => d.combinationKey))].length;
-        
-        const dataCountEl = document.getElementById('dataCount');
-        const seriesCountEl = document.getElementById('seriesCount');
-        const loadedSeriesEl = document.getElementById('loadedSeries');
-        const totalPointsEl = document.getElementById('totalPoints');
-        const lastUpdateEl = document.getElementById('lastUpdate');
-        const updateTimeEl = document.getElementById('updateTime');
-        
-        if (dataCountEl) dataCountEl.textContent = totalPoints.toLocaleString();
-        if (seriesCountEl) seriesCountEl.textContent = uniqueCombinations;
-        if (loadedSeriesEl) loadedSeriesEl.textContent = uniqueCombinations;
-        if (totalPointsEl) totalPointsEl.textContent = totalPoints;
-        
-        const timeStr = new Date().toLocaleTimeString('es-ES', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        
-        if (lastUpdateEl) lastUpdateEl.textContent = timeStr;
-        if (updateTimeEl) updateTimeEl.textContent = timeStr;
-    }
-
-    // --- GRÁFICOS MEJORADOS PARA COMPARACIÓN ---
-    initCharts() {
-        Chart.defaults.font.family = "'Inter', 'Segoe UI', system-ui, sans-serif";
-        Chart.defaults.color = '#64748b';
-        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.95)';
-        Chart.defaults.plugins.tooltip.titleFont = { weight: '600', size: 14 };
-        Chart.defaults.plugins.tooltip.bodyFont = { size: 13 };
-        Chart.defaults.plugins.legend.labels.font = { weight: '600', size: 12 };
-        Chart.defaults.plugins.legend.labels.padding = 20;
-
-        // 1. Gráfico Principal de Comparación
-        const ctxMain = document.getElementById('mainChart').getContext('2d');
-        this.mainChart = new Chart(ctxMain, {
-            type: 'line',
-            data: { labels: [], datasets: [] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    intersect: false,
-                    mode: 'index',
-                },
-                plugins: {
-                    legend: { 
-                        display: true,
-                        position: 'top',
-                        align: 'start',
-                        labels: {
-                            boxWidth: 12,
-                            padding: 15,
-                            font: {
-                                size: 11
-                            },
-                            generateLabels: (chart) => {
-                                const datasets = chart.data.datasets;
-                                return datasets.map((dataset, i) => ({
-                                    text: dataset.label,
-                                    fillStyle: dataset.borderColor,
-                                    strokeStyle: dataset.borderColor,
-                                    lineWidth: 2,
-                                    hidden: chart.getDatasetMeta(i).hidden,
-                                    index: i
-                                }));
-                            }
-                        }
-                    },
-                    tooltip: { 
-                        mode: 'index', 
-                        intersect: false, 
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        titleFont: { weight: '600', size: 14 },
-                        bodyFont: { size: 12 },
-                        padding: 12,
-                        cornerRadius: 8,
-                        displayColors: true,
-                        callbacks: {
-                            title: (context) => {
-                                return context[0].dataset.label;
-                            },
-                            label: (context) => {
-                                const label = context.dataset.label || '';
-                                const value = context.parsed.y;
-                                const date = context.label;
-                                if (value === null || value === undefined || isNaN(value)) {
-                                    return `${date}: Sin dato`;
-                                }
-                                return `${date}: ${value.toFixed(4)}`;
-                            }
-                        }
-                    }
-                },
-                scales: { 
-                    y: { 
-                        beginAtZero: false, 
-                        grid: { 
-                            color: 'rgba(226, 232, 240, 0.5)',
-                            drawBorder: false
-                        }, 
-                        title: {
-                            display: true, 
-                            text: 'Valor',
-                            font: { weight: '600', size: 13 }
-                        },
-                        ticks: {
-                            font: { size: 12 },
-                            callback: this.formatValueCallback
-                        }
-                    }, 
-                    x: { 
-                        grid: { 
-                            display: false 
-                        },
-                        ticks: {
-                            font: { size: 12 },
-                            maxRotation: 45,
-                            callback: (value, index, values) => {
-                                // Formatear fechas para mostrar mes-año
-                                const dateStr = this.mainChart.data.labels[index];
-                                try {
-                                    const [year, month] = dateStr.split('-');
-                                    const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-                                    return `${months[parseInt(month)-1]} ${year}`;
-                                } catch (e) {
-                                    return dateStr;
-                                }
-                            }
-                        }
-                    } 
-                },
-                elements: {
-                    point: {
-                        radius: 3,
-                        hoverRadius: 8,
-                        hoverBorderWidth: 3,
-                        hoverBackgroundColor: '#ffffff'
-                    },
-                    line: {
-                        tension: 0.3
-                    }
-                },
-                animations: {
-                    tension: {
-                        duration: 1000,
-                        easing: 'linear'
-                    }
-                }
-            }
-        });
-
-        // 2. Gráfico de Ranking
-        const ctxRank = document.getElementById('rankingChart').getContext('2d');
-        this.rankingChart = new Chart(ctxRank, {
-            type: 'bar',
-            data: { labels: [], datasets: [] },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { 
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        titleFont: { weight: '600', size: 14 },
-                        bodyFont: { size: 13 },
-                        padding: 12,
-                        cornerRadius: 8,
-                        callbacks: {
-                            label: (context) => {
-                                const series = context.dataset.label;
-                                const value = context.parsed.x;
-                                if (value === null || value === undefined || isNaN(value)) {
-                                    return `${series}: Sin dato`;
-                                }
-                                return `${series}: ${value.toFixed(4)}`;
-                            }
-                        }
-                    }
-                },
-                scales: { 
-                    x: { 
-                        grid: { 
-                            color: 'rgba(226, 232, 240, 0.5)',
-                            drawBorder: false
-                        },
-                        title: {
-                            display: true,
-                            text: 'Valor Promedio',
-                            font: { weight: '600', size: 13 }
-                        },
-                        ticks: {
-                            font: { size: 12 },
-                            callback: this.formatValueCallback
-                        }
-                    },
-                    y: {
-                        grid: { display: false },
-                        ticks: {
-                            font: { size: 12, weight: '600' },
-                            callback: (value) => {
-                                // Truncar etiquetas largas
-                                if (value.length > 20) {
-                                    return value.substring(0, 20) + '...';
-                                }
-                                return value;
-                            }
-                        }
-                    }
-                },
-                elements: {
-                    bar: {
-                        borderRadius: 6,
-                        borderSkipped: false,
-                    }
-                }
-            }
-        });
-
-        // 3. Gráfico de Dispersión
-        const ctxScatter = document.getElementById('scatterChart').getContext('2d');
-        this.scatterChart = new Chart(ctxScatter, {
-            type: 'scatter',
-            data: { datasets: [] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: true,
-                        position: 'top'
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: (context) => {
-                                const point = context.raw;
-                                if (point.x === null || point.x === undefined || isNaN(point.x) ||
-                                    point.y === null || point.y === undefined || isNaN(point.y)) {
-                                    return `${point.label}: Sin dato`;
-                                }
-                                return `${point.label}: (${point.x.toFixed(2)}, ${point.y.toFixed(4)})`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Variable X'
-                        }
-                    },
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Variable Y'
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    formatValueCallback(value) {
-        // Formatear números grandes
-        if (value >= 1000000) {
-            return (value/1000000).toFixed(1) + 'M';
-        }
-        if (value >= 1000) {
-            return (value/1000).toFixed(0) + 'k';
-        }
-        if (Math.abs(value) < 0.001) {
-            return value.toExponential(1);
-        }
-        if (Math.abs(value) < 1) {
-            return value.toFixed(3);
-        }
-        if (Math.abs(value) < 10) {
-            return value.toFixed(2);
-        }
-        if (Math.abs(value) < 1000) {
-            return value.toFixed(1);
-        }
-        return value.toFixed(0);
-    }
-
-    updateCharts() {
-        if (!this.mainChart || this.data.length === 0) {
-            console.warn("⚠️  No hay datos para mostrar en gráficos");
-            return;
-        }
-
-        console.log("📈 Actualizando gráficos con", this.data.length, "registros");
-        
-        // Obtener todas las combinaciones únicas
-        const uniqueCombinations = [...new Set(this.data.map(d => d.combinationKey))];
-        console.log("🔄 Combinaciones únicas:", uniqueCombinations.length);
-        
-        // Obtener todas las fechas únicas y ordenarlas
-        const uniqueDates = [...new Set(this.data.map(d => d.fecha))].sort((a, b) => {
-            return new Date(a) - new Date(b);
-        });
-        
-        // Agrupar datos por combinación
-        const groupedData = {};
-        const seriesStats = {};
-        
-        uniqueCombinations.forEach(combination => {
-            const items = this.data.filter(d => d.combinationKey === combination);
-            const firstItem = items[0];
-            
-            // Crear mapa de fecha -> valor para esta combinación
-            const dateMap = {};
-            items.forEach(item => {
-                dateMap[item.fecha] = item.frecuencia;
-            });
-            
-            // Crear array de valores para cada fecha única
-            groupedData[combination] = {
-                label: firstItem.combinationLabel,
-                data: uniqueDates.map(date => dateMap[date] !== undefined ? dateMap[date] : null),
-                alimentador: firstItem.transformador,
-                year: firstItem.year,
-                tipo: firstItem.tipo
-            };
-            
-            // Calcular estadísticas para esta serie
-            const valores = items.map(i => i.frecuencia).filter(v => v !== null);
-            if (valores.length > 0) {
-                const sum = valores.reduce((a, b) => a + b, 0);
-                const avg = sum / valores.length;
-                const max = Math.max(...valores);
-                const min = Math.min(...valores);
-                const std = Math.sqrt(valores.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / valores.length);
-                
-                // Evitar división por cero en CV
-                const cv = avg !== 0 ? (std / avg) * 100 : 0;
-                
-                seriesStats[combination] = {
-                    avg: avg,
-                    min: min,
-                    max: max,
-                    std: std,
-                    cv: cv, // Coeficiente de variación
-                    count: valores.length
-                };
-            }
-        });
-        
-        // Asignar colores a las series
-        this.activeColorMap = {};
-        uniqueCombinations.forEach((combination, idx) => {
-            this.activeColorMap[combination] = this.chartPalette[idx % this.chartPalette.length];
-        });
-        
-        // Crear datasets para el gráfico principal
-        const datasetsMain = uniqueCombinations.map((combination, idx) => {
-            const series = groupedData[combination];
-            const color = this.activeColorMap[combination];
-            
-            // Determinar estilo basado en el tipo de agrupación
-            let lineStyle = 'solid';
-            if (this.groupBy === 'year') {
-                // Diferentes estilos para diferentes años
-                const yearIndex = this.filters.year.indexOf(series.year);
-                lineStyle = ['solid', 'dash', 'dot'][yearIndex % 3] || 'solid';
-            } else if (this.groupBy === 'tipo') {
-                // Diferentes estilos para diferentes tipos
-                const tipoIndex = this.filters.tipoMedicion.indexOf(series.tipo);
-                lineStyle = ['solid', 'dash', 'dot'][tipoIndex % 3] || 'solid';
-            }
-            
-            return {
-                label: series.label,
-                data: series.data,
-                borderColor: color,
-                backgroundColor: color + '20',
-                borderWidth: 3,
-                borderDash: lineStyle === 'solid' ? [] : 
-                           lineStyle === 'dash' ? [10, 5] : [5, 5],
-                tension: 0.3,
-                pointRadius: 4,
-                pointHoverRadius: 8,
-                pointBackgroundColor: color,
-                pointBorderColor: '#ffffff',
-                pointBorderWidth: 2,
-                fill: false,
-                pointHoverBackgroundColor: '#ffffff',
-                pointHoverBorderColor: color,
-                pointHoverBorderWidth: 3,
-                hidden: idx >= 15 // Ocultar series después de 15 para evitar saturación
-            };
-        });
-        
-        // Actualizar gráfico principal
-        this.mainChart.data.labels = uniqueDates;
-        this.mainChart.data.datasets = datasetsMain;
-        
-        // Actualizar tipo de gráfico si se cambió
-        const chartType = document.getElementById('chartType').value;
-        this.mainChart.config.type = chartType;
-        
-        // Actualizar escalas basadas en datos
-        const allValues = this.data.map(d => d.frecuencia).filter(v => v !== null);
-        if (allValues.length > 0) {
-            const minVal = Math.min(...allValues);
-            const maxVal = Math.max(...allValues);
-            const range = maxVal - minVal;
-            
-            // Ajustar escala con margen
-            this.mainChart.options.scales.y.min = minVal - range * 0.1;
-            this.mainChart.options.scales.y.max = maxVal + range * 0.1;
-        }
-        
-        try {
-            this.mainChart.update();
-            console.log("✅ Gráfico principal actualizado");
-        } catch (error) {
-            console.error("❌ Error al actualizar gráfico principal:", error);
-        }
-        
-        // Actualizar gráfico de ranking solo si hay estadísticas
-        if (Object.keys(seriesStats).length > 0) {
-            this.updateRankingChart(seriesStats);
-        }
-        
-        // Actualizar gráfico de dispersión
-        this.updateScatterChart();
-        
-        // Actualizar KPIs solo si hay estadísticas
-        if (Object.keys(seriesStats).length > 0) {
-            this.updateComparisonKPIs(seriesStats);
-        }
-    }
-
-    updateRankingChart(seriesStats) {
-        if (!this.rankingChart) return;
-        
-        const sortMethod = document.getElementById('rankingSort').value;
-        
-        // Ordenar series según método seleccionado
-        let sortedSeries = Object.keys(seriesStats).sort((a, b) => {
-            switch(sortMethod) {
-                case 'avg':
-                    return seriesStats[b].avg - seriesStats[a].avg;
-                case 'stability':
-                    return seriesStats[a].cv - seriesStats[b].cv; // Menor CV = más estable
-                case 'trend':
-                    // Simular tendencia (en realidad necesitaríamos cálculo de tendencia)
-                    return Math.random() - 0.5;
-                default:
-                    return seriesStats[b].avg - seriesStats[a].avg;
-            }
-        });
-        
-        // Limitar a 20 series para legibilidad
-        if (sortedSeries.length > 20) {
-            sortedSeries = sortedSeries.slice(0, 20);
-        }
-        
-        const labels = sortedSeries.map(key => {
-            const items = this.data.filter(d => d.combinationKey === key);
-            return items[0]?.combinationLabel || key;
-        });
-        
-        const data = sortedSeries.map(key => seriesStats[key]?.avg || 0);
-        const colors = sortedSeries.map(key => this.activeColorMap[key] || '#94a3b8');
-        
-        this.rankingChart.data.labels = labels;
-        this.rankingChart.data.datasets = [{
-            label: 'Promedio',
-            data: data,
-            backgroundColor: colors,
-            borderRadius: 6,
-            borderWidth: 2,
-            borderColor: colors.map(c => c + 'CC')
-        }];
-        
-        try {
-            this.rankingChart.update();
-            console.log("✅ Gráfico de ranking actualizado");
-        } catch (error) {
-            console.error("❌ Error al actualizar gráfico de ranking:", error);
-        }
-    }
-
-    updateScatterChart() {
-        if (!this.scatterChart) return;
-        
-        const xVar = document.getElementById('scatterX').value;
-        const yVar = document.getElementById('scatterY').value;
-        
-        // Agrupar por combinación para el scatter plot
-        const uniqueCombinations = [...new Set(this.data.map(d => d.combinationKey))];
-        const datasets = [];
-        
-        uniqueCombinations.slice(0, 10).forEach((combination, idx) => { // Limitar a 10 series
-            const items = this.data.filter(d => d.combinationKey === combination);
-            const firstItem = items[0];
-            const color = this.activeColorMap[combination] || this.chartPalette[idx];
-            
-            const points = items.map(item => {
-                let xValue;
-                switch(xVar) {
-                    case 'fecha':
-                        xValue = new Date(item.fecha).getTime();
-                        break;
-                    case 'alimentador':
-                        // Convertir alimentador a número para el eje X
-                        xValue = this.filters.transformador.indexOf(item.transformador);
-                        break;
-                    case 'tipo':
-                        xValue = this.filters.tipoMedicion.indexOf(item.tipo);
-                        break;
-                    default:
-                        xValue = idx;
-                }
-                
-                let yValue;
-                switch(yVar) {
-                    case 'valor':
-                        yValue = item.frecuencia;
-                        break;
-                    case 'desviacion':
-                        // Calcular desviación del promedio de la serie
-                        const serieAvg = items.reduce((sum, i) => sum + i.frecuencia, 0) / items.length;
-                        yValue = Math.abs(item.frecuencia - serieAvg);
-                        break;
-                    case 'tendencia':
-                        // Simular tendencia
-                        yValue = Math.sin(new Date(item.fecha).getMonth() * 0.5) * 0.3 + 0.5;
-                        break;
-                    default:
-                        yValue = item.frecuencia;
-                }
-                
-                return {
-                    x: xValue,
-                    y: yValue,
-                    label: `${item.transformador} - ${item.fecha}`
-                };
-            });
-            
-            datasets.push({
-                label: firstItem?.combinationLabel || combination,
-                data: points,
-                backgroundColor: color + '80',
-                borderColor: color,
-                borderWidth: 2,
-                pointRadius: 6,
-                pointHoverRadius: 10
-            });
-        });
-        
-        this.scatterChart.data.datasets = datasets;
-        
-        // Configurar ejes
-        this.scatterChart.options.scales.x.title.text = this.getAxisLabel(xVar);
-        this.scatterChart.options.scales.y.title.text = this.getAxisLabel(yVar);
-        
-        try {
-            this.scatterChart.update();
-        } catch (error) {
-            console.error("❌ Error al actualizar gráfico de dispersión:", error);
-        }
-    }
-
-    getAxisLabel(variable) {
-        switch(variable) {
-            case 'fecha': return 'Fecha';
-            case 'alimentador': return 'Alimentador';
-            case 'tipo': return 'Tipo de Medición';
-            case 'valor': return 'Valor';
-            case 'desviacion': return 'Desviación';
-            case 'tendencia': return 'Tendencia';
-            default: return variable;
-        }
-    }
-
-    updateComparisonKPIs(seriesStats) {
-        if (!seriesStats || Object.keys(seriesStats).length === 0) {
-            console.warn("No hay estadísticas para actualizar KPIs");
-            return;
-        }
-        
-        console.log("📊 Actualizando KPIs de comparación...");
-        console.log("Series disponibles:", Object.keys(seriesStats).length);
-        
-        // Calcular estadísticas globales
-        const allAverages = Object.values(seriesStats).map(s => s.avg);
-        const allMins = Object.values(seriesStats).map(s => s.min);
-        const allMaxs = Object.values(seriesStats).map(s => s.max);
-        const allCVs = Object.values(seriesStats).map(s => s.cv);
-        
-        const globalAvg = allAverages.reduce((a, b) => a + b, 0) / allAverages.length;
-        const globalMin = Math.min(...allMins);
-        const globalMax = Math.max(...allMaxs);
-        const globalRange = globalMax - globalMin;
-        const avgCV = allCVs.reduce((a, b) => a + b, 0) / allCVs.length;
-        
-        // Encontrar la peor serie (mayor CV = menos estable)
-        let worstSeriesKey = Object.keys(seriesStats)[0];
-        let worstCV = seriesStats[worstSeriesKey].cv;
-        
-        Object.entries(seriesStats).forEach(([key, stats]) => {
-            if (stats.cv > worstCV) {
-                worstCV = stats.cv;
-                worstSeriesKey = key;
-            }
-        });
-        
-        const worstSeries = this.data.find(d => d.combinationKey === worstSeriesKey);
-        
-        // Actualizar elementos
-        document.getElementById('rangeValue').textContent = this.safeToFixed(globalRange);
-        document.getElementById('rangeInfo').textContent = `${this.safeToFixed(globalMin, 0)}-${this.safeToFixed(globalMax, 0)}`;
-        
-        document.getElementById('variabilityValue').textContent = this.safeToFixed(avgCV, 2) + '%';
-        const variabilityBadge = document.getElementById('variabilityBadge');
-        if (avgCV < 10) {
-            variabilityBadge.textContent = 'Excelente';
-            variabilityBadge.style.background = 'rgba(16, 185, 129, 0.1)';
-            variabilityBadge.style.color = 'var(--success)';
-        } else if (avgCV < 20) {
-            variabilityBadge.textContent = 'Buena';
-            variabilityBadge.style.background = 'rgba(245, 158, 11, 0.1)';
-            variabilityBadge.style.color = 'var(--warning)';
-        } else {
-            variabilityBadge.textContent = 'Alta';
-            variabilityBadge.style.background = 'rgba(239, 68, 68, 0.1)';
-            variabilityBadge.style.color = 'var(--danger)';
-        }
-        
-        if (worstSeries) {
-            document.getElementById('worstSeries').textContent = worstSeries.transformador;
-            document.getElementById('worstValue').textContent = this.safeToFixed(seriesStats[worstSeriesKey].cv, 2) + '% CV';
-        }
-        
-        // Actualizar contador de series activas
-        const activeSeriesEl = document.getElementById('activeSeries');
-        if (activeSeriesEl) {
-            activeSeriesEl.textContent = Object.keys(seriesStats).length;
-        }
-    }
-
-    // --- TABLA MEJORADA ---
-    updateTable() {
-        const tbody = document.getElementById('dataTable');
-        if (!tbody) return;
-        
-        tbody.innerHTML = '';
-        const start = (this.pagination.currentPage - 1) * this.pagination.rowsPerPage;
-        const end = start + this.pagination.rowsPerPage;
-        const pageData = this.filteredData.slice(start, end);
-
-        if(pageData.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="8" style="text-align:center; padding:3rem; color:#94a3b8;">
-                        <i class="fas fa-exchange-alt" style="font-size:2rem; margin-bottom:1rem; display:block; opacity:0.5;"></i>
-                        No hay datos para comparar con los filtros actuales<br>
-                        <small>Selecciona al menos un año, un alimentador y un tipo de medición</small>
-                    </td>
-                </tr>`;
-            this.updatePaginationInfo(0, 0, 0);
-            return;
-        }
-
-        pageData.forEach(item => {
-            const tr = document.createElement('tr');
-            const color = this.activeColorMap[item.combinationKey] || '#94a3b8';
-            
-            // Estado basado en desviación del promedio de la serie
-            const serieItems = this.data.filter(d => d.combinationKey === item.combinationKey);
-            const serieAvg = serieItems.reduce((a, b) => a + b.frecuencia, 0) / serieItems.length;
-            const diff = Math.abs(item.frecuencia - serieAvg) / serieAvg;
-            
-            let statusClass = 'status-optimal';
-            let statusText = 'Normal';
-            let statusIcon = 'fa-check-circle';
-            
-            if(diff >= 0.1 && diff < 0.3) {
-                statusClass = 'status-regular';
-                statusText = 'Desviado';
-                statusIcon = 'fa-exclamation-circle';
-            }
-            if(diff >= 0.3) {
-                statusClass = 'status-critical';
-                statusText = 'Anómalo';
-                statusIcon = 'fa-times-circle';
-            }
-
-            tr.innerHTML = `
-                <td style="display:flex; align-items:center; gap:12px; font-weight:600;">
-                    <span style="width:14px; height:14px; border-radius:50%; background:${color}; 
-                        box-shadow:0 0 0 3px ${color}20, 0 2px 4px rgba(0,0,0,0.1);"></span>
-                    ${item.combinationLabel}
-                </td>
-                <td style="font-weight:600; color:#475569;">${item.transformador}</td>
-                <td style="font-weight:500;">${item.year}</td>
-                <td style="font-weight:500; color:#8b5cf6;">${item.tipo}</td>
-                <td style="font-weight:500; color:#475569;">${item.fecha}</td>
-                <td style="font-family:'Roboto Mono', monospace; font-size:1.05em; font-weight:700; color:#0f172a;">
-                    ${this.safeToFixed(item.frecuencia)}
-                </td>
-                <td>
-                    <span class="status-indicator ${statusClass}">
-                        <i class="fas ${statusIcon}"></i>
-                        ${statusText}
-                    </span>
-                </td>
-                <td>
-                    <button class="btn-icon small" title="Ver detalles" onclick="dashboard.showSeriesDetails('${item.combinationKey}')">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="btn-icon small" title="Aislar serie" onclick="dashboard.isolateSeries('${item.combinationKey}')">
-                        <i class="fas fa-filter"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        this.updatePaginationInfo(start + 1, end, this.filteredData.length);
-        this.updatePaginationButtons();
-    }
-
-    // --- NUEVOS MÉTODOS PARA COMPARACIÓN ---
-    showSeriesDetails(combinationKey) {
-        const serieItems = this.data.filter(d => d.combinationKey === combinationKey);
-        if (serieItems.length === 0) return;
-        
-        const firstItem = serieItems[0];
-        const valores = serieItems.map(i => i.frecuencia);
-        const avg = valores.reduce((a, b) => a + b, 0) / valores.length;
-        const min = Math.min(...valores);
-        const max = Math.max(...valores);
-        const std = Math.sqrt(valores.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / valores.length);
-        
-        const modalBody = document.getElementById('modalBody');
-        if (!modalBody) return;
-        
-        modalBody.innerHTML = `
-            <div class="series-details">
-                <div class="series-header" style="display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem;">
-                    <span style="width:20px; height:20px; border-radius:50%; background:${this.activeColorMap[combinationKey] || '#94a3b8'}"></span>
-                    <h4 style="margin:0;">${firstItem.combinationLabel}</h4>
-                </div>
-                
-                <div class="stats-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:1rem; margin-bottom:1.5rem;">
-                    <div class="stat-card" style="background:#f8fafc; padding:1rem; border-radius:8px;">
-                        <div style="font-size:0.85rem; color:#64748b;">Promedio</div>
-                        <div style="font-size:1.5rem; font-weight:700; color:#0f172a;">${this.safeToFixed(avg)}</div>
-                    </div>
-                    <div class="stat-card" style="background:#f8fafc; padding:1rem; border-radius:8px;">
-                        <div style="font-size:0.85rem; color:#64748b;">Rango</div>
-                        <div style="font-size:1.5rem; font-weight:700; color:#0f172a;">${this.safeToFixed(min)} - ${this.safeToFixed(max)}</div>
-                    </div>
-                    <div class="stat-card" style="background:#f8fafc; padding:1rem; border-radius:8px;">
-                        <div style="font-size:0.85rem; color:#64748b;">Desviación</div>
-                        <div style="font-size:1.5rem; font-weight:700; color:#0f172a;">${this.safeToFixed(std)}</div>
-                    </div>
-                    <div class="stat-card" style="background:#f8fafc; padding:1rem; border-radius:8px;">
-                        <div style="font-size:0.85rem; color:#64748b;">Muestras</div>
-                        <div style="font-size:1.5rem; font-weight:700; color:#0f172a;">${serieItems.length}</div>
-                    </div>
-                </div>
-                
-                <div class="series-info">
-                    <p><strong>Alimentador:</strong> ${firstItem.transformador}</p>
-                    <p><strong>Año:</strong> ${firstItem.year}</p>
-                    <p><strong>Tipo de medición:</strong> ${firstItem.tipo}</p>
-                    <p><strong>Departamento:</strong> ${firstItem.departamento || 'N/A'}</p>
-                    <p><strong>Periodo:</strong> ${serieItems[0].fecha} - ${serieItems[serieItems.length-1].fecha}</p>
-                </div>
-            </div>
-        `;
-        
-        const modal = document.getElementById('seriesModal');
-        if (modal) {
-            modal.style.display = 'flex';
-        }
-    }
-
-    isolateSeries(combinationKey) {
-        // Aislar esta serie en el gráfico
-        const datasets = this.mainChart.data.datasets;
-        datasets.forEach((dataset, index) => {
-            const meta = this.mainChart.getDatasetMeta(index);
-            const isTargetSeries = dataset.label.includes(combinationKey.split('-')[0]);
-            meta.hidden = !isTargetSeries;
-        });
-        
-        this.mainChart.update();
-        this.showNotification(`Aislando serie: ${combinationKey.split('-')[0]}`, "success");
-    }
-
-    // --- EVENTOS MEJORADOS ---
-    initializeEvents() {
-        // Aplicar filtros
-        const applyFiltersBtn = document.getElementById('applyFilters');
-        if (applyFiltersBtn) {
-            applyFiltersBtn.addEventListener('click', () => {
-                this.syncFilters();
-                
-                // Validar según modo global
-                if (this.globalComparisonMode === 'unique') {
-                    // En modo único, validar que haya al menos un valor en cada filtro
-                    if (!this.filters.transformador[0] || !this.filters.year[0] || !this.filters.tipoMedicion[0]) {
-                        this.showNotification("Selecciona un valor en cada filtro", "warning");
-                        return;
-                    }
-                } else {
-                    // En modo múltiple, validar que haya al menos una selección
-                    if (this.filters.transformador.length === 0) {
-                        this.showNotification("Selecciona al menos un alimentador", "warning");
-                        return;
-                    }
-                    if (this.filters.year.length === 0) {
-                        this.showNotification("Selecciona al menos un año", "warning");
-                        return;
-                    }
-                    if (this.filters.tipoMedicion.length === 0) {
-                        this.showNotification("Selecciona al menos un tipo de medición", "warning");
-                        return;
-                    }
-                }
-                
-                if(window.innerWidth <= 768) {
-                    const sidebar = document.getElementById('sidebar');
-                    if (sidebar) sidebar.classList.remove('active');
-                }
-                this.loadData();
-                this.updateComparisonTags();
-            });
-        }
-
-        // Restablecer filtros
-        const resetFiltersBtn = document.getElementById('resetFilters');
-        if (resetFiltersBtn) {
-            resetFiltersBtn.addEventListener('click', () => {
-                this.setInitialDefaults();
-                this.loadData();
-                this.showNotification("Filtros restablecidos", "success");
-            });
-        }
-
-        // Limpiar todo
-        const clearAllBtn = document.getElementById('clearAll');
-        if (clearAllBtn) {
-            clearAllBtn.addEventListener('click', () => {
-                const tipoMedicionSel = document.getElementById('filterTipoMedicion');
-                const yearSel = document.getElementById('filterYear');
-                const transformadorSel = document.getElementById('filterTransformador');
-                const monthSel = document.getElementById('filterMonth');
-                const estacionSel = document.getElementById('filterEstacion');
-                const periodoSel = document.getElementById('filterPeriodo');
-                
-                if (tipoMedicionSel) tipoMedicionSel.selectedIndex = -1;
-                if (yearSel) yearSel.selectedIndex = -1;
-                if (transformadorSel) transformadorSel.selectedIndex = -1;
-                if (monthSel) monthSel.selectedIndex = -1;
-                if (estacionSel) estacionSel.value = '';
-                if (periodoSel) periodoSel.value = 'select_months';
-                
-                // Limpiar botones de meses
-                this.clearMonthSelection();
-                
-                // Mostrar selectores de mes
-                const monthModeGroup = document.getElementById('monthModeGroup');
-                const monthSelectorGroup = document.getElementById('monthSelectorGroup');
-                if (monthModeGroup) monthModeGroup.style.display = 'block';
-                if (monthSelectorGroup) monthSelectorGroup.style.display = 'block';
-                
-                // Restaurar todos los alimentadores cuando se limpia la estación
-                this.filterAlimentadoresByEstacion('');
-                
-                // Restaurar modo único global
-                this.setGlobalComparisonMode('unique');
-                
-                this.syncFilters();
-                this.updateComparisonTags();
-                this.showNotification("Filtros limpiados", "info");
-            });
-        }
-
-        // Cambiar tipo de gráfico
-        const chartTypeSel = document.getElementById('chartType');
-        if (chartTypeSel) {
-            chartTypeSel.addEventListener('change', () => {
-                this.updateCharts();
-            });
-        }
-
-        // Cambiar agrupación
-        const groupBySel = document.getElementById('groupBy');
-        if (groupBySel) {
-            groupBySel.addEventListener('change', () => {
-                this.syncFilters();
-                this.loadData();
-            });
-        }
-
-        // Cambiar ranking
-        const rankingSortSel = document.getElementById('rankingSort');
-        if (rankingSortSel) {
-            rankingSortSel.addEventListener('change', () => {
-                this.updateCharts();
-            });
-        }
-
-        // Cambiar scatter plot
-        const scatterXSel = document.getElementById('scatterX');
-        const scatterYSel = document.getElementById('scatterY');
-        if (scatterXSel) {
-            scatterXSel.addEventListener('change', () => {
-                this.updateCharts();
-            });
-        }
-        if (scatterYSel) {
-            scatterYSel.addEventListener('change', () => {
-                this.updateCharts();
-            });
-        }
-
-        // Control del sidebar
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        if (sidebarToggle) {
-            sidebarToggle.addEventListener('click', () => {
-                const sidebar = document.getElementById('sidebar');
-                if (sidebar) sidebar.classList.add('active');
-            });
-        }
-        
-        const sidebarClose = document.getElementById('sidebarClose');
-        if (sidebarClose) {
-            sidebarClose.addEventListener('click', () => {
-                const sidebar = document.getElementById('sidebar');
-                if (sidebar) sidebar.classList.remove('active');
-            });
-        }
-
-        // Paginación
-        const firstPageBtn = document.getElementById('firstPage');
-        const prevPageBtn = document.getElementById('prevPage');
-        const nextPageBtn = document.getElementById('nextPage');
-        const lastPageBtn = document.getElementById('lastPage');
-        
-        if (firstPageBtn) {
-            firstPageBtn.addEventListener('click', () => {
-                this.pagination.currentPage = 1;
-                this.updateTable();
-            });
-        }
-        
-        if (prevPageBtn) {
-            prevPageBtn.addEventListener('click', () => {
-                if(this.pagination.currentPage > 1) { 
-                    this.pagination.currentPage--; 
-                    this.updateTable(); 
-                }
-            });
-        }
-        
-        if (nextPageBtn) {
-            nextPageBtn.addEventListener('click', () => {
-                const maxPage = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
-                if(this.pagination.currentPage < maxPage) { 
-                    this.pagination.currentPage++; 
-                    this.updateTable(); 
-                }
-            });
-        }
-        
-        if (lastPageBtn) {
-            lastPageBtn.addEventListener('click', () => {
-                this.pagination.currentPage = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
-                this.updateTable();
-            });
-        }
-
-        // Filas por página
-        const rowsPerPageSel = document.getElementById('rowsPerPage');
-        if (rowsPerPageSel) {
-            rowsPerPageSel.addEventListener('change', (e) => {
-                this.pagination.rowsPerPage = parseInt(e.target.value);
-                this.pagination.currentPage = 1;
-                this.updateTable();
-            });
-        }
-
-        // Búsqueda en tabla
-        const tableSearchInput = document.getElementById('tableSearch');
-        if (tableSearchInput) {
-            tableSearchInput.addEventListener('keyup', (e) => {
-                const term = e.target.value.toLowerCase();
-                this.filteredData = this.data.filter(d => 
-                    d.transformador.toLowerCase().includes(term) ||
-                    d.combinationLabel.toLowerCase().includes(term) ||
-                    d.tipo.toLowerCase().includes(term) ||
-                    d.frecuencia.toString().includes(term)
-                );
-                this.pagination.currentPage = 1;
-                this.updateTable();
-            });
-        }
-
-        // Ordenar tabla
-        document.querySelectorAll('.data-table th[data-sort]').forEach(th => {
-            th.addEventListener('click', () => {
-                this.sortTable(th.dataset.sort);
-            });
-        });
-
-        // Control de zoom de gráficos
-        document.getElementById('zoomIn').addEventListener('click', () => {
-            if (this.mainChart.scales.y) {
-                const currentMin = this.mainChart.scales.y.min;
-                const currentMax = this.mainChart.scales.y.max;
-                const range = currentMax - currentMin;
-                this.mainChart.scales.y.min = currentMin + range * 0.1;
-                this.mainChart.scales.y.max = currentMax - range * 0.1;
-                this.mainChart.update();
-            }
-        });
-
-        document.getElementById('zoomOut').addEventListener('click', () => {
-            if (this.mainChart.scales.y) {
-                const currentMin = this.mainChart.scales.y.min;
-                const currentMax = this.mainChart.scales.y.max;
-                const range = currentMax - currentMin;
-                this.mainChart.scales.y.min = currentMin - range * 0.1;
-                this.mainChart.scales.y.max = currentMax + range * 0.1;
-                this.mainChart.update();
-            }
-        });
-
-        document.getElementById('resetZoom').addEventListener('click', () => {
-            if (this.mainChart.scales.y) {
-                this.mainChart.scales.y.min = null;
-                this.mainChart.scales.y.max = null;
-                this.mainChart.update();
-            }
-        });
-
-        // Ir a sección de importación Excel
-        const goToExcelUpload = document.getElementById('goToExcelUpload');
-        if (goToExcelUpload) {
-            goToExcelUpload.addEventListener('click', () => {
-                const section = document.getElementById('excelUploadSection');
-                if (section) {
-                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    this.showNotification('Sección de importación Excel visible', 'info');
-                }
-            });
-        }
-
-        // Exportar datos
-        const exportDataBtn = document.getElementById('exportData');
-        if (exportDataBtn) {
-            exportDataBtn.addEventListener('click', () => {
-                this.exportData();
-            });
-        }
-
-        // Pantalla completa
-        const fullscreenToggleBtn = document.getElementById('fullscreenToggle');
-        if (fullscreenToggleBtn) {
-            fullscreenToggleBtn.addEventListener('click', () => {
-                this.toggleFullscreen();
-            });
-        }
-
-        // Alternar leyenda
-        const toggleLegendBtn = document.getElementById('toggleLegend');
-        if (toggleLegendBtn) {
-            toggleLegendBtn.addEventListener('click', () => {
-                if (this.mainChart) {
-                    const legend = this.mainChart.options.plugins.legend;
-                    legend.display = !legend.display;
-                    this.mainChart.update();
-                }
-            });
-        }
-
-        // Alternar puntos
-        const togglePointsBtn = document.getElementById('togglePoints');
-        if (togglePointsBtn) {
-            togglePointsBtn.addEventListener('click', () => {
-                if (this.mainChart && this.mainChart.data.datasets.length > 0) {
-                    const datasets = this.mainChart.data.datasets;
-                    const showPoints = datasets[0]?.pointRadius > 0;
-                    
-                    datasets.forEach(dataset => {
-                        dataset.pointRadius = showPoints ? 0 : 4;
-                        dataset.pointHoverRadius = showPoints ? 0 : 8;
-                    });
-                    
-                    this.mainChart.update();
-                }
-            });
-        }
-
-        // Cerrar modal
-        const modalCloseBtn = document.getElementById('modalClose');
-        if (modalCloseBtn) {
-            modalCloseBtn.addEventListener('click', () => {
-                const modal = document.getElementById('seriesModal');
-                if (modal) modal.style.display = 'none';
-            });
-        }
-
-        // Cerrar modal al hacer clic fuera
-        const modal = document.getElementById('seriesModal');
-        if (modal) {
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        }
-
-        // Filtro de estación
-        const estacionSel = document.getElementById('filterEstacion');
-        if (estacionSel) {
-            estacionSel.addEventListener('change', (e) => {
-                const estacion = e.target.value;
-                this.filters.estacion = estacion;
-                this.filterAlimentadoresByEstacion(estacion);
-                this.showNotification(`Filtro de estación: ${estacion || 'Todas'}`, "info");
-            });
-        }
-
-        // Filtro de período
-        document.getElementById('filterPeriodo').addEventListener('change', (e) => {
-            const periodo = e.target.value;
-            this.filters.periodo = periodo;
-            
-            if (periodo === 'select_months') {
-                // Mostrar selectores de modo y meses
-                this.updateMonthModeVisibility();
-            } else {
-                // Ocultar selectores y aplicar período predefinido
-                document.getElementById('monthModeGroup').style.display = 'none';
-                document.getElementById('monthSelectorGroup').style.display = 'none';
-                this.applyPeriodoFilter(periodo);
-            }
-        });
-
-        // Carga de Excel
-        const uploadExcelBtn = document.getElementById('uploadExcelBtn');
-        if (uploadExcelBtn) {
-            uploadExcelBtn.addEventListener('click', () => this.handleExcelUpload());
-        }
-        
-        // Eventos para botones de meses
-        document.querySelectorAll('.month-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                this.toggleMonthSelection(e.target.dataset.month, e.shiftKey);
-            });
-        });
-
-        // Eventos para modo global único/múltiple
-        const globalModeUniqueBtn = document.getElementById('globalModeUnique');
-        const globalModeMultipleBtn = document.getElementById('globalModeMultiple');
-        
-        if (globalModeUniqueBtn) {
-            globalModeUniqueBtn.addEventListener('click', () => {
-                this.setGlobalComparisonMode('unique');
-            });
-        }
-        
-        if (globalModeMultipleBtn) {
-            globalModeMultipleBtn.addEventListener('click', () => {
-                this.setGlobalComparisonMode('multiple');
-            });
-        }
-        
-        // Eventos para selectores múltiples que respeten el modo global
-        ['filterYear', 'filterTipoMedicion', 'filterTransformador', 'filterMonth'].forEach(selectId => {
-            const select = document.getElementById(selectId);
-            if (select) {
-                select.addEventListener('change', (e) => {
-                    if (this.globalComparisonMode === 'unique') {
-                        this.limitToSingleSelection(selectId);
-                    }
-                    this.syncFilters();
-                    this.updateComparisonTags();
-                });
-            }
-        });
-
-        // Cerrar sidebar al hacer clic fuera (en móviles)
-        document.addEventListener('click', (e) => {
-            const sidebar = document.getElementById('sidebar');
-            const sidebarToggle = document.getElementById('sidebarToggle');
-            
-            if (window.innerWidth <= 768 && 
-                sidebar && sidebar.classList.contains('active') && 
-                !sidebar.contains(e.target) && 
-                (!sidebarToggle || !sidebarToggle.contains(e.target)) &&
-                !e.target.closest('.sidebar-toggle-btn')) {
-                sidebar.classList.remove('active');
-            }
-        });
-
-        // Tecla Escape para cerrar sidebar
-        document.addEventListener('keydown', (e) => {
-            const sidebar = document.getElementById('sidebar');
-            if (e.key === 'Escape' && sidebar && sidebar.classList.contains('active')) {
-                sidebar.classList.remove('active');
-            }
-        });
-    }
-
-    // --- FUNCIONES ADICIONALES ---
-    sortTable(column) {
-        if (this.sortConfig.column === column) {
-            this.sortConfig.direction = this.sortConfig.direction === 'asc' ? 'desc' : 'asc';
-        } else {
-            this.sortConfig.column = column;
-            this.sortConfig.direction = 'asc';
-        }
-
-        this.filteredData.sort((a, b) => {
-            let aValue = a[column];
-            let bValue = b[column];
-
-            // Manejar valores numéricos y de fecha
-            if (column === 'valor' || column === 'frecuencia') {
-                aValue = parseFloat(aValue);
-                bValue = parseFloat(bValue);
-            } else if (column === 'fecha') {
-                aValue = new Date(aValue);
-                bValue = new Date(bValue);
-            }
-
-            if (aValue < bValue) return this.sortConfig.direction === 'asc' ? -1 : 1;
-            if (aValue > bValue) return this.sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-        this.pagination.currentPage = 1;
-        this.updateTable();
-        this.updateSortIndicators();
-    }
-
-    updateSortIndicators() {
-        document.querySelectorAll('.data-table th').forEach(th => {
-            const icon = th.querySelector('i');
-            if (th.dataset.sort === this.sortConfig.column) {
-                if (icon) {
-                    icon.className = this.sortConfig.direction === 'asc' ? 
-                        'fas fa-sort-up' : 'fas fa-sort-down';
-                }
-            } else {
-                if (icon) {
-                    icon.className = 'fas fa-sort';
-                }
-            }
-        });
-    }
-
-    updatePaginationInfo(start, end, total) {
-        const rowsShownStartEl = document.getElementById('rowsShownStart');
-        const rowsShownEndEl = document.getElementById('rowsShownEnd');
-        const rowsTotalEl = document.getElementById('rowsTotal');
-        const currentPageEl = document.getElementById('currentPage');
-        
-        if (rowsShownStartEl) rowsShownStartEl.textContent = Math.min(start, total);
-        if (rowsShownEndEl) rowsShownEndEl.textContent = Math.min(end, total);
-        if (rowsTotalEl) rowsTotalEl.textContent = total;
-        if (currentPageEl) currentPageEl.textContent = this.pagination.currentPage;
-    }
-
-    updatePaginationButtons() {
-        const totalPages = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
-        
-        const firstPageBtn = document.getElementById('firstPage');
-        const prevPageBtn = document.getElementById('prevPage');
-        const nextPageBtn = document.getElementById('nextPage');
-        const lastPageBtn = document.getElementById('lastPage');
-        
-        if (firstPageBtn) firstPageBtn.disabled = this.pagination.currentPage === 1;
-        if (prevPageBtn) prevPageBtn.disabled = this.pagination.currentPage === 1;
-        if (nextPageBtn) nextPageBtn.disabled = this.pagination.currentPage === totalPages || totalPages === 0;
-        if (lastPageBtn) lastPageBtn.disabled = this.pagination.currentPage === totalPages || totalPages === 0;
-    }
-
-    showDetails(alimentador, fecha) {
-        const detalles = this.data.find(d => d.transformador === alimentador && d.fecha === fecha);
-        if (detalles) {
-            alert(`📋 Detalles de ${alimentador} en ${fecha}\n\n` +
-                  `• Tipo: ${detalles.tipo || 'N/A'}\n` +
-                  `• Valor: ${this.safeToFixed(detalles.frecuencia)}\n` +
-                  `• Departamento: ${detalles.departamento || 'N/A'}`);
-        } else {
-            alert(`No se encontraron detalles para ${alimentador} en ${fecha}`);
-        }
-    }
-
-    exportData() {
-        if (this.filteredData.length === 0) {
-            this.showNotification("No hay datos para exportar", "warning");
-            return;
-        }
-        
-        const dataStr = JSON.stringify(this.filteredData, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(dataBlob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ande-comparacion-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        this.showNotification("Datos de comparación exportados", "success");
-    }
-
-    toggleFullscreen() {
-        const elem = document.documentElement;
-        if (!document.fullscreenElement) {
-            elem.requestFullscreen().catch(err => {
-                console.error(`Error al activar pantalla completa: ${err.message}`);
-            });
-            const fullscreenToggleBtn = document.getElementById('fullscreenToggle');
-            if (fullscreenToggleBtn) {
-                fullscreenToggleBtn.innerHTML = '<i class="fas fa-compress"></i>';
-            }
-        } else {
-            document.exitFullscreen();
-            const fullscreenToggleBtn = document.getElementById('fullscreenToggle');
-            if (fullscreenToggleBtn) {
-                fullscreenToggleBtn.innerHTML = '<i class="fas fa-expand"></i>';
-            }
-        }
-    }
-
     startLiveUpdates() {
-        // Simular actualizaciones cada 30 segundos
+        // Actualizar cada 30 segundos
         setInterval(() => {
-            if (Math.random() > 0.7) { // 30% de probabilidad
-                console.log("🔄 Actualización automática de datos...");
+            if (document.visibilityState === 'visible') {
                 this.loadData();
             }
         }, 30000);
     }
-
-    // ============================================
-    // FUNCIONES PARA SELECCIÓN DE MESES
-    // ============================================
-    
-    setMonthSelectionMode(mode) {
-        this.monthSelectionMode = mode;
-        
-        if (mode === 'unique') {
-            // En modo único, mantener solo un mes seleccionado
-            const selectedMonths = Array.from(document.querySelectorAll('.month-btn.selected'));
-            if (selectedMonths.length > 1) {
-                // Deseleccionar todos excepto el primero
-                selectedMonths.slice(1).forEach(btn => {
-                    btn.classList.remove('selected');
-                });
-                this.syncMonthsToHiddenSelect();
-            }
-            
-            document.getElementById('monthHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Selecciona un mes';
-        } else {
-            document.getElementById('monthHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Selecciona varios meses (Ctrl + Click) o rangos (Shift + Click)';
-        }
-        
-        this.showNotification(`Modo ${mode === 'unique' ? 'único' : 'múltiple'} activado`, "info");
-    }
-    
-    toggleMonthSelection(month, isRangeSelection = false) {
-        const btn = document.querySelector(`.month-btn[data-month="${month}"]`);
-        if (!btn) return;
-        
-        if (this.monthSelectionMode === 'unique') {
-            // Modo único: deseleccionar todos los demás
-            document.querySelectorAll('.month-btn.selected').forEach(b => {
-                b.classList.remove('selected');
-            });
-            btn.classList.add('selected');
-            this.lastSelectedMonth = Number(month);
-        } else {
-            const currentMonth = Number(month);
-            if (isRangeSelection && this.lastSelectedMonth) {
-                const start = Math.min(this.lastSelectedMonth, currentMonth);
-                const end = Math.max(this.lastSelectedMonth, currentMonth);
-                document.querySelectorAll('.month-btn').forEach(button => {
-                    const btnMonth = Number(button.dataset.month);
-                    if (btnMonth >= start && btnMonth <= end) {
-                        button.classList.add('selected');
-                    }
-                });
-            } else {
-                // Modo múltiple: toggle del botón
-                btn.classList.toggle('selected');
-            }
-            this.lastSelectedMonth = currentMonth;
-        }
-        
-        // Sincronizar con el select oculto
-        this.syncMonthsToHiddenSelect();
-        this.syncFilters();
-        this.updateComparisonTags();
-    }
-
-    updateMonthModeVisibility() {
-        const periodo = document.getElementById('filterPeriodo').value;
-        const shouldShowMonthSelectors = periodo === 'select_months';
-        const shouldShowGuide = this.globalComparisonMode === 'multiple' && shouldShowMonthSelectors;
-        document.getElementById('monthModeGroup').style.display = shouldShowGuide ? 'block' : 'none';
-        document.getElementById('monthSelectorGroup').style.display = shouldShowMonthSelectors ? 'block' : 'none';
-    }
-    
-    syncMonthsToHiddenSelect() {
-        const selectedBtns = document.querySelectorAll('.month-btn.selected');
-        const selectedMonths = Array.from(selectedBtns).map(btn => btn.dataset.month);
-        
-        const hiddenSelect = document.getElementById('filterMonth');
-        if (!hiddenSelect) return;
-        
-        // Deseleccionar todas las opciones
-        Array.from(hiddenSelect.options).forEach(option => {
-            option.selected = false;
-        });
-        
-        // Seleccionar las opciones correspondientes
-        selectedMonths.forEach(month => {
-            Array.from(hiddenSelect.options).forEach(option => {
-                if (option.value === month) {
-                    option.selected = true;
-                }
-            });
-        });
-    }
-    
-    clearMonthSelection() {
-        document.querySelectorAll('.month-btn.selected').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        this.syncMonthsToHiddenSelect();
-    }
-
-    applyPeriodoFilter(periodo) {
-        if (!periodo || periodo === 'select_months') {
-            // Modo seleccionar meses - no hacer nada, ya están los selectores visibles
-            return;
-        }
-
-        // Limpiar selección de meses en los botones
-        this.clearMonthSelection();
-
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth() + 1; // 0-11 to 1-12
-
-        let selectedYears = [];
-        let selectedMonths = [];
-
-        switch(periodo) {
-            case 'last3':
-                // Últimos 3 meses
-                selectedMonths = this.getLastNMonths(3, currentYear, currentMonth);
-                selectedYears = [currentYear];
-                if (selectedMonths.some(m => m > currentMonth)) {
-                    selectedYears.push(currentYear - 1);
-                }
-                break;
-            
-            case 'last6':
-                // Últimos 6 meses
-                selectedMonths = this.getLastNMonths(6, currentYear, currentMonth);
-                selectedYears = [currentYear];
-                if (selectedMonths.some(m => m > currentMonth)) {
-                    selectedYears.push(currentYear - 1);
-                }
-                break;
-            
-            case 'last12':
-                // Últimos 12 meses
-                selectedMonths = Array.from({length: 12}, (_, i) => i + 1);
-                selectedYears = [currentYear, currentYear - 1];
-                break;
-            
-            case 'currentYear':
-                // Año actual
-                selectedMonths = Array.from({length: currentMonth}, (_, i) => i + 1);
-                selectedYears = [currentYear];
-                break;
-            
-            case 'lastYear':
-                // Año pasado completo
-                selectedMonths = Array.from({length: 12}, (_, i) => i + 1);
-                selectedYears = [currentYear - 1];
-                break;
-        }
-
-        // Aplicar selecciones
-        this.selectMultipleOptions('filterYear', selectedYears.map(String));
-        this.selectMultipleOptions('filterMonth', selectedMonths.map(String));
-        
-        this.showNotification(`Período aplicado: ${this.getPeriodoLabel(periodo)}`, "success");
-    }
-
-    getLastNMonths(n, currentYear, currentMonth) {
-        const months = [];
-        for (let i = 0; i < n; i++) {
-            let month = currentMonth - i;
-            if (month <= 0) {
-                month += 12;
-            }
-            months.unshift(month);
-        }
-        return months;
-    }
-
-    getPeriodoLabel(periodo) {
-        const labels = {
-            'last3': 'Últimos 3 meses',
-            'last6': 'Últimos 6 meses',
-            'last12': 'Últimos 12 meses',
-            'currentYear': 'Año actual',
-            'lastYear': 'Año pasado'
-        };
-        return labels[periodo] || 'Personalizado';
-    }
-
-    selectMultipleOptions(selectId, values) {
-        const select = document.getElementById(selectId);
-        if (!select) return;
-        
-        // Deseleccionar todas las opciones primero
-        Array.from(select.options).forEach(option => {
-            option.selected = false;
-        });
-        
-        // Seleccionar las opciones especificadas
-        values.forEach(value => {
-            Array.from(select.options).forEach(option => {
-                if (option.value === value) {
-                    option.selected = true;
-                }
-            });
-        });
-        
-        // Si es el selector de meses, actualizar también los botones visuales
-        if (selectId === 'filterMonth') {
-            // Limpiar selección de botones
-            document.querySelectorAll('.month-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            
-            // Seleccionar los botones correspondientes
-            values.forEach(value => {
-                const btn = document.querySelector(`.month-btn[data-month="${value}"]`);
-                if (btn) {
-                    btn.classList.add('selected');
-                }
-            });
-        }
-    }
-
-    setExcelStatus(message, type = 'info') {
-        const statusEl = document.getElementById('excelUploadStatus');
-        if (!statusEl) return;
-
-        const colorMap = {
-            info: 'var(--text-muted)',
-            success: 'var(--success)',
-            error: 'var(--danger)',
-            warning: 'var(--warning)'
-        };
-
-        statusEl.textContent = message;
-        statusEl.style.color = colorMap[type] || colorMap.info;
-    }
-
-    async handleExcelUpload() {
-        const fileInput = document.getElementById('excelFileInput');
-        const uploadBtn = document.getElementById('uploadExcelBtn');
-        const file = fileInput?.files?.[0];
-
-        if (!file) {
-            this.setExcelStatus('Selecciona un archivo .xlsx antes de subir.', 'warning');
-            this.showNotification('Selecciona un archivo .xlsx', 'warning');
-            return;
-        }
-
-        if (!file.name.toLowerCase().endsWith('.xlsx')) {
-            this.setExcelStatus('Archivo inválido. Solo se admiten archivos .xlsx.', 'error');
-            this.showNotification('Formato inválido, usa .xlsx', 'error');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('archivo', file);
-
-        try {
-            uploadBtn.disabled = true;
-            this.setExcelStatus('Subiendo archivo y procesando datos...', 'info');
-
-            const response = await fetch(`${this.apiBaseUrl}/api/subir-excel`, {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.message || result.error || 'No se pudo procesar el archivo');
-            }
-
-            this.setExcelStatus(`Carga completada. Insertadas: ${result.insertadas}, ignoradas: ${result.ignoradas}.`, 'success');
-            this.showNotification('Excel cargado correctamente', 'success');
-            await this.loadData();
-        } catch (error) {
-            console.error('Error al subir Excel:', error);
-            this.setExcelStatus(`Error: ${error.message}`, 'error');
-            this.showNotification('Error al cargar Excel', 'error');
-        } finally {
-            uploadBtn.disabled = false;
-        }
-    }
-
-    updateKPIs() {
-        if(this.data.length === 0) {
-            return;
-        }
-
-        const vals = this.data.map(d => d.frecuencia);
-        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-
-        // Calcular tendencia si hay datos anteriores
-        let trend = 0;
-        if (this.previousData && this.previousData.length > 0) {
-            const prevAvg = this.previousData.reduce((a, b) => a + b.frecuencia, 0) / this.previousData.length;
-            trend = ((avg - prevAvg) / prevAvg) * 100;
-        }
-    }
 }
 
-// Inicializar dashboard cuando el DOM esté cargado
+// Inicializar dashboard
 let dashboard;
 document.addEventListener('DOMContentLoaded', () => {
     dashboard = new ANDEDashboard();
