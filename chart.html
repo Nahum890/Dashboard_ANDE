@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vista Ampliada - ANDE Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f1f5f9;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            height: calc(100vh - 4rem);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: rgba(30, 41, 59, 0.7);
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            color: #60a5fa;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .control-btn {
+            background: rgba(148, 163, 184, 0.1);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            color: #cbd5e1;
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(148, 163, 184, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .control-btn.primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            border-color: #60a5fa;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+            flex: 1;
+            margin-bottom: 1.5rem;
+        }
+
+        .chart-container {
+            background: rgba(30, 41, 59, 0.7);
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chart-container.main {
+            grid-column: 1;
+        }
+
+        .chart-container.side {
+            grid-column: 2;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .chart-header h2 {
+            font-size: 1.4rem;
+            color: #f1f5f9;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        /* Controles mejorados del gráfico */
+        .chart-controls-expanded {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .chart-control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.8rem;
+            background: rgba(148, 163, 184, 0.1);
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .control-label {
+            font-size: 0.85rem;
+            color: #cbd5e1;
+            font-weight: 500;
+        }
+
+        .control-select {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            color: #cbd5e1;
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .control-select:focus {
+            border-color: #60a5fa;
+        }
+
+        .control-btn-icon {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            color: #cbd5e1;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .control-btn-icon:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: #f1f5f9;
+            border-color: #60a5fa;
+        }
+
+        .control-btn-icon.active {
+            background: rgba(37, 99, 235, 0.3);
+            color: #60a5fa;
+            border-color: #60a5fa;
+        }
+
+        /* Mejoras para gráficos en vista ampliada */
+        .chart-container.main .chart-wrapper {
+            min-height: 500px;
+            max-height: 700px;
+            height: 70vh;
+            position: relative;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: calc(100% - 4rem);
+            width: 100%;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .data-panel {
+            background: rgba(30, 41, 59, 0.7);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .data-item {
+            text-align: center;
+            padding: 1rem;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 12px;
+        }
+
+        .data-label {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-bottom: 0.5rem;
+        }
+
+        .data-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #60a5fa;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            font-size: 1.2rem;
+            color: #94a3b8;
+        }
+
+        .loading i {
+            margin-right: 1rem;
+            animation: spin 1s linear infinite;
+        }
+
+        /* Leyenda interactiva */
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.8rem;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .legend-item:hover {
+            background: rgba(148, 163, 184, 0.1);
+            border-color: rgba(148, 163, 184, 0.3);
+        }
+
+        .legend-item.hidden {
+            opacity: 0.4;
+            text-decoration: line-through;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            display: inline-block;
+        }
+
+        .legend-text {
+            font-size: 0.85rem;
+            color: #cbd5e1;
+            font-weight: 500;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 1200px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-container.side {
+                grid-column: 1;
+            }
+            
+            .data-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .chart-controls-expanded {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .chart-control-group {
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            .container {
+                height: auto;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+
+            .chart-header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .data-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .chart-controls-expanded {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <i class="fas fa-expand-alt"></i>
+                Vista Ampliada - Dashboard ANDE
+                <span style="font-size: 1rem; color: #94a3b8; font-weight: normal;">
+                    | Monitoreo Eléctrico en Tiempo Real
+                </span>
+            </h1>
+            <div class="controls">
+                <button class="control-btn" onclick="window.print()">
+                    <i class="fas fa-print"></i> Imprimir
+                </button>
+                <button class="control-btn primary" onclick="window.close()">
+                    <i class="fas fa-times"></i> Cerrar Vista
+                </button>
+            </div>
+        </div>
+
+        <div id="loading" class="loading">
+            <i class="fas fa-spinner"></i>
+            Cargando datos del gráfico...
+        </div>
+
+        <div id="chartsContent" style="display: none;">
+            <div class="charts-grid">
+                <div class="chart-container main">
+                    <div class="chart-header">
+                        <h2><i class="fas fa-chart-line"></i> Evolución Temporal</h2>
+                        <div class="chart-controls-expanded">
+                            <div class="chart-control-group">
+                                <span class="control-label">Tipo:</span>
+                                <select id="chartTypeSelect" class="control-select">
+                                    <option value="line">Línea</option>
+                                    <option value="bar">Barras</option>
+                                    <option value="scatter">Dispersión</option>
+                                    <option value="area">Área</option>
+                                </select>
+                            </div>
+                            <div class="chart-control-group">
+                                <span class="control-label">Puntos:</span>
+                                <button id="togglePoints" class="control-btn-icon" title="Mostrar/ocultar puntos">
+                                    <i class="fas fa-circle"></i>
+                                </button>
+                            </div>
+                            <div class="chart-control-group">
+                                <span class="control-label">Suavizado:</span>
+                                <select id="tensionSelect" class="control-select">
+                                    <option value="0">Sin</option>
+                                    <option value="0.2" selected>Bajo</option>
+                                    <option value="0.4">Medio</option>
+                                    <option value="0.6">Alto</option>
+                                </select>
+                            </div>
+                            <div class="chart-control-group">
+                                <button id="downloadChart" class="control-btn-icon" title="Descargar gráfico">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                <button id="toggleGrid" class="control-btn-icon" title="Mostrar/ocultar grid">
+                                    <i class="fas fa-th"></i>
+                                </button>
+                                <button id="resetView" class="control-btn-icon" title="Resetear vista">
+                                    <i class="fas fa-expand-arrows-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                    <div id="interactiveLegend" class="chart-legend"></div>
+                </div>
+
+                <div class="chart-container side">
+                    <div class="chart-header">
+                        <h2><i class="fas fa-chart-bar"></i> Ranking por Serie</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="rankingChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="data-panel">
+                <h2 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem;">
+                    <i class="fas fa-info-circle"></i> Información de la Vista
+                </h2>
+                <div class="data-grid">
+                    <div class="data-item">
+                        <div class="data-label">Series Mostradas</div>
+                        <div class="data-value" id="seriesCount">0</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Puntos de Datos</div>
+                        <div class="data-value" id="dataPoints">0</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Período Cubierto</div>
+                        <div class="data-value" id="periodRange">--</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Última Actualización</div>
+                        <div class="data-value" id="lastUpdate">--:--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Cargar datos del localStorage
+        const chartData = localStorage.getItem('ande_chart_data');
+        
+        if (!chartData) {
+            document.getElementById('loading').innerHTML = `
+                <div style="text-align: center;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                    <p>No hay datos del gráfico disponibles.</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">Por favor, regrese al dashboard principal y use el botón "Expandir Gráficos".</p>
+                </div>
+            `;
+            return;
+        }
+
+        try {
+            const data = JSON.parse(chartData);
+            
+            // Ocultar loading, mostrar contenido
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('chartsContent').style.display = 'block';
+            
+            // Actualizar información
+            document.getElementById('seriesCount').textContent = data.seriesCount || 'N/A';
+            document.getElementById('dataPoints').textContent = data.dataPoints?.toLocaleString() || '0';
+            document.getElementById('periodRange').textContent = data.periodRange || 'N/A';
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('es-ES', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            // Configurar Chart.js para evitar problemas de animación
+            Chart.defaults.font.family = "'Inter', 'Segoe UI', system-ui, sans-serif";
+            Chart.defaults.color = '#94a3b8';
+            Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.95)';
+            Chart.defaults.animation.duration = 0; // Deshabilitar animaciones
+            Chart.defaults.responsive = true;
+            Chart.defaults.maintainAspectRatio = true;
+            
+            // Mapeo de meses
+            const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            
+            // ==================== GRÁFICO PRINCIPAL - VERSIÓN CORREGIDA ====================
+            const mainCtx = document.getElementById('mainChart').getContext('2d');
+
+            // Función auxiliar para colores
+            function getColorForSeries(index) {
+                const palette = [
+                    '#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0', '#118AB2', 
+                    '#EF476F', '#7B68EE', '#20B2AA', '#FF8C00', '#9ACD32',
+                    '#DA70D6', '#00CED1', '#FF6347', '#4682B4', '#DAA520'
+                ];
+                return palette[index % palette.length];
+            }
+
+            // Preparar datos para el gráfico principal
+            const mainChartLabels = data.mainChart.labels || [];
+            const mainChartDatasets = (data.mainChart.datasets || []).map((dataset, index) => ({
+                label: dataset.label || `Serie ${index + 1}`,
+                data: dataset.data || [],
+                borderColor: dataset.borderColor || getColorForSeries(index),
+                backgroundColor: dataset.backgroundColor || (dataset.borderColor ? dataset.borderColor + '20' : getColorForSeries(index) + '20'),
+                borderWidth: 2,
+                tension: 0.2,
+                fill: false,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+                pointHitRadius: 10,
+                pointBackgroundColor: dataset.borderColor || getColorForSeries(index),
+                cubicInterpolationMode: 'default',
+                spanGaps: true
+            }));
+
+            // Crear gráfico CON CONFIGURACIÓN CORREGIDA
+            const mainChart = new Chart(mainCtx, {
+                type: 'line',
+                data: {
+                    labels: mainChartLabels,
+                    datasets: mainChartDatasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 2,
+                    animation: {
+                        duration: 0,
+                        animateScale: false,
+                        animateRotate: false
+                    },
+                    hover: {
+                        mode: 'index',
+                        intersect: false,
+                        animationDuration: 0
+                    },
+                    plugins: {
+                        legend: { 
+                            display: false, // Ocultamos la leyenda por defecto, usaremos la interactiva
+                        },
+                        tooltip: { 
+                            mode: 'index', 
+                            intersect: false,
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#cbd5e1',
+                            borderColor: '#475569',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                title: function(tooltipItems) {
+                                    if (tooltipItems.length > 0) {
+                                        const label = tooltipItems[0].dataset.label;
+                                        const date = tooltipItems[0].label;
+                                        return `${label} - ${date}`;
+                                    }
+                                    return '';
+                                },
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y?.toFixed(4) || 'N/A'}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: { 
+                        y: { 
+                            beginAtZero: false,
+                            grid: { 
+                                color: 'rgba(148, 163, 184, 0.15)',
+                                lineWidth: 1,
+                                drawBorder: false
+                            },
+                            ticks: { 
+                                color: '#94a3b8',
+                                font: { size: 11 },
+                                padding: 8,
+                                callback: function(value) {
+                                    if (value === undefined || value === null) return '';
+                                    if (value >= 1000000) return (value/1000000).toFixed(1) + 'M';
+                                    if (value >= 1000) return (value/1000).toFixed(0) + 'k';
+                                    if (Math.abs(value) < 0.001) return value.toExponential(1);
+                                    if (Math.abs(value) < 1) return value.toFixed(3);
+                                    if (Math.abs(value) < 10) return value.toFixed(2);
+                                    if (Math.abs(value) < 1000) return value.toFixed(1);
+                                    return value.toFixed(0);
+                                }
+                            },
+                            title: { 
+                                display: true, 
+                                text: 'Valor', 
+                                color: '#cbd5e1',
+                                font: { size: 13, weight: 'bold' },
+                                padding: { top: 10, bottom: 10 }
+                            }
+                        }, 
+                        x: { 
+                            grid: { 
+                                color: 'rgba(148, 163, 184, 0.15)',
+                                lineWidth: 1,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#94a3b8',
+                                font: { size: 11 },
+                                maxTicksLimit: 12,
+                                padding: 8,
+                                callback: function(value, index) {
+                                    const label = mainChartLabels[index];
+                                    if (!label) return '';
+                                    
+                                    // Formatear fecha
+                                    if (label.includes('-')) {
+                                        const parts = label.split('-');
+                                        if (parts.length >= 2) {
+                                            const year = parts[0];
+                                            const month = parseInt(parts[1]);
+                                            if (!isNaN(month) && month >= 1 && month <= 12) {
+                                                return `${monthNames[month-1]} ${year}`;
+                                            }
+                                        }
+                                    }
+                                    return label;
+                                }
+                            },
+                            title: { 
+                                display: true, 
+                                text: 'Período', 
+                                color: '#cbd5e1',
+                                font: { size: 13, weight: 'bold' },
+                                padding: { top: 10, bottom: 10 }
+                            }
+                        } 
+                    },
+                    elements: {
+                        line: {
+                            tension: 0.2,
+                            borderWidth: 2,
+                            borderCapStyle: 'round',
+                            borderJoinStyle: 'round'
+                        },
+                        point: {
+                            radius: 0,
+                            hoverRadius: 6,
+                            hitRadius: 10,
+                            backgroundColor: function(context) {
+                                return context.dataset.borderColor;
+                            }
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    transitions: {
+                        active: {
+                            animation: {
+                                duration: 0
+                            }
+                        }
+                    },
+                    layout: {
+                        padding: {
+                            top: 10,
+                            right: 15,
+                            bottom: 10,
+                            left: 15
+                        }
+                    }
+                }
+            });
+            
+            // ==================== FUNCIONALIDAD PARA CONTROLES DEL GRÁFICO ====================
+            
+            // Cambiar tipo de gráfico
+            document.getElementById('chartTypeSelect').addEventListener('change', function(e) {
+                mainChart.config.type = e.target.value;
+                
+                // Ajustar configuraciones específicas por tipo
+                if (e.target.value === 'area') {
+                    mainChart.data.datasets.forEach(dataset => {
+                        dataset.fill = true;
+                        dataset.backgroundColor = dataset.borderColor + '40';
+                    });
+                } else if (e.target.value === 'bar') {
+                    mainChart.data.datasets.forEach(dataset => {
+                        dataset.fill = false;
+                        dataset.borderWidth = 1;
+                        dataset.borderRadius = 3;
+                    });
+                } else {
+                    mainChart.data.datasets.forEach(dataset => {
+                        dataset.fill = false;
+                        dataset.borderWidth = 2;
+                    });
+                }
+                
+                mainChart.update();
+                updateInteractiveLegend();
+            });
+
+            // Toggle puntos
+            let showPoints = false;
+            document.getElementById('togglePoints').addEventListener('click', function() {
+                showPoints = !showPoints;
+                const radius = showPoints ? 4 : 0;
+                const hoverRadius = showPoints ? 8 : 6;
+                
+                mainChart.data.datasets.forEach(dataset => {
+                    dataset.pointRadius = radius;
+                    dataset.pointHoverRadius = hoverRadius;
+                });
+                
+                this.classList.toggle('active', showPoints);
+                mainChart.update();
+            });
+
+            // Control de suavizado
+            document.getElementById('tensionSelect').addEventListener('change', function(e) {
+                const tension = parseFloat(e.target.value);
+                mainChart.data.datasets.forEach(dataset => {
+                    dataset.tension = tension;
+                });
+                mainChart.update();
+            });
+
+            // Toggle grid
+            let showGrid = true;
+            document.getElementById('toggleGrid').addEventListener('click', function() {
+                showGrid = !showGrid;
+                const gridColor = showGrid ? 'rgba(148, 163, 184, 0.15)' : 'transparent';
+                
+                mainChart.options.scales.x.grid.color = gridColor;
+                mainChart.options.scales.y.grid.color = gridColor;
+                
+                this.classList.toggle('active', showGrid);
+                mainChart.update();
+            });
+
+            // Reset view
+            document.getElementById('resetView').addEventListener('click', function() {
+                // Resetear zoom si existe
+                if (mainChart.resetZoom) {
+                    mainChart.resetZoom();
+                }
+                
+                // Resetear escalas
+                mainChart.options.scales.y.min = undefined;
+                mainChart.options.scales.y.max = undefined;
+                mainChart.options.scales.x.min = undefined;
+                mainChart.options.scales.x.max = undefined;
+                
+                mainChart.update();
+            });
+
+            // Descargar gráfico
+            document.getElementById('downloadChart').addEventListener('click', function() {
+                const link = document.createElement('a');
+                link.download = `ande-grafico-${new Date().toISOString().slice(0,10)}.png`;
+                link.href = mainChart.toBase64Image();
+                link.click();
+            });
+
+            // ==================== LEYENDA INTERACTIVA ====================
+            
+            function updateInteractiveLegend() {
+                const legendContainer = document.getElementById('interactiveLegend');
+                if (!legendContainer) return;
+                
+                legendContainer.innerHTML = '';
+                
+                mainChart.data.datasets.forEach((dataset, index) => {
+                    const meta = mainChart.getDatasetMeta(index);
+                    const isHidden = meta.hidden === null ? false : meta.hidden;
+                    
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+                    if (isHidden) legendItem.classList.add('hidden');
+                    legendItem.dataset.index = index;
+                    
+                    const colorBox = document.createElement('span');
+                    colorBox.className = 'legend-color';
+                    colorBox.style.backgroundColor = dataset.borderColor;
+                    
+                    const text = document.createElement('span');
+                    text.className = 'legend-text';
+                    text.textContent = dataset.label;
+                    
+                    legendItem.appendChild(colorBox);
+                    legendItem.appendChild(text);
+                    
+                    // Click para mostrar/ocultar serie
+                    legendItem.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const idx = parseInt(this.dataset.index);
+                        const meta = mainChart.getDatasetMeta(idx);
+                        meta.hidden = meta.hidden === null ? !mainChart.data.datasets[idx].hidden : null;
+                        this.classList.toggle('hidden', meta.hidden);
+                        mainChart.update();
+                    });
+                    
+                    legendContainer.appendChild(legendItem);
+                });
+            }
+            
+            // Crear leyenda inicial
+            setTimeout(updateInteractiveLegend, 100);
+
+            // ==================== GRÁFICO DE RANKING ====================
+            
+            let rankingChart = null;
+            if (data.rankingChart && data.rankingChart.labels && data.rankingChart.labels.length > 0) {
+                const rankCtx = document.getElementById('rankingChart').getContext('2d');
+                
+                // Configuración simplificada para ranking
+                rankingChart = new Chart(rankCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.rankingChart.labels,
+                        datasets: [{
+                            label: 'Promedio',
+                            data: data.rankingChart.data || [],
+                            backgroundColor: data.rankingChart.colors || Array.from({length: data.rankingChart.labels.length}, (_, i) => getColorForSeries(i)),
+                            borderColor: (data.rankingChart.colors || Array.from({length: data.rankingChart.labels.length}, (_, i) => getColorForSeries(i))).map(c => c + 'CC'),
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        animation: {
+                            duration: 0
+                        },
+                        plugins: {
+                            legend: { 
+                                display: false 
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                                titleColor: '#f1f5f9',
+                                bodyColor: '#cbd5e1',
+                                callbacks: {
+                                    label: function(context) {
+                                        return `Promedio: ${context.parsed.x?.toFixed(4) || 'N/A'}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { 
+                                    color: 'rgba(148, 163, 184, 0.1)',
+                                    lineWidth: 1
+                                },
+                                ticks: { 
+                                    color: '#94a3b8',
+                                    font: { size: 11 }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Valor Promedio',
+                                    color: '#cbd5e1',
+                                    font: { size: 12, weight: 'bold' }
+                                }
+                            },
+                            y: {
+                                grid: { 
+                                    color: 'rgba(148, 163, 184, 0.1)',
+                                    lineWidth: 1
+                                },
+                                ticks: { 
+                                    color: '#94a3b8',
+                                    font: { size: 11 }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // ==================== MANEJO DE REDIMENSIONAMIENTO ====================
+            
+            let resizeTimeout;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(function() {
+                    mainChart.resize();
+                    if (rankingChart) rankingChart.resize();
+                }, 250);
+            });
+            
+            // ==================== INFORMACIÓN DEL GRÁFICO ====================
+            
+            const uniqueSeries = [...new Set(data.mainChart.datasets.map(d => d.label))].length;
+            const totalPoints = data.mainChart.datasets.reduce((sum, ds) => {
+                if (ds && ds.data) return sum + ds.data.length;
+                return sum;
+            }, 0);
+            const dates = data.mainChart.labels || [];
+            const periodText = dates.length > 0 
+                ? `${dates[0]?.split('-')[0] || ''}-${dates[dates.length-1]?.split('-')[0] || ''}`
+                : 'N/A';
+            
+            console.log(`✅ Gráfico cargado correctamente: ${uniqueSeries} series, ${totalPoints} puntos de datos`);
+            
+        } catch (error) {
+            console.error('❌ Error cargando gráfico:', error);
+            document.getElementById('loading').innerHTML = `
+                <div style="text-align: center;">
+                    <i class="fas fa-exclamation-circle" style="font-size: 3rem; color: #ef4444; margin-bottom: 1rem;"></i>
+                    <p>Error al cargar los datos del gráfico.</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem; color: #94a3b8;">${error.message}</p>
+                    <button onclick="window.location.reload()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Reintentar
+                    </button>
+                </div>
+            `;
+        }
+    });
+</script>
+</body>
+</html>
