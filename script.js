@@ -1,2529 +1,2430 @@
-// script.js
-console.log("🚀 Dashboard iniciando...");
-console.log("📍 URL actual:", window.location.href);
-console.log("🌐 Origen:", window.location.origin);
-console.log("🔗 Protocolo:", window.location.protocol);
-console.log("🏠 Hostname:", window.location.hostname);
-console.log("🚪 Puerto:", window.location.port);
+// script.js - VERSIÓN 6.2 - HD + ANIMACIONES (CORREGIDO - Sin error this._fn)
+console.log("🚀 Dashboard ANDE v6.2 iniciando (HD + Animaciones CORREGIDAS)...");
 
-// Función para probar conexión
-async function testConnection() {
-    console.log("🔍 Probando conexión con backend...");
-    
-    const testUrls = [
-        '/api/health',
-        '/api/test',
-        '/api/tipos-medicion'
-    ];
-    
-    for (const url of testUrls) {
-        try {
-            console.log(`📡 Intentando conectar a: ${url}`);
-            const response = await fetch(url);
-            const data = await response.json();
-            console.log(`✅ ${url}:`, data);
-        } catch (error) {
-            console.error(`❌ Error en ${url}:`, error.message);
-        }
-    }
-}
-
-// Ejecutar test al cargar
-window.addEventListener('load', () => {
-    setTimeout(testConnection, 1000);
-});
-
-// Solo cambio en el constructor de ANDEDashboard:
 class ANDEDashboard {
     constructor() {
-        // Esta línea detecta si estás en tu PC o en Render
-        // MODIFICADO: Para PostgreSQL, mantenemos la misma lógica
+        console.log("🔧 Constructor llamado");
         this.apiBaseUrl = window.location.hostname === 'localhost' 
-            ? 'http://localhost:10000'  // Puerto actualizado a 10000
+            ? 'http://localhost:10000'
             : window.location.origin;
         this.data = [];
         this.filteredData = [];
         this.mainChart = null;
         this.rankingChart = null;
         this.scatterChart = null;
-        this.previousData = null;
+        this.pieChartByFeeder = null;
+        this.pieChartByType = null;
+        this.stationSummaryChart = null;
         this.sortConfig = { column: null, direction: 'asc' };
         
-        // Modos de selección
-        this.selectionMode = 'individual'; // 'individual' o 'range'
-        
-        // Paleta de colores expandida para muchas series
         this.chartPalette = [
-            '#FF0000', '#FF4500', '#FF8C00', '#FFD700', '#ADFF2F', '#32CD32', 
-            '#00FA9A', '#00CED1', '#1E90FF', '#4169E1', '#8A2BE2', '#DA70D6',
-            '#FF1493', '#FF69B4', '#C71585', '#8B0000', '#B22222', '#DC143C',
-            '#FF6347', '#FF7F50', '#FFA500', '#FFD700', '#FFFF00', '#9ACD32',
-            '#6B8E23', '#228B22', '#008000', '#006400', '#2E8B57', '#20B2AA'
+            '#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0', '#118AB2', 
+            '#EF476F', '#7B68EE', '#20B2AA', '#FF8C00', '#9ACD32',
+            '#DA70D6', '#00CED1', '#FF6347', '#4682B4', '#DAA520',
+            '#CD5C5C', '#40E0D0', '#EE82EE', '#F4A460', '#5F9EA0'
         ];
-        this.activeColorMap = {};
-        this.seriesMap = {}; // Mapa de series únicas
-        this.allSecciones = []; // Todas las secciones disponibles
-        this.estaciones = []; // Lista de estaciones únicas (primeras 3 letras)
-        this.monthSelectionMode = 'unique'; // 'unique' o 'multiple'
-        this.globalComparisonMode = 'unique'; // 'unique' o 'multiple' - NUEVO: Modo global
-        this.lastSelectedMonth = null;
-
-        this.filters = {
-            tipoMedicion: [],    // Array
-            transformador: [],   // Array
-            year: [],            // Array
-            month: [],           // Array para selección múltiple
-            estacion: '',        // Filtro de estación
-            periodo: 'select_months'  // Por defecto "Seleccionar Meses"
+        
+        this.allSecciones = [];
+        this.estaciones = [];
+        
+        this.defaultFilters = {
+            tipoMedicion: ['ACCID.DEP'],
+            transformador: ['ACY1'],
+            year: ['2024'],
+            month: [1,2,3,4,5,6,7,8,9,10,11,12],
+            estacion: '',
+            periodo: 'select_months'
         };
-
-        this.groupBy = 'alimentador'; // Por defecto agrupar por alimentador
+        
+        this.filters = { ...this.defaultFilters };
+        this.globalMode = 'unique';
+        this.groupBy = 'alimentador';
         
         this.pagination = { currentPage: 1, rowsPerPage: 25, totalPages: 1 };
-        this.chartZoom = { min: null, max: null };
+        this.selectedMonths = new Set([1,2,3,4,5,6,7,8,9,10,11,12]);
+        this.isInitialLoad = true;
+        this.serverConnected = false;
+        this.currentStationGroup = null;
         
-        this.initialize();
+        // ---------- PROPIEDADES PARA FILTRO INTELIGENTE ----------
+        this.selectionMode = 'manual';
+        this.currentStationFilter = '';
+        
+        // ---------- DEBOUNCE ----------
+        this.loadDataDebounced = this.debounce(this.loadData.bind(this), 500);
+        
+        // ---------- CONFIGURACIÓN DE ANIMACIONES ----------
+        this.animationConfig = {
+            duration: 800,
+            easing: 'easeInOutQuart',
+            delay: 50
+        };
     }
     
-    // ===================================
-    // FUNCIÓN AUXILIAR PARA MANEJO SEGURO DE VALORES (CORRECCIÓN AGREGADA)
-    // ===================================
+    // ========== DEBOUNCE ==========
+    debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            console.log(`⏱️ Debounce: llamada a ${func.name} dentro de ${wait}ms`);
+            const later = () => {
+                console.log(`⏱️ Ejecutando ${func.name} después del debounce`);
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+    
+    // ========== MÉTODOS DE UTILIDAD ==========
     safeToFixed(value, decimals = 4) {
-        if (value === null || value === undefined || isNaN(value)) {
-            return 'N/A';
+        if (value === null || value === undefined || isNaN(value)) return 'N/A';
+        try { return Number(value).toFixed(decimals); } catch { return String(value); }
+    }
+    
+    safeAddEventListener(elementId, eventType, callback) {
+        const el = document.getElementById(elementId);
+        if (el) { 
+            console.log(`🔗 Agregando listener para ${elementId} (${eventType})`);
+            el.addEventListener(eventType, callback); 
+            return true; 
         }
-        try {
-            return Number(value).toFixed(decimals);
-        } catch (error) {
-            return String(value);
+        if (elementId !== 'filterPeriodo' && elementId !== 'monthModeGroup') {
+            console.warn(`⚠️ Elemento '${elementId}' no encontrado`);
         }
+        return false;
     }
-
-    async initialize() {
-        this.showLoading(true);
-        try {
-            this.initCharts();
-            await Promise.all([
-                this.loadTiposMedicion(),
-                this.loadSeccionesDisponibles(),
-                this.loadYearsAvailable()
-            ]);
-            this.setInitialDefaults();
-            this.addSelectionModeControls(); // NUEVO: Añadir controles de modo de selección
-            await this.loadData();
-            this.initializeEvents();
-            this.startLiveUpdates();
-            this.updateTime();
-            this.updateComparisonTags();
-            
-            // Depuración
-            this.debugElementIds(); // Añade esta línea para verificar IDs
-            
-        } catch (error) {
-            console.error("Error inicializando:", error);
-            this.showNotification("Error inicializando el sistema", "error");
-        } finally {
-            this.showLoading(false);
-        }
-    }
-
-    // ===================================
-    // NUEVO: FUNCIÓN DE DEPURACIÓN
-    // ===================================
-    debugElementIds() {
-        console.log("🔍 Verificando IDs de elementos KPI:");
-        console.log("worstSeries:", document.getElementById('worstSeries'));
-        console.log("worstValue:", document.getElementById('worstValue'));
-    }
-
-    // ===================================
-    // NUEVO: CONTROLES DE MODO DE SELECCIÓN
-    // ===================================
-    addSelectionModeControls() {
-        // Crear controles para modo de selección
-        const alimentadorGroup = document.querySelector('#filterTransformador').closest('.filter-group');
-        
-        const modeControl = document.createElement('div');
-        modeControl.className = 'selection-mode-control';
-        modeControl.innerHTML = `
-            <div class="toggle-buttons" style="margin-top: 0.5rem;">
-                <button type="button" class="toggle-btn active" id="selectIndividual">
-                    <i class="fas fa-mouse-pointer"></i> Individual
-                </button>
-                <button type="button" class="toggle-btn" id="selectRange">
-                    <i class="fas fa-arrows-alt-h"></i> Rango
-                </button>
-            </div>
-            <small class="form-hint" id="selectionHint">
-                <i class="fas fa-info-circle"></i> 
-                <b>Individual:</b> Ctrl+Click para seleccionar | 
-                <b>Rango:</b> Click + Shift+Click para rango
-            </small>
-        `;
-        
-        alimentadorGroup.querySelector('.form-hint').insertAdjacentElement('afterend', modeControl);
-        
-        // Eventos para controles de selección
-        document.getElementById('selectIndividual').addEventListener('click', () => {
-            this.setSelectionMode('individual');
-        });
-        
-        document.getElementById('selectRange').addEventListener('click', () => {
-            this.setSelectionMode('range');
-        });
-        
-        // Configurar selección de alimentadores
-        this.setupAlimentadorSelection();
-    }
-
-    setSelectionMode(mode) {
-        this.selectionMode = mode;
-        
-        const individualBtn = document.getElementById('selectIndividual');
-        const rangeBtn = document.getElementById('selectRange');
-        const hint = document.getElementById('selectionHint');
-        
-        if (mode === 'individual') {
-            individualBtn.classList.add('active');
-            rangeBtn.classList.remove('active');
-            hint.innerHTML = `
-                <i class="fas fa-info-circle"></i> 
-                <b>Modo Individual:</b> Usa Ctrl+Click (Cmd+Click en Mac) para seleccionar 
-                alimentadores específicos (ej: ACY1 y ACY5)
-            `;
-        } else {
-            individualBtn.classList.remove('active');
-            rangeBtn.classList.add('active');
-            hint.innerHTML = `
-                <i class="fas fa-info-circle"></i> 
-                <b>Modo Rango:</b> Click en el primero + Shift+Click en el último para 
-                seleccionar un rango completo (ej: ACY1 a ACY5)
-            `;
-        }
-        
-        this.showNotification(`Modo de selección: ${mode === 'individual' ? 'Individual' : 'Rango'}`, "info");
-    }
-
-    setupAlimentadorSelection() {
-        const select = document.getElementById('filterTransformador');
-        let lastSelectedIndex = -1;
-        
-        select.addEventListener('click', (e) => {
-            if (this.selectionMode === 'range' && e.shiftKey && lastSelectedIndex !== -1) {
-                e.preventDefault();
-                
-                const currentIndex = Array.from(select.options).indexOf(e.target);
-                const start = Math.min(lastSelectedIndex, currentIndex);
-                const end = Math.max(lastSelectedIndex, currentIndex);
-                
-                // Seleccionar el rango
-                for (let i = start; i <= end; i++) {
-                    select.options[i].selected = true;
-                }
-                
-                this.syncFilters();
-                this.updateComparisonTags();
-            } else if (e.target.tagName === 'OPTION') {
-                lastSelectedIndex = Array.from(select.options).indexOf(e.target);
-            }
-        });
-        
-        // Permitir Ctrl+Click para selección individual incluso en modo rango
-        select.addEventListener('mousedown', (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                // Permitir selección individual con Ctrl/Cmd
-                e.target.selected = !e.target.selected;
-                e.preventDefault();
-                this.syncFilters();
-                this.updateComparisonTags();
-            }
-        });
-    }
-
-    showLoading(show) {
-        const overlay = document.getElementById('loadingOverlay');
-        overlay.style.display = show ? 'flex' : 'none';
-        
-        if (show) {
-            let progress = 0;
-            const progressBar = document.getElementById('loaderProgress');
-            const interval = setInterval(() => {
-                progress += 10;
-                progressBar.style.width = `${progress}%`;
-                if (progress >= 90) clearInterval(interval);
-            }, 200);
-        }
-    }
-
-    showNotification(message, type = "success") {
+    
+    showNotification(message, type = "info") {
         const notification = document.getElementById('notification');
-        const icon = notification.querySelector('i');
+        if (!notification) { console.log(`[${type}] ${message}`); return; }
         const text = notification.querySelector('.notification-text');
-        
-        notification.style.background = type === "error" ? "var(--danger)" : 
-                                      type === "warning" ? "var(--warning)" : "var(--success)";
-        icon.className = type === "error" ? "fas fa-exclamation-circle" :
-                        type === "warning" ? "fas fa-exclamation-triangle" : "fas fa-check-circle";
-        
+        const icon = notification.querySelector('i');
+        const config = {
+            success: { icon: 'fa-check-circle', bg: 'rgba(34,197,94,0.95)' },
+            error:   { icon: 'fa-exclamation-circle', bg: 'rgba(239,68,68,0.95)' },
+            warning: { icon: 'fa-exclamation-triangle', bg: 'rgba(245,158,11,0.95)' },
+            info:    { icon: 'fa-info-circle', bg: 'rgba(59,130,246,0.95)' }
+        };
+        const cfg = config[type] || config.info;
+        icon.className = `fas ${cfg.icon}`;
+        notification.style.backgroundColor = cfg.bg;
         text.textContent = message;
         notification.classList.add('show');
-        
-        setTimeout(() => {
-            notification.classList.remove('show');
-        }, 3000);
+        setTimeout(() => notification.classList.remove('show'), 4000);
     }
-
-    updateTime() {
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('es-ES', { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            second: '2-digit'
-        });
-        const dateStr = now.toLocaleDateString('es-ES', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-        
-        document.getElementById('currentTime').textContent = `${dateStr} | ${timeStr}`;
-        
-        setTimeout(() => this.updateTime(), 1000);
-    }
-
-    // --- CARGA DE SELECTORES ---
-    async loadTiposMedicion() {
-        try {
-            // CAMBIADO: Usar this.apiBaseUrl en lugar de URL relativa
-            const res = await fetch(`${this.apiBaseUrl}/api/tipos-medicion`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            
-            const tipos = await res.json();
-            
-            if (tipos && tipos.length > 0) {
-                console.log("✅ Tipos de medición cargados desde BD:", tipos);
-                this.fillMultiSelect('filterTipoMedicion', tipos);
-            } else {
-                throw new Error("No hay tipos de medición en la BD");
-            }
-        } catch (error) {
-            console.warn("⚠️  Usando tipos de medición por defecto:", error.message);
-            this.fillMultiSelect('filterTipoMedicion', [
-                'ACCID.DEP', 'ACCID.FEP', 'PROG.FEP', 'PROD.FEP', 'TOTAL FEP',
-                'ACCID.PENF', 'PROG.PENF', 'PROD.PENF', 'TOTAL PENEF', 'PROG.DEP',
-                'PROD.DEP', 'TOTAL DEP'
-            ]);
-        }
-    }
-
-    async loadSeccionesDisponibles() {
-        try {
-            // CAMBIADO: Usar this.apiBaseUrl en lugar de URL relativa
-            const res = await fetch(`${this.apiBaseUrl}/api/secciones`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            
-            const secciones = await res.json();
-            
-            if (secciones && secciones.length > 0) {
-                console.log("✅ Secciones cargadas desde BD:", secciones.length, "total");
-                this.allSecciones = secciones;
-                
-                // Extraer estaciones únicas (primeras 3 letras)
-                const estacionesSet = new Set();
-                secciones.forEach(seccion => {
-                    if (seccion && seccion.length >= 3) {
-                        estacionesSet.add(seccion.substring(0, 3));
-                    }
-                });
-                this.estaciones = Array.from(estacionesSet).sort();
-                
-                // Llenar select de estaciones
-                this.fillEstacionSelect();
-                
-                // Llenar select de alimentadores (inicialmente todos)
-                this.fillMultiSelect('filterTransformador', secciones);
-            } else {
-                throw new Error("No hay secciones en la BD");
-            }
-        } catch (error) {
-            console.warn("⚠️  Usando secciones por defecto:", error.message);
-            const defaultSecciones = [
-                'ACY1', 'ACY2', 'ACY3', 'ACY4', 'ACY5', 'ACY6'
-            ];
-            this.allSecciones = defaultSecciones;
-            this.estaciones = ['ACY'];
-            this.fillEstacionSelect();
-            this.fillMultiSelect('filterTransformador', defaultSecciones);
-        }
-    }
-
-    fillEstacionSelect() {
-        const selectEstacion = document.getElementById('filterEstacion');
-        // Limpiar opciones existentes excepto "Todas"
-        selectEstacion.innerHTML = '<option value="">Todas las estaciones</option>';
-        
-        this.estaciones.forEach(estacion => {
-            const option = document.createElement('option');
-            option.value = estacion;
-            option.textContent = estacion;
-            selectEstacion.appendChild(option);
-        });
-    }
-
-    filterAlimentadoresByEstacion(estacion) {
-        const select = document.getElementById('filterTransformador');
-        const selectedValues = Array.from(select.selectedOptions).map(o => o.value);
-        
-        if (!estacion) {
-            // Mostrar todos los alimentadores
-            this.fillMultiSelect('filterTransformador', this.allSecciones);
-        } else {
-            // Filtrar alimentadores que comienzan con la estación seleccionada
-            const filteredSecciones = this.allSecciones.filter(seccion => 
-                seccion.startsWith(estacion)
-            );
-            this.fillMultiSelect('filterTransformador', filteredSecciones);
-        }
-        
-        // Restaurar selecciones previas si existen en la nueva lista
-        if (selectedValues.length > 0) {
-            selectedValues.forEach(value => {
-                const option = Array.from(select.options).find(o => o.value === value);
-                if (option) {
-                    option.selected = true;
-                }
-            });
-        }
-        
-        this.syncFilters();
-    }
-
-    async loadYearsAvailable() {
-        try {
-            // CAMBIADO: Usar this.apiBaseUrl en lugar de URL relativa
-            const res = await fetch(`${this.apiBaseUrl}/api/anios`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            
-            const years = await res.json();
-            
-            if (years && years.length > 0) {
-                console.log("✅ Años cargados desde BD:", years);
-                years.sort((a, b) => b - a); // Ordenar descendente
-                this.fillMultiSelect('filterYear', years);
-            } else {
-                throw new Error("No hay años en la BD");
-            }
-        } catch (error) {
-            console.warn("⚠️  Usando años por defecto:", error.message);
-            const years = [2025, 2024, 2023, 2022, 2021, 2020, 2019];
-            this.fillMultiSelect('filterYear', years);
-        }
-    }
-
-    fillMultiSelect(id, data) {
-        const select = document.getElementById(id);
-        if (!select) return;
-        
-        select.innerHTML = '';
-        
-        data.forEach(item => {
-            const opt = document.createElement('option');
-            opt.value = item;
-            opt.textContent = item;
-            select.appendChild(opt);
-        });
-    }
-
-    // ===================================
-    // MÉTODOS PARA MODO GLOBAL
-    // ===================================
     
-    setGlobalComparisonMode(mode) {
-        this.globalComparisonMode = mode;
-        document.body.classList.remove('global-mode-unique', 'global-mode-multiple');
-        document.body.classList.add(mode === 'unique' ? 'global-mode-unique' : 'global-mode-multiple');
-        
-        // Actualizar botones de modo global
-        if (mode === 'unique') {
-            document.getElementById('globalModeUnique').classList.add('active');
-            document.getElementById('globalModeMultiple').classList.remove('active');
-            document.getElementById('globalModeHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo único: selecciona un valor por filtro';
-            
-            // En modo único, limitar a una selección en todos los filtros
-            this.limitToSingleSelection('filterYear');
-            this.limitToSingleSelection('filterTipoMedicion');
-            this.limitToSingleSelection('filterTransformador');
-            this.limitToSingleSelection('filterMonth');
-            
-            // También forzar modo único en meses
-            this.setMonthSelectionMode('unique');
-            
+    showLoading(show, text = "Cargando datos...", progress = null) {
+        const overlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
+        const progressBar = document.getElementById('loaderProgress');
+        if (!overlay) return;
+        if (show) {
+            overlay.style.display = 'flex';
+            if (loadingText) loadingText.textContent = text;
+            if (progressBar) {
+                if (progress !== null) {
+                    progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+                    progressBar.style.opacity = '1';
+                } else {
+                    progressBar.style.width = '50%';
+                    progressBar.style.opacity = '0.7';
+                }
+            }
         } else {
-            document.getElementById('globalModeUnique').classList.remove('active');
-            document.getElementById('globalModeMultiple').classList.add('active');
-            document.getElementById('globalModeHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Modo múltiple: selecciona varios valores (Ctrl + Click / Shift + Click)';
-            
-            // Permitir múltiples selecciones
-            this.allowMultipleSelections('filterYear');
-            this.allowMultipleSelections('filterTipoMedicion');
-            this.allowMultipleSelections('filterTransformador');
-            this.allowMultipleSelections('filterMonth');
-            
-            // Permitir múltiples selecciones en meses
-            this.setMonthSelectionMode('multiple');
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                if (progressBar) progressBar.style.width = '0%';
+            }, 300);
         }
-
-        this.updateMonthModeVisibility();
-        
-        this.showNotification(`Modo de comparación: ${mode === 'unique' ? 'único' : 'múltiple'}`, "info");
     }
-
-    limitToSingleSelection(selectId) {
-        const select = document.getElementById(selectId);
-        if (!select) return;
+    
+    showErrorInOverlay(message, retryCallback) {
+        const overlay = document.getElementById('loadingOverlay');
+        const loaderCard = document.getElementById('loaderCard');
+        if (!overlay || !loaderCard) return;
         
-        // Si hay más de uno seleccionado, dejar solo el primero
-        const selectedOptions = Array.from(select.selectedOptions);
-        if (selectedOptions.length > 1) {
-            // Deseleccionar todos excepto el primero
-            selectedOptions.slice(1).forEach(option => {
-                option.selected = false;
+        loaderCard.innerHTML = `
+            <i class="fas fa-exclamation-triangle" style="font-size: 3.8rem; color: #f59e0b; margin-bottom: 1.2rem;"></i>
+            <p class="loading-text" style="color: white; margin-bottom: 0.5rem;">Oops, algo salió mal</p>
+            <p style="color: #cbd5e1; font-size: 1rem; margin-bottom: 1.8rem;">${message}</p>
+            <button id="retryButton" class="btn-retry">
+                <i class="fas fa-sync-alt"></i> Reintentar
+            </button>
+        `;
+        const retryBtn = document.getElementById('retryButton');
+        if (retryBtn && retryCallback) {
+            retryBtn.addEventListener('click', () => {
+                overlay.style.display = 'flex';
+                loaderCard.innerHTML = `
+                    <div class="spinner-ring"></div>
+                    <p id="loadingText" class="loading-text">Reintentando...</p>
+                    <div class="progress-track">
+                        <div id="loaderProgress" class="progress-fill" style="width: 10%;"></div>
+                    </div>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 1rem;">
+                        <i class="fas fa-bolt"></i> ANDE · Zona Este
+                    </p>
+                `;
+                retryCallback();
             });
         }
     }
-
-    allowMultipleSelections(selectId) {
-        // En modo múltiple, no hacemos nada especial
-        // Los selectores múltiples ya permiten Ctrl+Click
-        console.log(`Permitiendo múltiples selecciones en: ${selectId}`);
+    
+    updateTime() {
+        const update = () => {
+            const now = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            ['currentTime', 'lastUpdate', 'updateTime'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = now;
+            });
+            setTimeout(update, 10000);
+        };
+        update();
     }
-
-    // --- LÓGICA DE FILTROS MEJORADA ---
-    setInitialDefaults() {
-        console.log("🔧 Configurando valores predeterminados para comparación...");
-        
-        // Configurar modo global único por defecto
-        this.setGlobalComparisonMode('unique');
-        
-        // Seleccionar algunos valores por defecto para demostración
-        const tipoSel = document.getElementById('filterTipoMedicion');
-        const yearSel = document.getElementById('filterYear');
-        const transSel = document.getElementById('filterTransformador');
-        
-        // Seleccionar primer tipo (solo uno porque estamos en modo único)
-        if (tipoSel.options.length > 0) {
-            tipoSel.options[0].selected = true;
+    
+    // ========== VERIFICACIÓN SERVIDOR ==========
+    async verificarServidor() {
+        console.log("🔍 Verificando servidor...");
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/health`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            this.serverConnected = true;
+            console.log("✅ Servidor conectado");
+            return true;
+        } catch (e) {
+            this.serverConnected = false;
+            console.error("❌ Error de conexión:", e);
+            this.showErrorInOverlay(
+                "No se pudo conectar al servidor. Verifica que esté ejecutándose en el puerto 10000.",
+                () => this.initialize()
+            );
+            return false;
         }
-        
-        // Seleccionar año 2025 por defecto (solo uno)
-        let found2025 = false;
-        for (let i = 0; i < yearSel.options.length; i++) {
-            if (yearSel.options[i].value === '2025') {
-                yearSel.options[i].selected = true;
-                found2025 = true;
-                break;
+    }
+    
+    async verificarEstadoBD() {
+        console.log("🔍 Verificando base de datos...");
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/verificar-datos`);
+            const data = await res.json();
+            console.log("📊 Estado BD:", data);
+            if (!data.tabla_existe || data.total_registros === 0) {
+                this.showNotification("Base de datos vacía. Sube un archivo Excel para comenzar.", "warning");
+                return true;
             }
+            return true;
+        } catch {
+            console.warn("⚠️ No se pudo verificar BD, se continuará con datos de ejemplo si es necesario.");
+            return true;
         }
-        
-        // Si no existe 2025, seleccionar el primer año disponible
-        if (!found2025 && yearSel.options.length > 0) {
-            yearSel.options[0].selected = true;
-        }
-        
-        // Seleccionar primer alimentador (solo uno)
-        if (transSel.options.length > 0) {
-            transSel.options[0].selected = true;
-        }
-        
-        // Configurar agrupación
-        document.getElementById('groupBy').value = 'alimentador';
-        
-        // Configurar período en "Seleccionar Meses"
-        document.getElementById('filterPeriodo').value = 'select_months';
-        
-        // Establecer modo único por defecto para meses
-        this.monthSelectionMode = 'unique';
-        
-        // Mostrar los selectores de mes
-        this.updateMonthModeVisibility();
-
-        this.syncFilters();
-        this.updateComparisonTags();
     }
-
-    syncFilters() {
-        const tipoOpts = Array.from(document.getElementById('filterTipoMedicion').selectedOptions);
-        const yearOpts = Array.from(document.getElementById('filterYear').selectedOptions);
-        const transOpts = Array.from(document.getElementById('filterTransformador').selectedOptions);
-        const monthOpts = Array.from(document.getElementById('filterMonth').selectedOptions);
+    
+    // ========== INICIALIZACIÓN ==========
+    async initialize() {
+        console.log("🔧 Inicializando dashboard...");
+        try {
+            this.showLoading(true, "Conectando con el servidor...", 10);
+            if (!await this.verificarServidor()) return;
+            this.showLoading(true, "Verificando base de datos...", 30);
+            await this.verificarEstadoBD();
+            this.showLoading(true, "Inicializando gráficos HD...", 50);
+            this.initCharts();
+            this.showLoading(true, "Configurando filtros...", 60);
+            this.setupEventListeners();
+            this.showLoading(true, "Cargando metadatos...", 70);
+            await this.loadTiposMedicion();
+            await this.loadSeccionesDisponibles();
+            await this.loadYearsAvailable();
+            this.showLoading(true, "Aplicando valores por defecto...", 80);
+            this.setDefaultFilterValues();
+            this.showLoading(true, "Cargando datos...", 90);
+            await this.loadData();
+            this.showLoading(true, "Cargando historial...", 95);
+            setTimeout(() => this.loadCargas(), 1000);
+            this.updateTime();
+            this.startLiveUpdates();
+            this.showLoading(false);
+            this.showNotification("Dashboard cargado correctamente ✨", "success");
+        } catch (error) {
+            console.error("❌ Error inicializando:", error);
+            this.showErrorInOverlay(
+                `Error al cargar el dashboard: ${error.message || 'Error desconocido'}`,
+                () => this.initialize()
+            );
+        } finally {
+            this.isInitialLoad = false;
+        }
+    }
+    
+    // ========== CONFIGURACIÓN GLOBAL DE ANIMACIONES ==========
+    getAnimationConfig() {
+        return {
+            duration: this.animationConfig.duration,
+            easing: this.animationConfig.easing,
+            delay: this.animationConfig.delay,
+            loop: false,
+            onProgress: null,
+            onComplete: null
+        };
+    }
+    
+    // ========== INICIALIZACIÓN DE GRÁFICOS CON HD Y ANIMACIONES ==========
+    initCharts() {
+        console.log("📊 Inicializando gráficos HD con animaciones...");
         
-        this.filters = {
-            tipoMedicion: tipoOpts.map(o => o.value),
-            transformador: transOpts.map(o => o.value),
-            year: yearOpts.map(o => o.value),
-            month: monthOpts.map(o => o.value), // Ahora es un array
-            estacion: document.getElementById('filterEstacion').value,
-            periodo: document.getElementById('filterPeriodo').value
+        // Configuración global de Chart.js para ALTA CALIDAD
+        Chart.defaults.font.family = "'Inter', 'Segoe UI', system-ui, sans-serif";
+        Chart.defaults.font.size = 12;
+        Chart.defaults.color = '#334155';
+        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,23,42,0.95)';
+        Chart.defaults.plugins.tooltip.titleColor = '#ffffff';
+        Chart.defaults.plugins.tooltip.bodyColor = '#cbd5e1';
+        Chart.defaults.plugins.tooltip.borderColor = '#60a5fa';
+        Chart.defaults.plugins.tooltip.borderWidth = 2;
+        Chart.defaults.responsive = true;
+        Chart.defaults.maintainAspectRatio = true;
+        
+        // ✨ ALTA DEFINICIÓN: Aumentar devicePixelRatio para gráficos más nítidos
+        Chart.defaults.devicePixelRatio = Math.max(window.devicePixelRatio || 2, 3);
+        
+        // ✨ ANIMACIONES SUAVES (Configuración corregida sin delay dinámico)
+        Chart.defaults.animation = {
+            duration: 800,
+            easing: 'easeInOutQuart'
         };
         
-        this.groupBy = document.getElementById('groupBy').value;
-        
-        console.log("📋 Filtros actualizados:", this.filters);
-        console.log("📊 Agrupar por:", this.groupBy);
-        console.log("🌐 Modo global:", this.globalComparisonMode);
-    }
-
-    updateComparisonTags() {
-        const tagsContainer = document.getElementById('comparisonTags');
-        if (!tagsContainer) return;
-        
-        tagsContainer.innerHTML = '';
-        
-        let hasSelections = false;
-        
-        // Modo global
-        const modeTag = document.createElement('span');
-        modeTag.className = this.globalComparisonMode === 'unique' ? 'tag mode-unique-tag' : 'tag mode-multiple-tag';
-        modeTag.innerHTML = `<i class="fas fa-exchange-alt"></i> Modo: ${this.globalComparisonMode === 'unique' ? 'Único' : 'Múltiple'}`;
-        tagsContainer.appendChild(modeTag);
-        hasSelections = true;
-        
-        // Años
-        if (this.filters.year.length > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'tag year-tag';
-            tag.innerHTML = `<i class="fas fa-calendar"></i> ${this.filters.year.length} año(s)`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Alimentadores
-        if (this.filters.transformador.length > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'tag transformer-tag';
-            tag.innerHTML = `<i class="fas fa-transformer"></i> ${this.filters.transformador.length} alimentador(es)`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Estación (si está seleccionada)
-        if (this.filters.estacion) {
-            const tag = document.createElement('span');
-            tag.className = 'tag station-tag';
-            tag.innerHTML = `<i class="fas fa-building"></i> Estación: ${this.filters.estacion}`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Tipos de medición
-        if (this.filters.tipoMedicion.length > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'tag type-tag';
-            tag.innerHTML = `<i class="fas fa-chart-line"></i> ${this.filters.tipoMedicion.length} tipo(s)`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Meses (si están seleccionados)
-        if (this.filters.month.length > 0) {
-            const tag = document.createElement('span');
-            tag.className = 'tag month-tag';
-            tag.innerHTML = `<i class="fas fa-calendar-alt"></i> ${this.filters.month.length} mes(es)`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        // Período (si está seleccionado)
-        if (this.filters.periodo) {
-            const tag = document.createElement('span');
-            tag.className = 'tag period-tag';
-            tag.innerHTML = `<i class="fas fa-clock"></i> ${this.getPeriodoLabel(this.filters.periodo)}`;
-            tagsContainer.appendChild(tag);
-            hasSelections = true;
-        }
-        
-        if (!hasSelections) {
-            const tag = document.createElement('span');
-            tag.className = 'tag hint';
-            tag.textContent = 'Selecciona filtros para comparar';
-            tagsContainer.appendChild(tag);
-        }
-        
-        // Actualizar contador de series posibles
-        const monthMultiplier = this.filters.month.length > 0 ? this.filters.month.length : 1;
-        const totalCombinations = this.filters.year.length * 
-                                 this.filters.transformador.length * 
-                                 this.filters.tipoMedicion.length * 
-                                 monthMultiplier;
-        const activeSeriesEl = document.getElementById('activeSeries');
-        if (activeSeriesEl) {
-            activeSeriesEl.textContent = totalCombinations;
-        }
-    }
-
-    async loadData() {
-        this.showLoading(true);
-        try {
-            this.previousData = this.data.length > 0 ? [...this.data] : null;
-            
-            // Validar según modo global
-            if (this.globalComparisonMode === 'unique') {
-                // En modo único, validar que haya al menos un valor en cada filtro
-                if (!this.filters.transformador[0] || !this.filters.year[0] || !this.filters.tipoMedicion[0]) {
-                    console.log("⚠️  Faltan filtros en modo único");
-                    this.showNotification("Selecciona un valor en cada filtro", "warning");
-                    this.showLoading(false);
-                    return;
+        // Configuración de transiciones suaves
+        Chart.defaults.transitions = {
+            active: {
+                animation: {
+                    duration: 300
                 }
-            } else {
-                // En modo múltiple, validar que haya al menos una selección
-                if (this.filters.transformador.length === 0 || 
-                    this.filters.year.length === 0 || 
-                    this.filters.tipoMedicion.length === 0) {
-                    console.log("⚠️  No hay filtros seleccionados, cargando datos demo");
-                    this.loadDemoComparisonData();
-                    return;
+            },
+            resize: {
+                animation: {
+                    duration: 500
                 }
             }
-            
-            // Cargar datos para cada combinación
-            this.data = [];
-            const promises = [];
-            
-            // Determinar los meses a consultar
-            const monthsToQuery = this.filters.month.length > 0 ? this.filters.month : [null];
-            
-            // Crear combinaciones de filtros
-            for (const year of this.filters.year) {
-                for (const tipo of this.filters.tipoMedicion) {
-                    for (const seccion of this.filters.transformador) {
-                        for (const month of monthsToQuery) {
-                            promises.push(
-                                this.loadCombinationData(year, tipo, seccion, month)
-                            );
-                        }
-                    }
-                }
-            }
-            
-            // Esperar todas las peticiones
-            const results = await Promise.all(promises);
-            this.data = results.flat();
-            this.filteredData = [...this.data];
-
-            console.log("✅ Datos cargados:", this.data.length, "registros");
-
-            // Actualizar estadísticas
-            this.updateStats();
-            this.updateKPIs();
-            this.updateCharts();
-            this.pagination.currentPage = 1;
-            this.updateTable();
-            
-            this.showNotification(`Comparación cargada: ${this.data.length} registros`, "success");
-            
-        } catch (e) {
-            console.error('❌ Error cargando datos:', e);
-            this.showNotification("Error cargando datos del servidor", "error");
-            this.loadDemoComparisonData();
-        } finally { 
-            this.showLoading(false);
-        }
-    }
-
-    async loadCombinationData(year, tipoMedicion, seccion, month = null) {
-        const params = new URLSearchParams();
-        params.append('anio', year);
-        params.append('tipo_medicion', tipoMedicion.trim());
-        params.append('seccion', seccion.trim());
+        };
         
-        if(month) params.append('mes', month);
-
-        // CAMBIADO: Usar this.apiBaseUrl en lugar de variable no definida API_BASE_URL
-        const url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
-        console.log("🌐 Solicitando combinación:", url);
-        
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status} para ${url}`);
-        
-        const data = await res.json();
-        
-        // Añadir metadatos de la combinación
-        return data.map(item => ({
-            ...item,
-            combinationKey: `${seccion}-${year}-${tipoMedicion}`,
-            combinationLabel: this.getCombinationLabel(seccion, year, tipoMedicion),
-            year: year,
-            tipo: tipoMedicion
-        }));
-    }
-
-    getCombinationLabel(alimentador, year, tipo) {
-        // Crear etiqueta basada en la configuración de agrupación
-        switch(this.groupBy) {
-            case 'alimentador':
-                return `${alimentador} (${year}, ${tipo})`;
-            case 'year':
-                return `${year} - ${alimentador} (${tipo})`;
-            case 'tipo':
-                return `${tipo} - ${alimentador} (${year})`;
-            case 'combinado':
-                return `${alimentador}/${year}/${tipo}`;
-            default:
-                return `${alimentador}-${year}-${tipo}`;
-        }
-    }
-
-    loadDemoComparisonData() {
-        console.log("📂 Cargando datos de demostración para comparación...");
-        
-        const demoData = [];
-        const years = this.filters.year.length > 0 ? this.filters.year : ['2024'];
-        const alimentadores = this.filters.transformador.length > 0 ? 
-            this.filters.transformador : ['ACY1'];
-        const tipos = this.filters.tipoMedicion.length > 0 ? 
-            this.filters.tipoMedicion : ['TOTAL PENEF'];
-        
-        let idCounter = 0;
-        
-        years.forEach(year => {
-            tipos.forEach(tipo => {
-                alimentadores.forEach(alimentador => {
-                    for (let month = 1; month <= 12; month++) {
-                        demoData.push({
-                            id: idCounter++,
-                            transformador: alimentador,
-                            frecuencia: this.generateComparisonValue(year, tipo, alimentador, month),
-                            fecha: `${year}-${String(month).padStart(2, '0')}-01`,
-                            tipo: tipo,
-                            departamento: 'ALTO PARANÁ',
-                            combinationKey: `${alimentador}-${year}-${tipo}`,
-                            combinationLabel: this.getCombinationLabel(alimentador, year, tipo),
-                            year: year
-                        });
-                    }
-                });
-            });
-        });
-        
-        this.data = demoData;
-        this.filteredData = [...demoData];
-        
-        console.log("📊 Datos demo generados:", demoData.length, "registros de",
-                   years.length * tipos.length * alimentadores.length, "combinaciones");
-        
-        this.updateStats();
-        this.updateKPIs();
-        
-        // Solo actualizar gráficos y KPIs si hay datos
-        if (demoData.length > 0) {
-            this.updateCharts();
-        }
-        
-        this.updateTable();
-        
-        this.showNotification("Usando datos de demostración para comparación", "warning");
+        this.initMainChart();
+        this.initRankingChart();
+        this.initScatterChart();
+        this.initPieCharts();
+        this.initStationSummaryChart();
     }
     
-    generateComparisonValue(year, tipo, alimentador, month) {
-        // Valores base por tipo
-        let baseValue;
-        switch(tipo) {
-            case 'TOTAL PENEF':
-            case 'TOTAL DEP':
-            case 'TOTAL FEP':
-                baseValue = 50000;
-                break;
-            case 'ACCID.DEP':
-            case 'ACCID.FEP':
-            case 'ACCID.PENF':
-                baseValue = 5;
-                break;
-            case 'PROG.DEP':
-            case 'PROG.FEP':
-            case 'PROG.PENF':
-                baseValue = 0.5;
-                break;
-            default:
-                baseValue = 50;
+    initMainChart() {
+        const canvas = document.getElementById('mainChart');
+        if (!canvas) {
+            console.error("❌ Canvas 'mainChart' no encontrado");
+            return;
         }
+        console.log("📈 Inicializando mainChart HD");
+        const ctx = canvas.getContext('2d');
         
-        // Variación por año
-        const yearFactor = parseInt(year) - 2020;
+        // Limpiar canvas con fondo blanco nítido
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Variación por alimentador (basado en hash simple)
-        const alimentadorHash = alimentador.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const alimentadorFactor = (alimentadorHash % 10) / 10;
-        
-        // Variación por mes
-        const monthFactor = Math.sin(month * 0.5) * 0.3;
-        
-        // Variación aleatoria
-        const randomFactor = (Math.random() - 0.5) * 0.2;
-        
-        return baseValue * (1 + yearFactor * 0.05) * 
-               (1 + alimentadorFactor) * 
-               (1 + monthFactor) * 
-               (1 + randomFactor);
-    }
-
-    updateStats() {
-        const totalPoints = this.data.length;
-        const uniqueCombinations = [...new Set(this.data.map(d => d.combinationKey))].length;
-        
-        const dataCountEl = document.getElementById('dataCount');
-        const seriesCountEl = document.getElementById('seriesCount');
-        const loadedSeriesEl = document.getElementById('loadedSeries');
-        const totalPointsEl = document.getElementById('totalPoints');
-        const lastUpdateEl = document.getElementById('lastUpdate');
-        const updateTimeEl = document.getElementById('updateTime');
-        
-        if (dataCountEl) dataCountEl.textContent = totalPoints.toLocaleString();
-        if (seriesCountEl) seriesCountEl.textContent = uniqueCombinations;
-        if (loadedSeriesEl) loadedSeriesEl.textContent = uniqueCombinations;
-        if (totalPointsEl) totalPointsEl.textContent = totalPoints;
-        
-        const timeStr = new Date().toLocaleTimeString('es-ES', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        
-        if (lastUpdateEl) lastUpdateEl.textContent = timeStr;
-        if (updateTimeEl) updateTimeEl.textContent = timeStr;
-    }
-
-    // --- GRÁFICOS MEJORADOS PARA COMPARACIÓN ---
-    initCharts() {
-        Chart.defaults.font.family = "'Inter', 'Segoe UI', system-ui, sans-serif";
-        Chart.defaults.color = '#64748b';
-        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.95)';
-        Chart.defaults.plugins.tooltip.titleFont = { weight: '600', size: 14 };
-        Chart.defaults.plugins.tooltip.bodyFont = { size: 13 };
-        Chart.defaults.plugins.legend.labels.font = { weight: '600', size: 12 };
-        Chart.defaults.plugins.legend.labels.padding = 20;
-
-        // 1. Gráfico Principal de Comparación
-        const ctxMain = document.getElementById('mainChart').getContext('2d');
-        this.mainChart = new Chart(ctxMain, {
+        this.mainChart = new Chart(ctx, {
             type: 'line',
             data: { labels: [], datasets: [] },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    intersect: false,
-                    mode: 'index',
-                },
-                plugins: {
-                    legend: { 
-                        display: true,
-                        position: 'top',
-                        align: 'start',
-                        labels: {
-                            boxWidth: 12,
-                            padding: 15,
-                            font: {
-                                size: 11
-                            },
-                            generateLabels: (chart) => {
-                                const datasets = chart.data.datasets;
-                                return datasets.map((dataset, i) => ({
-                                    text: dataset.label,
-                                    fillStyle: dataset.borderColor,
-                                    strokeStyle: dataset.borderColor,
-                                    lineWidth: 2,
-                                    hidden: chart.getDatasetMeta(i).hidden,
-                                    index: i
-                                }));
-                            }
-                        }
+                maintainAspectRatio: true,
+                aspectRatio: 2,
+                devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                
+                // ✨ ANIMACIONES PERSONALIZADAS
+                animation: {
+                    duration: 800,
+                    easing: 'easeInOutQuart',
+                    onProgress: function(animation) {
+                        // Efecto de aparición progresiva
+                        const ctx = animation.chart.ctx;
+                        ctx.save();
+                        ctx.globalAlpha = animation.currentStep / animation.numSteps;
+                        ctx.restore();
                     },
+                    onComplete: function() {
+                        console.log("✅ Animación del gráfico principal completada");
+                    }
+                },
+                
+                plugins: {
+                    legend: { display: false },
                     tooltip: { 
                         mode: 'index', 
-                        intersect: false, 
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        titleFont: { weight: '600', size: 14 },
-                        bodyFont: { size: 12 },
+                        intersect: false,
+                        backgroundColor: 'rgba(15,23,42,0.98)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#cbd5e1',
+                        borderColor: '#60a5fa',
+                        borderWidth: 2,
                         padding: 12,
                         cornerRadius: 8,
-                        displayColors: true,
-                        callbacks: {
-                            title: (context) => {
-                                return context[0].dataset.label;
-                            },
-                            label: (context) => {
-                                const label = context.dataset.label || '';
-                                const value = context.parsed.y;
-                                const date = context.label;
-                                if (value === null || value === undefined || isNaN(value)) {
-                                    return `${date}: Sin dato`;
-                                }
-                                return `${date}: ${value.toFixed(4)}`;
-                            }
-                        }
-                    }
-                },
-                scales: { 
-                    y: { 
-                        beginAtZero: false, 
-                        grid: { 
-                            color: 'rgba(226, 232, 240, 0.5)',
-                            drawBorder: false
-                        }, 
-                        title: {
-                            display: true, 
-                            text: 'Valor',
-                            font: { weight: '600', size: 13 }
+                        titleFont: {
+                            size: 13,
+                            weight: 'bold'
                         },
-                        ticks: {
-                            font: { size: 12 },
-                            callback: this.formatValueCallback
-                        }
-                    }, 
-                    x: { 
-                        grid: { 
-                            display: false 
+                        bodyFont: {
+                            size: 12
                         },
-                        ticks: {
-                            font: { size: 12 },
-                            maxRotation: 45,
-                            callback: (value, index, values) => {
-                                // Formatear fechas para mostrar mes-año
-                                const dateStr = this.mainChart.data.labels[index];
-                                try {
-                                    const [year, month] = dateStr.split('-');
-                                    const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-                                    return `${months[parseInt(month)-1]} ${year}`;
-                                } catch (e) {
-                                    return dateStr;
-                                }
-                            }
-                        }
-                    } 
-                },
-                elements: {
-                    point: {
-                        radius: 3,
-                        hoverRadius: 8,
-                        hoverBorderWidth: 3,
-                        hoverBackgroundColor: '#ffffff'
-                    },
-                    line: {
-                        tension: 0.3
-                    }
-                },
-                animations: {
-                    tension: {
-                        duration: 1000,
-                        easing: 'linear'
-                    }
-                }
-            }
-        });
-
-        // 2. Gráfico de Ranking
-        const ctxRank = document.getElementById('rankingChart').getContext('2d');
-        this.rankingChart = new Chart(ctxRank, {
-            type: 'bar',
-            data: { labels: [], datasets: [] },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { 
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        titleFont: { weight: '600', size: 14 },
-                        bodyFont: { size: 13 },
-                        padding: 12,
-                        cornerRadius: 8,
-                        callbacks: {
-                            label: (context) => {
-                                const series = context.dataset.label;
-                                const value = context.parsed.x;
-                                if (value === null || value === undefined || isNaN(value)) {
-                                    return `${series}: Sin dato`;
-                                }
-                                return `${series}: ${value.toFixed(4)}`;
-                            }
-                        }
-                    }
-                },
-                scales: { 
-                    x: { 
-                        grid: { 
-                            color: 'rgba(226, 232, 240, 0.5)',
-                            drawBorder: false
-                        },
-                        title: {
-                            display: true,
-                            text: 'Valor Promedio',
-                            font: { weight: '600', size: 13 }
-                        },
-                        ticks: {
-                            font: { size: 12 },
-                            callback: this.formatValueCallback
-                        }
-                    },
-                    y: {
-                        grid: { display: false },
-                        ticks: {
-                            font: { size: 12, weight: '600' },
-                            callback: (value) => {
-                                // Truncar etiquetas largas
-                                if (value.length > 20) {
-                                    return value.substring(0, 20) + '...';
-                                }
-                                return value;
-                            }
-                        }
-                    }
-                },
-                elements: {
-                    bar: {
-                        borderRadius: 6,
-                        borderSkipped: false,
-                    }
-                }
-            }
-        });
-
-        // 3. Gráfico de Dispersión
-        const ctxScatter = document.getElementById('scatterChart').getContext('2d');
-        this.scatterChart = new Chart(ctxScatter, {
-            type: 'scatter',
-            data: { datasets: [] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: true,
-                        position: 'top'
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: (context) => {
-                                const point = context.raw;
-                                if (point.x === null || point.x === undefined || isNaN(point.x) ||
-                                    point.y === null || point.y === undefined || isNaN(point.y)) {
-                                    return `${point.label}: Sin dato`;
-                                }
-                                return `${point.label}: (${point.x.toFixed(2)}, ${point.y.toFixed(4)})`;
-                            }
+                        animation: {
+                            duration: 200
                         }
                     }
                 },
                 scales: {
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Variable X'
+                    y: { 
+                        beginAtZero: false,
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            callback: (v) => this.formatValue(v),
+                            padding: 8
                         }
                     },
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Variable Y'
+                    x: { 
+                        grid: { 
+                            color: 'rgba(148,163,184,0.1)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            maxRotation: 45, 
+                            minRotation: 30,
+                            padding: 8
+                        }
+                    }
+                },
+                interaction: { 
+                    mode: 'index', 
+                    intersect: false,
+                    animateRotate: true,
+                    animateScale: true
+                },
+                elements: {
+                    line: { 
+                        borderWidth: 2.5, 
+                        tension: 0.2,
+                        borderCapStyle: 'round',
+                        borderJoinStyle: 'round'
+                    },
+                    point: { 
+                        radius: 0, 
+                        hoverRadius: 7, 
+                        borderWidth: 2,
+                        hoverBorderWidth: 3,
+                        hitRadius: 10
+                    }
+                }
+            }
+        });
+        console.log("✅ Gráfico principal HD inicializado");
+    }
+    
+    initRankingChart() {
+        const canvas = document.getElementById('rankingChart');
+        if (!canvas) {
+            console.error("❌ Canvas 'rankingChart' no encontrado");
+            return;
+        }
+        console.log("📊 Inicializando rankingChart HD");
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        this.rankingChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: [], datasets: [{
+                label: 'Promedio', 
+                data: [], 
+                backgroundColor: [], 
+                borderColor: [], 
+                borderWidth: 1.5, 
+                borderRadius: 6,
+                borderSkipped: false
+            }] },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1.5,
+                devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                
+                // ✨ ANIMACIONES DE BARRAS (Corregido)
+                animation: {
+                    duration: 1000,
+                    easing: 'easeOutQuart',
+                    onComplete: function() {
+                        console.log("✅ Animación del ranking completada");
+                    }
+                },
+                
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: { 
+                        callbacks: { 
+                            label: (ctx) => `Promedio: ${this.formatValue(ctx.raw)}` 
+                        },
+                        backgroundColor: 'rgba(15,23,42,0.98)',
+                        padding: 10,
+                        cornerRadius: 6,
+                        animation: {
+                            duration: 150
+                        }
+                    }
+                },
+                scales: {
+                    x: { 
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            callback: (v) => this.formatValue(v),
+                            padding: 6
+                        }
+                    },
+                    y: { 
+                        grid: { display: false },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '600' },
+                            padding: 10
                         }
                     }
                 }
             }
         });
+        console.log("✅ Gráfico de ranking HD inicializado");
     }
-
-    formatValueCallback(value) {
-        // Formatear números grandes
-        if (value >= 1000000) {
-            return (value/1000000).toFixed(1) + 'M';
-        }
-        if (value >= 1000) {
-            return (value/1000).toFixed(0) + 'k';
-        }
-        if (Math.abs(value) < 0.001) {
-            return value.toExponential(1);
-        }
-        if (Math.abs(value) < 1) {
-            return value.toFixed(3);
-        }
-        if (Math.abs(value) < 10) {
-            return value.toFixed(2);
-        }
-        if (Math.abs(value) < 1000) {
-            return value.toFixed(1);
-        }
-        return value.toFixed(0);
-    }
-
-    updateCharts() {
-        if (!this.mainChart || this.data.length === 0) {
-            console.warn("⚠️  No hay datos para mostrar en gráficos");
+    
+    initScatterChart() {
+        const canvas = document.getElementById('scatterChart');
+        if (!canvas) {
+            console.error("❌ Canvas 'scatterChart' no encontrado");
             return;
         }
-
-        console.log("📈 Actualizando gráficos con", this.data.length, "registros");
+        console.log("📉 Inicializando scatterChart HD");
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Obtener todas las combinaciones únicas
-        const uniqueCombinations = [...new Set(this.data.map(d => d.combinationKey))];
-        console.log("🔄 Combinaciones únicas:", uniqueCombinations.length);
-        
-        // Obtener todas las fechas únicas y ordenarlas
-        const uniqueDates = [...new Set(this.data.map(d => d.fecha))].sort((a, b) => {
-            return new Date(a) - new Date(b);
+        this.scatterChart = new Chart(ctx, {
+            type: 'scatter',
+            data: { datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2,
+                devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                
+                // ✨ ANIMACIONES DE DISPERSIÓN (Corregido)
+                animation: {
+                    duration: 1000,
+                    easing: 'easeInOutQuart'
+                },
+                
+                plugins: { 
+                    legend: { 
+                        position: 'top', 
+                        labels: { 
+                            color: '#334155', 
+                            font: { size: 12, weight: '500' },
+                            padding: 15,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        } 
+                    },
+                    tooltip: { 
+                        callbacks: { 
+                            label: (ctx) => {
+                                const date = new Date(ctx.raw.x).toLocaleDateString('es-ES', { year: 'numeric', month: 'short' });
+                                return `${ctx.dataset.label}: ${date} → ${this.formatValue(ctx.raw.y)}`;
+                            }
+                        },
+                        backgroundColor: 'rgba(15,23,42,0.98)',
+                        padding: 12,
+                        cornerRadius: 8
+                    }
+                },
+                scales: {
+                    x: { 
+                        type: 'time',
+                        time: { unit: 'month', tooltipFormat: 'MMM yyyy' },
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            padding: 8
+                        }
+                    },
+                    y: { 
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            callback: (v) => this.formatValue(v),
+                            padding: 8
+                        }
+                    }
+                },
+                elements: {
+                    point: { 
+                        radius: 5, 
+                        hoverRadius: 8, 
+                        borderWidth: 2,
+                        backgroundColor: 'rgba(255,255,255,0.9)',
+                        borderColor: '#ffffff',
+                        hoverBorderWidth: 3
+                    }
+                }
+            }
         });
-        
-        // Agrupar datos por combinación
-        const groupedData = {};
-        const seriesStats = {};
-        
-        uniqueCombinations.forEach(combination => {
-            const items = this.data.filter(d => d.combinationKey === combination);
-            const firstItem = items[0];
+        console.log("✅ Gráfico de dispersión HD inicializado");
+    }
+    
+    initPieCharts() {
+        console.log("🥧 Inicializando gráficos de pastel HD");
+        const canvas1 = document.getElementById('pieChartFeeder');
+        if (canvas1) {
+            const ctx = canvas1.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas1.width, canvas1.height);
             
-            // Crear mapa de fecha -> valor para esta combinación
-            const dateMap = {};
-            items.forEach(item => {
-                dateMap[item.fecha] = item.frecuencia;
+            this.pieChartByFeeder = new Chart(ctx, {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ 
+                    data: [], 
+                    backgroundColor: this.chartPalette, 
+                    borderWidth: 3,
+                    borderColor: '#ffffff',
+                    hoverBorderWidth: 4,
+                    hoverBorderColor: '#ffffff'
+                }] },
+                options: {
+                    responsive: true, 
+                    maintainAspectRatio: true,
+                    aspectRatio: 1.2,
+                    devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                    cutout: '65%',
+                    
+                    // ✨ ANIMACIONES ROTATIVAS (Corregido)
+                    animation: {
+                        animateRotate: true,
+                        animateScale: true,
+                        duration: 1200,
+                        easing: 'easeInOutQuart'
+                    },
+                    
+                    plugins: {
+                        legend: { 
+                            position: 'bottom', 
+                            labels: { 
+                                color: '#334155', 
+                                font: { size: 11, weight: '500' }, 
+                                padding: 15,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            } 
+                        },
+                        tooltip: { 
+                            callbacks: { 
+                                label: (ctx) => {
+                                    const total = ctx.dataset.data.reduce((a,b) => a + b, 0);
+                                    const percent = ((ctx.raw / total) * 100).toFixed(1);
+                                    return `${ctx.label}: ${this.formatValue(ctx.raw)} (${percent}%)`;
+                                }
+                            },
+                            backgroundColor: 'rgba(15,23,42,0.98)',
+                            padding: 12,
+                            cornerRadius: 8
+                        }
+                    }
+                }
             });
-            
-            // Crear array de valores para cada fecha única
-            groupedData[combination] = {
-                label: firstItem.combinationLabel,
-                data: uniqueDates.map(date => dateMap[date] !== undefined ? dateMap[date] : null),
-                alimentador: firstItem.transformador,
-                year: firstItem.year,
-                tipo: firstItem.tipo
-            };
-            
-            // Calcular estadísticas para esta serie
-            const valores = items.map(i => i.frecuencia).filter(v => v !== null);
-            if (valores.length > 0) {
-                const sum = valores.reduce((a, b) => a + b, 0);
-                const avg = sum / valores.length;
-                const max = Math.max(...valores);
-                const min = Math.min(...valores);
-                const std = Math.sqrt(valores.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / valores.length);
-                
-                // Evitar división por cero en CV
-                const cv = avg !== 0 ? (std / avg) * 100 : 0;
-                
-                seriesStats[combination] = {
-                    avg: avg,
-                    min: min,
-                    max: max,
-                    std: std,
-                    cv: cv, // Coeficiente de variación
-                    count: valores.length
-                };
-            }
-        });
-        
-        // Asignar colores a las series
-        this.activeColorMap = {};
-        uniqueCombinations.forEach((combination, idx) => {
-            this.activeColorMap[combination] = this.chartPalette[idx % this.chartPalette.length];
-        });
-        
-        // Crear datasets para el gráfico principal
-        const datasetsMain = uniqueCombinations.map((combination, idx) => {
-            const series = groupedData[combination];
-            const color = this.activeColorMap[combination];
-            
-            // Determinar estilo basado en el tipo de agrupación
-            let lineStyle = 'solid';
-            if (this.groupBy === 'year') {
-                // Diferentes estilos para diferentes años
-                const yearIndex = this.filters.year.indexOf(series.year);
-                lineStyle = ['solid', 'dash', 'dot'][yearIndex % 3] || 'solid';
-            } else if (this.groupBy === 'tipo') {
-                // Diferentes estilos para diferentes tipos
-                const tipoIndex = this.filters.tipoMedicion.indexOf(series.tipo);
-                lineStyle = ['solid', 'dash', 'dot'][tipoIndex % 3] || 'solid';
-            }
-            
-            return {
-                label: series.label,
-                data: series.data,
-                borderColor: color,
-                backgroundColor: color + '20',
-                borderWidth: 3,
-                borderDash: lineStyle === 'solid' ? [] : 
-                           lineStyle === 'dash' ? [10, 5] : [5, 5],
-                tension: 0.3,
-                pointRadius: 4,
-                pointHoverRadius: 8,
-                pointBackgroundColor: color,
-                pointBorderColor: '#ffffff',
-                pointBorderWidth: 2,
-                fill: false,
-                pointHoverBackgroundColor: '#ffffff',
-                pointHoverBorderColor: color,
-                pointHoverBorderWidth: 3,
-                hidden: idx >= 15 // Ocultar series después de 15 para evitar saturación
-            };
-        });
-        
-        // Actualizar gráfico principal
-        this.mainChart.data.labels = uniqueDates;
-        this.mainChart.data.datasets = datasetsMain;
-        
-        // Actualizar tipo de gráfico si se cambió
-        const chartType = document.getElementById('chartType').value;
-        this.mainChart.config.type = chartType;
-        
-        // Actualizar escalas basadas en datos
-        const allValues = this.data.map(d => d.frecuencia).filter(v => v !== null);
-        if (allValues.length > 0) {
-            const minVal = Math.min(...allValues);
-            const maxVal = Math.max(...allValues);
-            const range = maxVal - minVal;
-            
-            // Ajustar escala con margen
-            this.mainChart.options.scales.y.min = minVal - range * 0.1;
-            this.mainChart.options.scales.y.max = maxVal + range * 0.1;
         }
         
+        const canvas2 = document.getElementById('pieChartType');
+        if (canvas2) {
+            const ctx = canvas2.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas2.width, canvas2.height);
+            
+            this.pieChartByType = new Chart(ctx, {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ 
+                    data: [], 
+                    backgroundColor: this.chartPalette.slice(5), 
+                    borderWidth: 3,
+                    borderColor: '#ffffff',
+                    hoverBorderWidth: 4,
+                    hoverBorderColor: '#ffffff'
+                }] },
+                options: {
+                    responsive: true, 
+                    maintainAspectRatio: true,
+                    aspectRatio: 1.2,
+                    devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                    cutout: '65%',
+                    
+                    // ✨ ANIMACIONES ROTATIVAS (Corregido)
+                    animation: {
+                        animateRotate: true,
+                        animateScale: true,
+                        duration: 1200,
+                        easing: 'easeInOutQuart'
+                    },
+                    
+                    plugins: {
+                        legend: { 
+                            position: 'bottom', 
+                            labels: { 
+                                color: '#334155', 
+                                font: { size: 11, weight: '500' }, 
+                                padding: 15,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            } 
+                        },
+                        tooltip: { 
+                            callbacks: { 
+                                label: (ctx) => {
+                                    const total = ctx.dataset.data.reduce((a,b) => a + b, 0);
+                                    const percent = ((ctx.raw / total) * 100).toFixed(1);
+                                    return `${ctx.label}: ${this.formatValue(ctx.raw)} (${percent}%)`;
+                                }
+                            },
+                            backgroundColor: 'rgba(15,23,42,0.98)',
+                            padding: 12,
+                            cornerRadius: 8
+                        }
+                    }
+                }
+            });
+        }
+        console.log("✅ Gráficos de pastel HD inicializados");
+    }
+    
+    initStationSummaryChart() {
+        const canvas = document.getElementById('stationSummaryChart');
+        if (!canvas) return;
+        console.log("🏭 Inicializando stationSummaryChart HD");
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        this.stationSummaryChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: [], datasets: [{
+                label: 'Promedio', 
+                data: [], 
+                backgroundColor: this.chartPalette, 
+                borderWidth: 1.5,
+                borderRadius: 6,
+                borderColor: '#ffffff',
+                borderSkipped: false
+            }] },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1.8,
+                devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                
+                // ✨ ANIMACIONES DE RESUMEN (Corregido)
+                animation: {
+                    duration: 1000,
+                    easing: 'easeOutQuart'
+                },
+                
+                plugins: { 
+                    legend: { display: false },
+                    title: { 
+                        display: true, 
+                        text: 'Resumen de alimentadores en la estación', 
+                        color: '#1e293b', 
+                        font: { size: 14, weight: 'bold' },
+                        padding: { top: 10, bottom: 20 }
+                    },
+                    tooltip: { 
+                        callbacks: { 
+                            label: (ctx) => `Promedio: ${this.formatValue(ctx.raw)}` 
+                        },
+                        backgroundColor: 'rgba(15,23,42,0.98)',
+                        padding: 10,
+                        cornerRadius: 6
+                    }
+                },
+                scales: {
+                    x: { 
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            callback: (v) => this.formatValue(v),
+                            padding: 6
+                        }
+                    },
+                    y: { 
+                        grid: { display: false },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '600' },
+                            padding: 10
+                        }
+                    }
+                }
+            }
+        });
+        console.log("✅ Gráfico de resumen de estación HD inicializado");
+    }
+    
+    // ========== EVENT LISTENERS PRINCIPALES ==========
+    setupEventListeners() {
+        console.log("🔗 Configurando event listeners...");
+        this.safeAddEventListener('applyFilters', 'click', () => {
+            console.log("🖱️ Botón Aplicar filtros clickeado");
+            this.loadData();
+        });
+        this.safeAddEventListener('resetFilters', 'click', () => {
+            console.log("🖱️ Botón Restablecer clickeado");
+            this.resetFilters();
+        });
+        this.safeAddEventListener('clearAll', 'click', () => {
+            console.log("🖱️ Botón Limpiar todo clickeado");
+            this.clearAllFilters();
+        });
+        this.safeAddEventListener('globalModeUnique', 'click', () => {
+            console.log("🖱️ Modo único seleccionado");
+            this.setGlobalMode('unique');
+        });
+        this.safeAddEventListener('globalModeMultiple', 'click', () => {
+            console.log("🖱️ Modo múltiple seleccionado");
+            this.setGlobalMode('multiple');
+        });
+        this.safeAddEventListener('filterTipoMedicion', 'change', () => {
+            console.log("🔄 Selector de tipo de medición cambiado");
+            this.onFilterChange();
+        });
+        this.safeAddEventListener('filterYear', 'change', () => {
+            console.log("🔄 Selector de año cambiado");
+            this.onFilterChange();
+        });
+        
+        document.querySelectorAll('.period-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                console.log("🖱️ Pestaña de período clickeada:", e.currentTarget.dataset.period);
+                this.onPeriodTabClick(e);
+            });
+        });
+        
+        document.querySelectorAll('.month-btn').forEach(btn => btn.addEventListener('click', (e) => {
+            console.log("🖱️ Botón de mes clickeado:", e.currentTarget.dataset.month);
+            this.toggleMonthSelection(e);
+        }));
+        this.safeAddEventListener('selectAllMonths', 'click', () => {
+            console.log("🖱️ Seleccionar todos los meses");
+            this.selectAllMonths();
+        });
+        this.safeAddEventListener('deselectAllMonths', 'click', () => {
+            console.log("🖱️ Deseleccionar todos los meses");
+            this.deselectAllMonths();
+        });
+        
+        this.safeAddEventListener('groupBy', 'change', () => {
+            console.log("🔄 Selector de agrupación cambiado");
+            this.onGroupByChange();
+        });
+        this.safeAddEventListener('chartType', 'change', () => {
+            console.log("🔄 Selector de tipo de gráfico cambiado");
+            this.onChartTypeChange();
+        });
+        this.safeAddEventListener('togglePoints', 'click', () => {
+            console.log("🖱️ Botón toggle puntos clickeado");
+            this.toggleChartPoints();
+        });
+        this.safeAddEventListener('zoomIn', 'click', () => {
+            console.log("🖱️ Zoom in");
+            this.zoomChart('in');
+        });
+        this.safeAddEventListener('zoomOut', 'click', () => {
+            console.log("🖱️ Zoom out");
+            this.zoomChart('out');
+        });
+        this.safeAddEventListener('resetZoom', 'click', () => {
+            console.log("🖱️ Reset zoom");
+            this.resetChartZoom();
+        });
+        this.safeAddEventListener('expandChartBtn', 'click', () => {
+            console.log("🖱️ Expandir gráficos");
+            this.expandChart();
+        });
+        
+        // Ranking controls
+        this.safeAddEventListener('rankingGroup', 'change', () => {
+            console.log("🔄 Selector de agrupación de ranking cambiado");
+            this.updateRankingChart();
+        });
+        this.safeAddEventListener('rankingSort', 'change', () => {
+            console.log("🔄 Selector de orden de ranking cambiado");
+            this.updateRankingChart();
+        });
+        
+        this.safeAddEventListener('tableSearch', 'input', (e) => {
+            console.log("🔍 Búsqueda en tabla:", e.target.value);
+            this.filterTable(e.target.value);
+        });
+        this.safeAddEventListener('rowsPerPage', 'change', () => {
+            console.log("🔄 Filas por página cambiado");
+            this.updateTable();
+        });
+        this.safeAddEventListener('firstPage', 'click', () => {
+            console.log("🖱️ Primera página");
+            this.goToPage(1);
+        });
+        this.safeAddEventListener('prevPage', 'click', () => {
+            console.log("🖱️ Página anterior");
+            this.goToPage(this.pagination.currentPage - 1);
+        });
+        this.safeAddEventListener('nextPage', 'click', () => {
+            console.log("🖱️ Página siguiente");
+            this.goToPage(this.pagination.currentPage + 1);
+        });
+        this.safeAddEventListener('lastPage', 'click', () => {
+            console.log("🖱️ Última página");
+            this.goToPage(this.pagination.totalPages);
+        });
+        document.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', () => {
+            console.log("🖱️ Ordenar por:", th.dataset.sort);
+            this.sortTable(th.dataset.sort);
+        }));
+        
+        this.safeAddEventListener('uploadExcelBtn', 'click', () => {
+            console.log("🖱️ Subir Excel");
+            this.uploadExcel();
+        });
+        this.safeAddEventListener('sidebarToggle', 'click', () => {
+            console.log("🖱️ Toggle sidebar");
+            this.toggleSidebar();
+        });
+        this.safeAddEventListener('sidebarClose', 'click', () => {
+            console.log("🖱️ Cerrar sidebar");
+            this.toggleSidebar();
+        });
+        
+        window.addEventListener('resize', () => {
+            console.log("🪟 Ventana redimensionada");
+            clearTimeout(this.resizeTimer);
+            this.resizeTimer = setTimeout(() => {
+                this.resizeAllCharts();
+            }, 250);
+        });
+    }
+    
+    resizeAllCharts() {
+        console.log("📏 Redimensionando todos los gráficos HD");
+        requestAnimationFrame(() => {
+            if (this.mainChart) this.mainChart.resize();
+            if (this.rankingChart) this.rankingChart.resize();
+            if (this.scatterChart) this.scatterChart.resize();
+            if (this.pieChartByFeeder) this.pieChartByFeeder.resize();
+            if (this.pieChartByType) this.pieChartByType.resize();
+            if (this.stationSummaryChart) this.stationSummaryChart.resize();
+        });
+    }
+    
+    // ========== PESTAÑAS DE PERÍODO ==========
+    onPeriodTabClick(e) {
+        const tab = e.currentTarget;
+        const periodo = tab.dataset.period;
+        console.log("📆 Período seleccionado:", periodo);
+        
+        document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        this.filters.periodo = periodo;
+        
+        const monthGroup = document.getElementById('monthSelectorGroup');
+        if (monthGroup) monthGroup.style.display = periodo === 'select_months' ? 'block' : 'none';
+        
+        if (periodo !== 'select_months') {
+            this.calculateMonthsForPeriod(periodo);
+        }
+        
+        if (this.globalMode === 'unique') this.loadDataDebounced();
+    }
+    
+    calculateMonthsForPeriod(periodo) {
+        console.log("📅 Calculando meses para período:", periodo);
+        const now = new Date();
+        const cm = now.getMonth() + 1;
+        this.selectedMonths.clear();
+        
+        if (periodo === 'last3') {
+            for (let i = 0; i < 3; i++) this.selectedMonths.add(((cm - i - 1 + 12) % 12) + 1);
+        } else if (periodo === 'last6') {
+            for (let i = 0; i < 6; i++) this.selectedMonths.add(((cm - i - 1 + 12) % 12) + 1);
+        } else if (periodo === 'last12' || periodo === 'currentYear' || periodo === 'lastYear') {
+            for (let i = 1; i <= 12; i++) this.selectedMonths.add(i);
+        }
+        
+        console.log("📅 Meses seleccionados:", Array.from(this.selectedMonths));
+        this.updateMonthButtons();
+        this.updateMonthSelect();
+    }
+    
+    // ========== FILTROS ==========
+    onFilterChange() {
+        console.log("🔄 Filtro cambiado, globalMode =", this.globalMode);
+        if (this.globalMode === 'unique') {
+            console.log("🔄 Modo único, cargando datos con debounce");
+            this.loadDataDebounced();
+        } else {
+            console.log("🔄 Modo múltiple, esperando click en Aplicar");
+        }
+    }
+    
+    // ========== CARGA DE METADATOS ==========
+    async loadTiposMedicion() {
+        console.log("📥 Cargando tipos de medición...");
         try {
-            this.mainChart.update();
-            console.log("✅ Gráfico principal actualizado");
+            const res = await fetch(`${this.apiBaseUrl}/api/tipos-medicion`);
+            const tipos = await res.json();
+            const select = document.getElementById('filterTipoMedicion');
+            if (select) {
+                select.innerHTML = '<option value="all">Todos los tipos</option>' + 
+                    tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+            }
+            console.log(`✅ Tipos de medición cargados: ${tipos.length}`);
+        } catch (e) { console.error("Error cargando tipos:", e); }
+    }
+    
+    async loadSeccionesDisponibles() {
+        console.log("📥 Cargando secciones...");
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/secciones`);
+            const secciones = await res.json();
+            this.allSecciones = secciones;
+            
+            const estacionesSet = new Set(secciones.map(s => s.substring(0,3)).filter(s => s.length === 3));
+            this.estaciones = Array.from(estacionesSet).sort();
+    
+            const estSel = document.getElementById('filterEstacion');
+            if (estSel) {
+                estSel.innerHTML = '<option value="">Todas las estaciones</option>' + 
+                    this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
+            }
+    
+            const feedSel = document.getElementById('filterTransformador');
+            if (feedSel) {
+                feedSel.innerHTML = secciones.map(s => `<option value="${s}">${s}</option>`).join('');
+            }
+    
+            this.initFeederFilter();
+            
+            console.log(`✅ Secciones cargadas: ${secciones.length} secciones, ${this.estaciones.length} estaciones`);
+        } catch (e) { 
+            console.error("Error cargando secciones:", e); 
+        }
+    }
+    
+    async loadYearsAvailable() {
+        console.log("📥 Cargando años...");
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/anios`);
+            const years = await res.json();
+            const select = document.getElementById('filterYear');
+            if (select) {
+                select.innerHTML = '<option value="all">Todos los años</option>' + 
+                    years.map(y => `<option value="${y}">${y}</option>`).join('');
+            }
+            console.log(`✅ Años cargados: ${years.length}`);
+        } catch (e) { console.error("Error cargando años:", e); }
+    }
+    
+    // ========== FILTRO INTELIGENTE DE ALIMENTADORES ==========
+    initFeederFilter() {
+        console.log("🔧 Inicializando filtro inteligente de alimentadores");
+        this.setupFeederModeTabs();
+        this.setupFeederEventListeners();
+        this.updateFeederCount();
+        this.setFeederMode('manual');
+    }
+    
+    setupFeederModeTabs() {
+        const tabs = document.querySelectorAll('.mode-tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                const mode = e.currentTarget.dataset.mode;
+                console.log("🖱️ Modo de alimentadores cambiado a:", mode);
+                this.setFeederMode(mode);
+            });
+        });
+    }
+    
+    setFeederMode(mode) {
+        this.selectionMode = mode;
+        const tabs = document.querySelectorAll('.mode-tab');
+        tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
+    
+        const stationSelectorContainer = document.getElementById('stationSelectorContainer');
+        if (stationSelectorContainer) {
+            stationSelectorContainer.style.display = (mode === 'station' || mode === 'manual') ? 'block' : 'none';
+        }
+    
+        if (mode === 'all') this.selectAllFeeders();
+        if (mode === 'station' && this.currentStationFilter) this.selectStationFeeders(this.currentStationFilter);
+        
+        this.updateFeederModeHint();
+    }
+    
+    updateFeederModeHint() {
+        const hint = document.getElementById('estacionHint');
+        if (!hint) return;
+        const texts = {
+            manual: 'Filtra los alimentadores por estación y selecciona manualmente con Ctrl+Click.',
+            station: 'Al seleccionar una estación, se marcarán automáticamente todos sus alimentadores.',
+            all: 'Modo "Todos los alimentadores" – se muestran y seleccionan todos.'
+        };
+        hint.innerHTML = `<i class="fas fa-info-circle"></i> ${texts[this.selectionMode] || texts.manual}`;
+    }
+    
+    setupFeederEventListeners() {
+        const estacionSelect = document.getElementById('filterEstacion');
+        if (estacionSelect) {
+            estacionSelect.addEventListener('change', (e) => {
+                const estacion = e.target.value;
+                console.log("🔄 Estación seleccionada:", estacion);
+                this.currentStationFilter = estacion;
+                this.filterFeedersByStation(estacion);
+                if (this.selectionMode === 'station' && estacion) this.selectStationFeeders(estacion);
+            });
+        }
+    
+        const selectAllBtn = document.getElementById('selectAllFeedersBtn');
+        if (selectAllBtn) selectAllBtn.addEventListener('click', () => {
+            console.log("🖱️ Botón 'Todos' clickeado");
+            this.selectAllFeeders();
+        });
+    
+        const selectStationBtn = document.getElementById('selectStationFeedersBtn');
+        if (selectStationBtn) {
+            selectStationBtn.addEventListener('click', () => {
+                console.log("🖱️ Botón 'Todos de esta estación' clickeado");
+                const estacion = document.getElementById('filterEstacion')?.value;
+                if (estacion) this.selectStationFeeders(estacion);
+                else this.showNotification('Selecciona una estación primero', 'warning');
+            });
+        }
+    
+        const clearBtn = document.getElementById('clearFeedersBtn');
+        if (clearBtn) clearBtn.addEventListener('click', () => {
+            console.log("🖱️ Botón 'Limpiar' clickeado");
+            this.clearFeeders();
+        });
+    
+        const feederSelect = document.getElementById('filterTransformador');
+        if (feederSelect) {
+            feederSelect.addEventListener('change', () => {
+                console.log("🔄 Selección de alimentadores cambiada");
+                this.updateFeederCount();
+                if (this.globalMode === 'unique') this.loadDataDebounced();
+            });
+        }
+    }
+    
+    filterFeedersByStation(estacion) {
+        console.log("🔍 Filtrando alimentadores por estación:", estacion);
+        const feederSelect = document.getElementById('filterTransformador');
+        if (!feederSelect) return;
+    
+        const selectedValues = Array.from(feederSelect.selectedOptions).map(opt => opt.value);
+        feederSelect.innerHTML = '';
+    
+        let allFeeders = [...this.allSecciones];
+        if (estacion) allFeeders = allFeeders.filter(f => f.startsWith(estacion));
+    
+        allFeeders.forEach(feeder => {
+            const option = document.createElement('option');
+            option.value = feeder;
+            option.textContent = feeder;
+            feederSelect.appendChild(option);
+        });
+    
+        selectedValues.forEach(val => {
+            const option = Array.from(feederSelect.options).find(opt => opt.value === val);
+            if (option) option.selected = true;
+        });
+    
+        this.updateFeederCount();
+    }
+    
+    selectAllFeeders() {
+        console.log("✅ Seleccionando todos los alimentadores");
+        const feederSelect = document.getElementById('filterTransformador');
+        if (!feederSelect) return;
+        
+        if (document.getElementById('filterEstacion').value !== '') {
+            document.getElementById('filterEstacion').value = '';
+            this.filterFeedersByStation('');
+        }
+        
+        Array.from(feederSelect.options).forEach(opt => opt.selected = true);
+        this.updateFeederCount();
+        this.showNotification('Todos los alimentadores seleccionados', 'success');
+        if (this.globalMode === 'unique') this.loadDataDebounced();
+    }
+    
+    selectStationFeeders(estacion) {
+        console.log("✅ Seleccionando todos los alimentadores de la estación:", estacion);
+        const feederSelect = document.getElementById('filterTransformador');
+        if (!feederSelect) return;
+    
+        if (document.getElementById('filterEstacion').value !== estacion) {
+            document.getElementById('filterEstacion').value = estacion;
+            this.filterFeedersByStation(estacion);
+        }
+    
+        Array.from(feederSelect.options).forEach(opt => opt.selected = true);
+        this.updateFeederCount();
+        this.showNotification(`Todos los alimentadores de ${estacion} seleccionados`, 'success');
+        if (this.globalMode === 'unique') this.loadDataDebounced();
+    }
+    
+    clearFeeders() {
+        console.log("🧹 Limpiando selección de alimentadores");
+        const feederSelect = document.getElementById('filterTransformador');
+        if (!feederSelect) return;
+        Array.from(feederSelect.options).forEach(opt => opt.selected = false);
+        this.updateFeederCount();
+        this.showNotification('Selección de alimentadores limpiada', 'info');
+        if (this.globalMode === 'unique') this.loadDataDebounced();
+    }
+    
+    updateFeederCount() {
+        const feederSelect = document.getElementById('filterTransformador');
+        const countSpan = document.getElementById('feederCount');
+        if (!feederSelect || !countSpan) return;
+        const count = feederSelect.selectedOptions.length;
+        countSpan.textContent = count;
+        console.log("🔢 Alimentadores seleccionados:", count);
+    }
+    
+    // ========== CONFIGURACIÓN DE VALORES POR DEFECTO ==========
+    setDefaultFilterValues() {
+        console.log("⚙️ Configurando valores por defecto");
+        this.setGlobalMode('unique');
+        this.selectedMonths = new Set([1,2,3,4,5,6,7,8,9,10,11,12]);
+        this.updateMonthButtons();
+        this.updateMonthSelect();
+        
+        const periodTabs = document.querySelectorAll('.period-tab');
+        periodTabs.forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.period === 'select_months');
+        });
+        this.filters.periodo = 'select_months';
+        
+        setTimeout(() => {
+            const setSelect = (id, defaultValue) => {
+                const el = document.getElementById(id);
+                if (el && el.options.length) {
+                    if (Array.from(el.options).find(opt => opt.value === defaultValue)) el.value = defaultValue;
+                    else if (el.options.length > 0) el.value = el.options[0].value;
+                }
+            };
+            setSelect('filterYear', '2024');
+            setSelect('filterTipoMedicion', 'ACCID.DEP');
+            
+            const feedSel = document.getElementById('filterTransformador');
+            if (feedSel) {
+                const estSel = document.getElementById('filterEstacion');
+                if (estSel) estSel.value = '';
+                this.filterFeedersByStation('');
+                const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
+                if (option) option.selected = true;
+                else if (feedSel.options.length > 0) feedSel.options[0].selected = true;
+                this.updateFeederCount();
+            }
+            
+            this.filters = {
+                year: [document.getElementById('filterYear')?.value || '2024'],
+                tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'ACCID.DEP'],
+                transformador: this.getSelectedValues('filterTransformador'),
+                month: Array.from(this.selectedMonths),
+                estacion: '',
+                periodo: 'select_months'
+            };
+            console.log("⚙️ Filtros por defecto establecidos:", this.filters);
+        }, 500);
+    }
+    
+    // ========== MANEJO DE FILTROS GLOBALES ==========
+    setGlobalMode(mode) {
+        console.log("🌐 Modo global cambiado a:", mode);
+        this.globalMode = mode;
+        const unique = document.getElementById('globalModeUnique');
+        const multiple = document.getElementById('globalModeMultiple');
+        const hint = document.getElementById('globalModeHint');
+        if (unique && multiple) {
+            unique.classList.toggle('active', mode === 'unique');
+            multiple.classList.toggle('active', mode === 'multiple');
+        }
+        if (hint) hint.textContent = mode === 'unique' 
+            ? 'Único: un valor por filtro' 
+            : 'Múltiple: selecciona varios valores con Ctrl+Click';
+    }
+    
+    resetFilters() {
+        console.log("🔄 Restableciendo filtros");
+        this.filters = { ...this.defaultFilters };
+        this.selectedMonths = new Set([1,2,3,4,5,6,7,8,9,10,11,12]);
+        this.currentStationGroup = null;
+        this.updateMonthButtons();
+        this.updateMonthSelect();
+        
+        this.setFeederMode('manual');
+        this.currentStationFilter = '';
+        const estSel = document.getElementById('filterEstacion');
+        if (estSel) estSel.value = '';
+        this.filterFeedersByStation('');
+        this.clearFeeders();
+        
+        const feedSel = document.getElementById('filterTransformador');
+        if (feedSel) {
+            const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
+            if (option) option.selected = true;
+            this.updateFeederCount();
+        }
+        
+        const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+        setVal('filterYear', '2024');
+        setVal('filterTipoMedicion', 'ACCID.DEP');
+        
+        document.querySelectorAll('.period-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.period === 'select_months');
+        });
+        this.filters.periodo = 'select_months';
+        const monthGroup = document.getElementById('monthSelectorGroup');
+        if (monthGroup) monthGroup.style.display = 'block';
+        
+        this.showNotification("Filtros restablecidos", "success");
+        setTimeout(() => this.loadData(), 500);
+    }
+    
+    clearAllFilters() {
+        console.log("🧹 Limpiando todos los filtros");
+        document.querySelectorAll('.multi-select').forEach(select => 
+            Array.from(select.options).forEach(opt => opt.selected = false));
+        this.selectedMonths.clear();
+        this.updateMonthButtons();
+        this.updateMonthSelect();
+        
+        this.setFeederMode('manual');
+        this.currentStationFilter = '';
+        const estSel = document.getElementById('filterEstacion');
+        if (estSel) estSel.value = '';
+        this.filterFeedersByStation('');
+        this.clearFeeders();
+        
+        const tipoSel = document.getElementById('filterTipoMedicion');
+        if (tipoSel) Array.from(tipoSel.options).forEach(opt => opt.selected = false);
+        const yearSel = document.getElementById('filterYear');
+        if (yearSel) Array.from(yearSel.options).forEach(opt => opt.selected = false);
+        
+        this.filters = { tipoMedicion: [], transformador: [], year: [], month: [], estacion: '', periodo: 'select_months' };
+        this.currentStationGroup = null;
+        this.showNotification("Filtros limpiados", "info");
+    }
+    
+    // ========== MESES ==========
+    toggleMonthSelection(e) {
+        const month = parseInt(e.currentTarget.dataset.month);
+        console.log("🖱️ Mes clickeado:", month);
+        this.selectedMonths.has(month) ? this.selectedMonths.delete(month) : this.selectedMonths.add(month);
+        this.updateMonthButtons(); this.updateMonthSelect();
+        this.filters.month = Array.from(this.selectedMonths);
+        if (this.globalMode === 'unique') this.loadDataDebounced();
+    }
+    
+    updateMonthButtons() {
+        document.querySelectorAll('.month-btn').forEach(btn => {
+            const m = parseInt(btn.dataset.month);
+            btn.classList.toggle('selected', this.selectedMonths.has(m));
+        });
+        const hint = document.getElementById('monthHint');
+        if (hint) hint.innerHTML = `<i class="fas fa-info-circle"></i> ${this.selectedMonths.size} mes(es) seleccionado(s)`;
+    }
+    
+    updateMonthSelect() {
+        const sel = document.getElementById('filterMonth');
+        if (sel) {
+            Array.from(sel.options).forEach(opt => opt.selected = this.selectedMonths.has(parseInt(opt.value)));
+            this.filters.month = Array.from(this.selectedMonths);
+        }
+    }
+    
+    selectAllMonths() { 
+        console.log("✅ Seleccionar todos los meses");
+        for (let i=1;i<=12;i++) this.selectedMonths.add(i); 
+        this.updateMonthButtons(); this.updateMonthSelect(); 
+        this.showNotification("Todos los meses seleccionados","success"); 
+        if (this.globalMode === 'unique') this.loadDataDebounced(); 
+    }
+    
+    deselectAllMonths() { 
+        console.log("❌ Deseleccionar todos los meses");
+        this.selectedMonths.clear(); 
+        this.updateMonthButtons(); this.updateMonthSelect(); 
+        this.showNotification("Todos los meses deseleccionados","info"); 
+        if (this.globalMode === 'unique') this.loadDataDebounced(); 
+    }
+    
+    // ========== CARGA DE DATOS ==========
+    async loadData() {
+        console.log("📥 Iniciando carga de datos...");
+        this.showLoading(true, "Cargando datos desde el servidor...", null);
+        try {
+            const params = new URLSearchParams();
+            
+            const selectedFeed = this.getSelectedValues('filterTransformador');
+            let seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'ACY1';
+            params.append('seccion', seccionVal);
+            console.log("🔌 Alimentadores:", selectedFeed);
+            
+            const yearSel = document.getElementById('filterYear');
+            const years = this.getSelectedValues('filterYear');
+            const anioVal = years.length ? years.join(',') : (yearSel?.value || '2024');
+            params.append('anio', anioVal);
+            console.log("📅 Años:", years);
+            
+            if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
+                params.append('mes', Array.from(this.selectedMonths).join(','));
+                console.log("📆 Meses seleccionados:", Array.from(this.selectedMonths));
+            } else if (this.filters.periodo && this.filters.periodo !== 'select_months') {
+                params.append('periodo', this.filters.periodo);
+                console.log("📆 Período:", this.filters.periodo);
+            } else {
+                params.append('mes', 'all');
+                console.log("📆 Meses: todos");
+            }
+            
+            const tipoSel = document.getElementById('filterTipoMedicion');
+            const tipos = this.getSelectedValues('filterTipoMedicion');
+            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'ACCID.DEP');
+            params.append('tipo_medicion', tipoVal);
+            console.log("📊 Tipos:", tipos);
+            
+            const url = `${this.apiBaseUrl}/api/datos?${params}`;
+            console.log("🌐 URL:", url);
+            
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            console.log(`✅ Datos recibidos: ${data.length} registros`);
+            
+            this.data = data;
+            this.filteredData = [...this.data];
+            
+            this.showLoading(true, "Procesando datos...", 70);
+            
+            if (this.data.length === 0) {
+                this.showNotification("No hay datos con los filtros actuales", "warning");
+                this.clearChartsAndTable();
+                if (this.isInitialLoad) { 
+                    console.log("⚠️ Generando datos de ejemplo..."); 
+                    this.generateSampleData(); 
+                }
+            } else {
+                console.log("📈 Actualizando UI con nuevos datos (con animaciones HD)...");
+                this.updateStats();
+                this.updateKPIs();
+                this.updateSpecialKPIs();
+                
+                // Actualizar gráficos con animaciones
+                this.updateCharts();
+                this.updateScatterChart();
+                this.updatePieCharts();
+                this.updateStationSummary();
+                
+                this.pagination.currentPage = 1;
+                this.updateTable();
+                this.updateComparisonTags();
+                this.showNotification(`${this.data.length} registros cargados ✨`, "success");
+            }
         } catch (error) {
-            console.error("❌ Error al actualizar gráfico principal:", error);
+            console.error("❌ Error cargando datos:", error);
+            this.showNotification(`Error: ${error.message}`, "error");
+            if (this.isInitialLoad) { 
+                console.log("⚠️ Generando datos de ejemplo..."); 
+                this.generateSampleData(); 
+            }
+        } finally { 
+            this.showLoading(false); 
+        }
+    }
+    
+    // ========== KPIS ESPECIALES ==========
+    updateSpecialKPIs() {
+        console.log("📊 Actualizando KPIs especiales");
+        const specialSection = document.getElementById('specialKpiSection');
+        if (!specialSection) return;
+        
+        const selectedAlimentadores = this.getSelectedValues('filterTransformador');
+        const allFeedersCount = this.allSecciones.length;
+        const isAllSelected = selectedAlimentadores.length === allFeedersCount && allFeedersCount > 0;
+        
+        if (!isAllSelected) {
+            specialSection.style.display = 'none';
+            return;
         }
         
-        // Actualizar gráfico de ranking solo si hay estadísticas
-        if (Object.keys(seriesStats).length > 0) {
-            this.updateRankingChart(seriesStats);
-        }
+        specialSection.style.display = 'grid';
         
-        // Actualizar gráfico de dispersión
+        const feeders = this.data.map(d => d.transformador);
+        const uniqueFeeders = [...new Set(feeders)];
+        const stations = new Set(uniqueFeeders.map(f => f.substring(0,3)));
+        
+        const stationCountEl = document.getElementById('stationCount');
+        if (stationCountEl) stationCountEl.textContent = stations.size;
+        
+        const stationNamesEl = document.getElementById('stationNames');
+        if (stationNamesEl) stationNamesEl.textContent = Array.from(stations).slice(0,3).join(', ') + (stations.size > 3 ? '...' : '');
+        
+        const stationData = {};
+        this.data.forEach(d => {
+            const station = d.transformador.substring(0,3);
+            if (!stationData[station]) stationData[station] = { sum: 0, count: 0 };
+            stationData[station].sum += d.frecuencia;
+            stationData[station].count += 1;
+        });
+        let bestStation = null, bestAvg = Infinity;
+        Object.entries(stationData).forEach(([st, data]) => {
+            const avg = data.sum / data.count;
+            if (avg < bestAvg) { bestAvg = avg; bestStation = st; }
+        });
+        
+        const bestStationNameEl = document.getElementById('bestStationName');
+        if (bestStationNameEl) bestStationNameEl.textContent = bestStation || '--';
+        const bestStationValueEl = document.getElementById('bestStationValue');
+        if (bestStationValueEl) bestStationValueEl.textContent = this.safeToFixed(bestAvg);
+        
+        const feederData = {};
+        this.data.forEach(d => {
+            if (!feederData[d.transformador]) feederData[d.transformador] = { sum: 0, count: 0 };
+            feederData[d.transformador].sum += d.frecuencia;
+            feederData[d.transformador].count += 1;
+        });
+        let bestFeeder = null, bestFeederAvg = Infinity;
+        Object.entries(feederData).forEach(([fd, data]) => {
+            const avg = data.sum / data.count;
+            if (avg < bestFeederAvg) { bestFeederAvg = avg; bestFeeder = fd; }
+        });
+        
+        const topFeederNameEl = document.getElementById('topFeederName');
+        if (topFeederNameEl) topFeederNameEl.textContent = bestFeeder || '--';
+        const topFeederValueEl = document.getElementById('topFeederValue');
+        if (topFeederValueEl) topFeederValueEl.textContent = this.safeToFixed(bestFeederAvg);
+        
+        const values = this.data.map(d => d.frecuencia).filter(v => !isNaN(v));
+        if (values.length > 1) {
+            const mean = values.reduce((a,b)=>a+b,0)/values.length;
+            const variance = values.reduce((a,b)=>a+Math.pow(b-mean,2),0)/values.length;
+            const cv = (Math.sqrt(variance)/mean)*100;
+            const globalCVEl = document.getElementById('globalCV');
+            if (globalCVEl) globalCVEl.textContent = cv.toFixed(2) + '%';
+            const badge = document.getElementById('globalCVBadge');
+            if (badge) {
+                badge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
+                badge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
+            }
+        }
+    }
+    
+    // ========== LIMPIAR GRÁFICOS ==========
+    clearChartsAndTable() {
+        console.log("🧹 Limpiando gráficos y tabla");
+        
+        // Limpiar con animación suave de salida
+        const clearWithAnimation = (chart) => {
+            if (!chart) return;
+            chart.data.labels = [];
+            chart.data.datasets = [];
+            chart.update('none'); // Sin animación al limpiar
+        };
+        
+        clearWithAnimation(this.mainChart);
+        clearWithAnimation(this.rankingChart);
+        clearWithAnimation(this.scatterChart);
+        clearWithAnimation(this.pieChartByFeeder);
+        clearWithAnimation(this.pieChartByType);
+        clearWithAnimation(this.stationSummaryChart);
+        
+        const tbody = document.getElementById('dataTable');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="no-data"><i class="fas fa-database"></i> No hay datos para mostrar</td></tr>`;
+        
+        ['rangeValue','rangeInfo','variabilityValue','variabilityBadge','worstSeries','worstValue'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                if (id === 'rangeValue' || id === 'variabilityValue' || id === 'worstValue') el.textContent = '0.0000';
+                else if (id === 'rangeInfo') el.textContent = '0-0';
+                else if (id === 'variabilityBadge') { el.textContent = '--'; el.style.backgroundColor = ''; }
+                else if (id === 'worstSeries') el.textContent = '--';
+            }
+        });
+        ['dataCount','loadedSeries','totalPoints','seriesCount','activeSeries'].forEach(id => { 
+            const el = document.getElementById(id); 
+            if(el) el.textContent = '0'; 
+        });
+        const specialSection = document.getElementById('specialKpiSection');
+        if (specialSection) specialSection.style.display = 'none';
+    }
+    
+    getSelectedValues(selectId) {
+        const sel = document.getElementById(selectId);
+        if (!sel) return [];
+        const values = sel.multiple ? Array.from(sel.selectedOptions).map(o=>o.value).filter(v=>v) : (sel.value ? [sel.value] : []);
+        return values;
+    }
+    
+    // ========== GENERAR DATOS DE EJEMPLO ==========
+    generateSampleData() {
+        console.log("⚠️ Generando datos de ejemplo...");
+        const secciones = this.filters.transformador?.length ? this.filters.transformador : ['ACY1','ACY2','ACY3'];
+        const años = this.filters.year?.map(y=>parseInt(y)).filter(y=>!isNaN(y)).length ? this.filters.year.map(y=>parseInt(y)) : [2023,2024];
+        const tipos = this.filters.tipoMedicion?.length ? this.filters.tipoMedicion : ['ACCID.DEP','TOTAL FEP'];
+        const meses = Array.from(this.selectedMonths).length ? Array.from(this.selectedMonths) : [1,2,3,4,5,6,7,8,9,10,11,12];
+        this.data = [];
+        secciones.forEach((sec, i) => {
+            años.forEach(an => {
+                meses.forEach(me => {
+                    tipos.forEach((tp, j) => {
+                        let base = tp === 'ACCID.DEP' ? 0.5 + i*0.2 + Math.random()*0.3 :
+                                  tp.includes('TOTAL') ? 120 + i*30 + Math.random()*80 : 40 + i*15 + Math.random()*30;
+                        const varMes = Math.sin(me/12*Math.PI*2)*0.15;
+                        const varAn = (an-2023)*0.05;
+                        this.data.push({
+                            transformador: sec,
+                            frecuencia: parseFloat((base*(1+varMes+varAn)).toFixed(4)),
+                            fecha: `${an}-${String(me).padStart(2,'0')}-01`,
+                            tipo: tp,
+                            departamento: 'Zona Este',
+                            year: an,
+                            month: me,
+                            combinationKey: `${sec}-${an}-${tp}`,
+                            combinationLabel: `${sec} (${an}, ${tp})`
+                        });
+                    });
+                });
+            });
+        });
+        this.filteredData = [...this.data];
+        console.log(`✅ Datos de ejemplo generados: ${this.data.length} registros`);
+        this.updateStats(); this.updateKPIs(); this.updateSpecialKPIs(); 
+        this.updateCharts(); 
         this.updateScatterChart();
-        
-        // Actualizar KPIs solo si hay estadísticas
-        if (Object.keys(seriesStats).length > 0) {
-            this.updateComparisonKPIs(seriesStats);
-        }
+        this.updatePieCharts(); 
+        this.updateStationSummary(); 
+        this.updateTable();
     }
-
-    updateRankingChart(seriesStats) {
-        if (!this.rankingChart) return;
-        
-        const sortMethod = document.getElementById('rankingSort').value;
-        
-        // Ordenar series según método seleccionado
-        let sortedSeries = Object.keys(seriesStats).sort((a, b) => {
-            switch(sortMethod) {
-                case 'avg':
-                    return seriesStats[b].avg - seriesStats[a].avg;
-                case 'stability':
-                    return seriesStats[a].cv - seriesStats[b].cv; // Menor CV = más estable
-                case 'trend':
-                    // Simular tendencia (en realidad necesitaríamos cálculo de tendencia)
-                    return Math.random() - 0.5;
-                default:
-                    return seriesStats[b].avg - seriesStats[a].avg;
+    
+    // ========== ACTUALIZACIÓN UI ==========
+    updateStats() {
+        console.log("📊 Actualizando estadísticas");
+        const ids = ['dataCount','loadedSeries','totalPoints','seriesCount','activeSeries'];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (id === 'dataCount' || id === 'totalPoints') el.textContent = this.data.length.toLocaleString();
+            if (id === 'loadedSeries' || id === 'seriesCount' || id === 'activeSeries') {
+                const unique = new Set(this.data.map(d => d.combinationKey)).size;
+                el.textContent = unique;
             }
         });
+    }
+    
+    updateKPIs() {
+        if (!this.data.length) return;
+        const values = this.data.map(d => d.frecuencia).filter(v => !isNaN(v));
+        if (!values.length) return;
+        const min = Math.min(...values), max = Math.max(...values);
+        const range = max - min;
+        const rangeVal = document.getElementById('rangeValue');
+        if (rangeVal) rangeVal.textContent = range.toFixed(4);
+        const rangeInfo = document.getElementById('rangeInfo');
+        if (rangeInfo) rangeInfo.textContent = `${this.safeToFixed(min)}-${this.safeToFixed(max)}`;
         
-        // Limitar a 20 series para legibilidad
-        if (sortedSeries.length > 20) {
-            sortedSeries = sortedSeries.slice(0, 20);
+        if (values.length > 1) {
+            const mean = values.reduce((a,b)=>a+b,0)/values.length;
+            const variance = values.reduce((a,b)=>a+Math.pow(b-mean,2),0)/values.length;
+            const cv = (Math.sqrt(variance)/mean)*100;
+            const varVal = document.getElementById('variabilityValue');
+            if (varVal) varVal.textContent = cv.toFixed(2)+'%';
+            const varBadge = document.getElementById('variabilityBadge');
+            if (varBadge) {
+                varBadge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
+                varBadge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
+            }
         }
         
-        const labels = sortedSeries.map(key => {
-            const items = this.data.filter(d => d.combinationKey === key);
-            return items[0]?.combinationLabel || key;
+        const series = {};
+        this.data.forEach(d => {
+            if (!series[d.combinationKey]) series[d.combinationKey] = { label: d.combinationLabel, vals: [] };
+            series[d.combinationKey].vals.push(d.frecuencia);
         });
-        
-        const data = sortedSeries.map(key => seriesStats[key]?.avg || 0);
-        const colors = sortedSeries.map(key => this.activeColorMap[key] || '#94a3b8');
-        
-        this.rankingChart.data.labels = labels;
-        this.rankingChart.data.datasets = [{
-            label: 'Promedio',
-            data: data,
-            backgroundColor: colors,
-            borderRadius: 6,
-            borderWidth: 2,
-            borderColor: colors.map(c => c + 'CC')
-        }];
-        
-        try {
-            this.rankingChart.update();
-            console.log("✅ Gráfico de ranking actualizado");
-        } catch (error) {
-            console.error("❌ Error al actualizar gráfico de ranking:", error);
+        let worstKey = null, worstAvg = -Infinity;
+        Object.entries(series).forEach(([k, v]) => {
+            const avg = v.vals.reduce((a,b)=>a+b,0)/v.vals.length;
+            if (avg > worstAvg) { worstAvg = avg; worstKey = k; }
+        });
+        if (worstKey) {
+            const ws = document.getElementById('worstSeries');
+            if (ws) ws.textContent = series[worstKey].label;
+            const wv = document.getElementById('worstValue');
+            if (wv) wv.textContent = worstAvg.toFixed(4);
         }
     }
-
-    updateScatterChart() {
-        if (!this.scatterChart) return;
+    
+    updateComparisonTags() {
+        const cont = document.getElementById('comparisonTags');
+        if (!cont) return;
+        cont.innerHTML = '';
+        const tipos = this.getSelectedValues('filterTipoMedicion');
+        const alims = this.getSelectedValues('filterTransformador');
+        const años = this.getSelectedValues('filterYear');
+        tipos.filter(t=>t!=='all').forEach(t => cont.appendChild(this.createTag('Tipo: '+t, 'tipo')));
+        alims.filter(a=>a).forEach(a => cont.appendChild(this.createTag('Alim: '+a, 'alimentador')));
+        años.filter(a=>a!=='all').forEach(a => cont.appendChild(this.createTag('Año: '+a, 'año')));
+        if (!cont.children.length) cont.appendChild(this.createTag('Selecciona filtros para comparar', 'hint'));
+    }
+    
+    createTag(text, cls) {
+        const span = document.createElement('span');
+        span.className = `tag ${cls}`;
+        span.textContent = text;
+        return span;
+    }
+    
+    // ========== GRÁFICOS (ACTUALIZACIÓN CON ANIMACIONES) ==========
+    updateCharts() {
+        console.log("📊 Actualizando gráficos HD con animaciones...");
+        if (!this.data.length) { 
+            console.log("📉 No hay datos, limpiando gráficos");
+            this.clearChartsAndTable(); 
+            return; 
+        }
+        console.log(`📈 Datos disponibles: ${this.data.length} registros`);
+        this.updateMainChart();
+        this.updateRankingChart();
+    }
+    
+    updateMainChart() {
+        console.log("📈 Actualizando gráfico principal HD...");
+        if (!this.mainChart) {
+            console.warn("mainChart no inicializado");
+            return;
+        }
         
-        const xVar = document.getElementById('scatterX').value;
-        const yVar = document.getElementById('scatterY').value;
-        
-        // Agrupar por combinación para el scatter plot
-        const uniqueCombinations = [...new Set(this.data.map(d => d.combinationKey))];
+        const grouped = this.groupDataForChart();
+        console.log("📊 Grupos para gráfico principal:", Object.keys(grouped));
         const datasets = [];
+        const labelsSet = new Set();
         
-        uniqueCombinations.slice(0, 10).forEach((combination, idx) => { // Limitar a 10 series
-            const items = this.data.filter(d => d.combinationKey === combination);
-            const firstItem = items[0];
-            const color = this.activeColorMap[combination] || this.chartPalette[idx];
-            
-            const points = items.map(item => {
-                let xValue;
-                switch(xVar) {
-                    case 'fecha':
-                        xValue = new Date(item.fecha).getTime();
-                        break;
-                    case 'alimentador':
-                        // Convertir alimentador a número para el eje X
-                        xValue = this.filters.transformador.indexOf(item.transformador);
-                        break;
-                    case 'tipo':
-                        xValue = this.filters.tipoMedicion.indexOf(item.tipo);
-                        break;
-                    default:
-                        xValue = idx;
-                }
-                
-                let yValue;
-                switch(yVar) {
-                    case 'valor':
-                        yValue = item.frecuencia;
-                        break;
-                    case 'desviacion':
-                        // Calcular desviación del promedio de la serie
-                        const serieAvg = items.reduce((sum, i) => sum + i.frecuencia, 0) / items.length;
-                        yValue = Math.abs(item.frecuencia - serieAvg);
-                        break;
-                    case 'tendencia':
-                        // Simular tendencia
-                        yValue = Math.sin(new Date(item.fecha).getMonth() * 0.5) * 0.3 + 0.5;
-                        break;
-                    default:
-                        yValue = item.frecuencia;
-                }
-                
-                return {
-                    x: xValue,
-                    y: yValue,
-                    label: `${item.transformador} - ${item.fecha}`
-                };
-            });
-            
+        Object.entries(grouped).forEach(([key, pts], idx) => {
+            pts.sort((a,b)=> a.year!==b.year ? a.year-b.year : a.month-b.month);
+            pts.forEach(p => labelsSet.add(`${p.year}-${String(p.month).padStart(2,'0')}`));
             datasets.push({
-                label: firstItem?.combinationLabel || combination,
-                data: points,
-                backgroundColor: color + '80',
-                borderColor: color,
-                borderWidth: 2,
-                pointRadius: 6,
-                pointHoverRadius: 10
+                label: key,
+                data: [],
+                borderColor: this.chartPalette[idx % this.chartPalette.length],
+                backgroundColor: this.chartPalette[idx % this.chartPalette.length] + '20',
+                borderWidth: 2.5,
+                tension: 0.2,
+                fill: false,
+                pointRadius: 0,
+                pointHoverRadius: 7,
+                pointHoverBorderWidth: 3,
+                pointHoverBackgroundColor: '#ffffff',
+                borderCapStyle: 'round',
+                borderJoinStyle: 'round'
             });
         });
         
+        const labels = Array.from(labelsSet).sort();
+        console.log("📅 Labels del gráfico:", labels);
+        datasets.forEach(ds => {
+            const pts = grouped[ds.label];
+            ds.data = labels.map(lbl => {
+                const [y,m] = lbl.split('-').map(Number);
+                const p = pts.find(p => p.year===y && p.month===m);
+                return p ? p.frecuencia : null;
+            });
+        });
+        
+        this.mainChart.data.labels = labels;
+        this.mainChart.data.datasets = datasets;
+        
+        const chartType = document.getElementById('chartType')?.value || 'line';
+        if (this.mainChart.config.type !== chartType) {
+            this.mainChart.config.type = chartType;
+            if (chartType === 'bar') {
+                this.mainChart.data.datasets.forEach(ds => { ds.fill = false; ds.borderWidth = 1.5; });
+            } else if (chartType === 'scatter') {
+                this.mainChart.data.datasets.forEach(ds => { ds.showLine = false; ds.pointRadius = 5; });
+            } else {
+                this.mainChart.data.datasets.forEach(ds => { ds.showLine = true; ds.pointRadius = 0; });
+            }
+        }
+        
+        // ✨ Actualizar con animación suave
+        this.mainChart.update('active');
+        console.log("✅ Gráfico principal HD actualizado con animaciones");
+        this.updateChartLegend();
+    }
+    
+    groupDataForChart() {
+        const g = {};
+        this.data.forEach(d => {
+            let key;
+            switch(this.groupBy) {
+                case 'alimentador': key = d.transformador; break;
+                case 'year': key = d.year.toString(); break;
+                case 'tipo': key = d.tipo; break;
+                case 'combinado': key = d.combinationLabel; break;
+                default: key = d.combinationKey;
+            }
+            if (!g[key]) g[key] = [];
+            g[key].push({ year: d.year, month: d.month, frecuencia: d.frecuencia });
+        });
+        return g;
+    }
+    
+    updateChartLegend() {
+        const leg = document.getElementById('mainChartLegend');
+        if (!leg) return;
+        if (!this.mainChart?.data.datasets?.length) { 
+            leg.innerHTML = '<div class="legend-empty">Sin datos</div>'; 
+            return; 
+        }
+        let html = '<div class="legend-title">Series:</div>';
+        this.mainChart.data.datasets.forEach((ds,i) => {
+            const hidden = this.mainChart.getDatasetMeta(i).hidden === true;
+            html += `<div class="legend-item ${hidden?'hidden':''}" data-index="${i}">
+                        <span class="legend-color" style="background:${ds.borderColor}"></span>
+                        <span class="legend-text">${ds.label}</span>
+                        <span class="legend-action"><i class="fas fa-eye${hidden?'-slash':''}"></i></span>
+                    </div>`;
+        });
+        leg.innerHTML = html;
+        leg.querySelectorAll('.legend-item').forEach(el => {
+            el.addEventListener('click', (e) => {
+                if (e.target.closest('.legend-action')) {
+                    const idx = parseInt(el.dataset.index);
+                    const meta = this.mainChart.getDatasetMeta(idx);
+                    meta.hidden = !meta.hidden;
+                    this.mainChart.update('active'); // Con animación
+                    this.updateChartLegend();
+                }
+            });
+        });
+    }
+    
+    updateRankingChart() {
+        console.log("📊 Actualizando ranking HD...");
+        if (!this.rankingChart) {
+            console.warn("rankingChart no inicializado");
+            return;
+        }
+        if (!this.data.length) {
+            this.rankingChart.data.labels = [];
+            this.rankingChart.data.datasets[0].data = [];
+            this.rankingChart.update('none');
+            return;
+        }
+        
+        const rankingGroup = document.getElementById('rankingGroup')?.value || 'alimentador';
+        const sortBy = document.getElementById('rankingSort')?.value || 'avg';
+        console.log(`📊 Ranking group: ${rankingGroup}, sort: ${sortBy}`);
+        
+        let series = {};
+        
+        if (rankingGroup === 'alimentador') {
+            this.data.forEach(d => {
+                const key = d.combinationLabel;
+                if (!series[key]) series[key] = [];
+                series[key].push(d.frecuencia);
+            });
+        } else {
+            this.data.forEach(d => {
+                const station = d.transformador.substring(0, 3);
+                if (!series[station]) series[station] = [];
+                series[station].push(d.frecuencia);
+            });
+        }
+        
+        let ranking = Object.entries(series).map(([lbl, vals]) => {
+            const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+            const min = Math.min(...vals);
+            const max = Math.max(...vals);
+            const last = vals[vals.length-1];
+            return { label: lbl, avg, range: max-min, last };
+        });
+        
+        ranking.sort((a,b) => {
+            if (sortBy === 'stability') return a.range - b.range;
+            if (sortBy === 'trend') return b.last - a.last;
+            return b.avg - a.avg;
+        });
+        
+        const top = ranking.slice(0, 10);
+        console.log("🏆 Top 10 ranking:", top);
+        this.rankingChart.data.labels = top.map(t => t.label);
+        this.rankingChart.data.datasets[0].data = top.map(t => t.avg);
+        this.rankingChart.data.datasets[0].backgroundColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
+        this.rankingChart.data.datasets[0].borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        
+        // ✨ Actualizar con animación
+        this.rankingChart.update('active');
+        console.log("✅ Ranking HD actualizado con animaciones");
+    }
+    
+    updateScatterChart() {
+        console.log("📉 Actualizando gráfico de dispersión HD...");
+        if (!this.scatterChart) {
+            console.warn("scatterChart no inicializado");
+            return;
+        }
+        if (!this.data.length) {
+            this.scatterChart.data.datasets = [];
+            this.scatterChart.update('none');
+            return;
+        }
+        
+        const feeders = [...new Set(this.data.map(d=>d.transformador))];
+        console.log("🔌 Alimentadores en dispersión:", feeders);
+        const datasets = feeders.map((f, i) => ({
+            label: f,
+            data: this.data.filter(d=>d.transformador===f).map(d=>({ x: new Date(d.fecha), y: d.frecuencia })),
+            backgroundColor: this.chartPalette[i%this.chartPalette.length] + '80',
+            borderColor: this.chartPalette[i%this.chartPalette.length],
+            borderWidth: 2,
+            pointRadius: 5,
+            pointHoverRadius: 8,
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointHoverBorderWidth: 3
+        }));
         this.scatterChart.data.datasets = datasets;
         
-        // Configurar ejes
-        this.scatterChart.options.scales.x.title.text = this.getAxisLabel(xVar);
-        this.scatterChart.options.scales.y.title.text = this.getAxisLabel(yVar);
-        
-        try {
-            this.scatterChart.update();
-        } catch (error) {
-            console.error("❌ Error al actualizar gráfico de dispersión:", error);
-        }
+        // ✨ Actualizar con animación
+        this.scatterChart.update('active');
+        console.log("✅ Dispersión HD actualizada con animaciones");
     }
-
-    getAxisLabel(variable) {
-        switch(variable) {
-            case 'fecha': return 'Fecha';
-            case 'alimentador': return 'Alimentador';
-            case 'tipo': return 'Tipo de Medición';
-            case 'valor': return 'Valor';
-            case 'desviacion': return 'Desviación';
-            case 'tendencia': return 'Tendencia';
-            default: return variable;
-        }
-    }
-
-    updateComparisonKPIs(seriesStats) {
-        if (!seriesStats || Object.keys(seriesStats).length === 0) {
-            console.warn("No hay estadísticas para actualizar KPIs");
+    
+    updatePieCharts() {
+        console.log("🥧 Actualizando gráficos de pastel HD...");
+        if (!this.data.length) {
+            if (this.pieChartByFeeder) {
+                this.pieChartByFeeder.data.labels = [];
+                this.pieChartByFeeder.data.datasets[0].data = [];
+                this.pieChartByFeeder.update('none');
+            }
+            if (this.pieChartByType) {
+                this.pieChartByType.data.labels = [];
+                this.pieChartByType.data.datasets[0].data = [];
+                this.pieChartByType.update('none');
+            }
             return;
         }
         
-        console.log("📊 Actualizando KPIs de comparación...");
-        console.log("Series disponibles:", Object.keys(seriesStats).length);
-        
-        // Calcular estadísticas globales
-        const allAverages = Object.values(seriesStats).map(s => s.avg);
-        const allMins = Object.values(seriesStats).map(s => s.min);
-        const allMaxs = Object.values(seriesStats).map(s => s.max);
-        const allCVs = Object.values(seriesStats).map(s => s.cv);
-        
-        const globalAvg = allAverages.reduce((a, b) => a + b, 0) / allAverages.length;
-        const globalMin = Math.min(...allMins);
-        const globalMax = Math.max(...allMaxs);
-        const globalRange = globalMax - globalMin;
-        const avgCV = allCVs.reduce((a, b) => a + b, 0) / allCVs.length;
-        
-        // Encontrar la peor serie (mayor CV = menos estable)
-        let worstSeriesKey = Object.keys(seriesStats)[0];
-        let worstCV = seriesStats[worstSeriesKey].cv;
-        
-        Object.entries(seriesStats).forEach(([key, stats]) => {
-            if (stats.cv > worstCV) {
-                worstCV = stats.cv;
-                worstSeriesKey = key;
-            }
-        });
-        
-        const worstSeries = this.data.find(d => d.combinationKey === worstSeriesKey);
-        
-        // Actualizar elementos
-        document.getElementById('rangeValue').textContent = this.safeToFixed(globalRange);
-        document.getElementById('rangeInfo').textContent = `${this.safeToFixed(globalMin, 0)}-${this.safeToFixed(globalMax, 0)}`;
-        
-        document.getElementById('variabilityValue').textContent = this.safeToFixed(avgCV, 2) + '%';
-        const variabilityBadge = document.getElementById('variabilityBadge');
-        if (avgCV < 10) {
-            variabilityBadge.textContent = 'Excelente';
-            variabilityBadge.style.background = 'rgba(16, 185, 129, 0.1)';
-            variabilityBadge.style.color = 'var(--success)';
-        } else if (avgCV < 20) {
-            variabilityBadge.textContent = 'Buena';
-            variabilityBadge.style.background = 'rgba(245, 158, 11, 0.1)';
-            variabilityBadge.style.color = 'var(--warning)';
-        } else {
-            variabilityBadge.textContent = 'Alta';
-            variabilityBadge.style.background = 'rgba(239, 68, 68, 0.1)';
-            variabilityBadge.style.color = 'var(--danger)';
+        const feederData = {};
+        this.data.forEach(d => feederData[d.transformador] = (feederData[d.transformador] || 0) + d.frecuencia);
+        const feederLabels = Object.keys(feederData);
+        const feederValues = Object.values(feederData);
+        console.log("🥧 Datos pastel alimentadores:", feederLabels);
+        if (this.pieChartByFeeder) {
+            this.pieChartByFeeder.data.labels = feederLabels;
+            this.pieChartByFeeder.data.datasets[0].data = feederValues;
+            this.pieChartByFeeder.data.datasets[0].backgroundColor = feederLabels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+            this.pieChartByFeeder.update('active'); // ✨ Con animación
         }
         
-        if (worstSeries) {
-            document.getElementById('worstSeries').textContent = worstSeries.transformador;
-            document.getElementById('worstValue').textContent = this.safeToFixed(seriesStats[worstSeriesKey].cv, 2) + '% CV';
-        }
-        
-        // Actualizar contador de series activas
-        const activeSeriesEl = document.getElementById('activeSeries');
-        if (activeSeriesEl) {
-            activeSeriesEl.textContent = Object.keys(seriesStats).length;
+        const typeData = {};
+        this.data.forEach(d => typeData[d.tipo] = (typeData[d.tipo] || 0) + d.frecuencia);
+        const typeLabels = Object.keys(typeData);
+        const typeValues = Object.values(typeData);
+        console.log("🥧 Datos pastel tipo:", typeLabels);
+        if (this.pieChartByType) {
+            this.pieChartByType.data.labels = typeLabels;
+            this.pieChartByType.data.datasets[0].data = typeValues;
+            this.pieChartByType.data.datasets[0].backgroundColor = typeLabels.map((_,i) => this.chartPalette[(i+5)%this.chartPalette.length]);
+            this.pieChartByType.update('active'); // ✨ Con animación
         }
     }
-
-    // --- TABLA MEJORADA ---
+    
+    updateStationSummary() {
+        console.log("🏭 Actualizando resumen de estación HD...");
+        if (!this.stationSummaryChart) return;
+        
+        const selectedFeeders = this.getSelectedValues('filterTransformador');
+        if (selectedFeeders.length === 0) {
+            document.getElementById('stationSummaryContainer').style.display = 'none';
+            return;
+        }
+        const prefixes = new Set(selectedFeeders.map(f => f.substring(0,3)));
+        if (prefixes.size !== 1) {
+            document.getElementById('stationSummaryContainer').style.display = 'none';
+            return;
+        }
+        const estacion = Array.from(prefixes)[0];
+        this.currentStationGroup = estacion;
+        
+        const container = document.getElementById('stationSummaryContainer');
+        container.style.display = 'block';
+        const stationName = document.getElementById('stationName');
+        if (stationName) stationName.textContent = this.currentStationGroup;
+        
+        const stationData = this.data.filter(d => d.transformador.startsWith(this.currentStationGroup));
+        if (!stationData.length) return;
+        
+        const feederAvg = {};
+        stationData.forEach(d => {
+            if (!feederAvg[d.transformador]) feederAvg[d.transformador] = { sum: 0, count: 0 };
+            feederAvg[d.transformador].sum += d.frecuencia;
+            feederAvg[d.transformador].count += 1;
+        });
+        const labels = Object.keys(feederAvg);
+        const avgs = labels.map(l => feederAvg[l].sum / feederAvg[l].count);
+        console.log(`🏭 Resumen de ${estacion}:`, labels, avgs);
+        this.stationSummaryChart.data.labels = labels;
+        this.stationSummaryChart.data.datasets[0].data = avgs;
+        this.stationSummaryChart.data.datasets[0].backgroundColor = labels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        
+        // ✨ Actualizar con animación
+        this.stationSummaryChart.update('active');
+        console.log("✅ Resumen de estación HD actualizado con animaciones");
+    }
+    
+    // ========== CONTROLES DE GRÁFICOS ==========
+    onChartTypeChange() { 
+        console.log("🔄 Tipo de gráfico cambiado a:", document.getElementById('chartType')?.value);
+        this.updateMainChart(); 
+    }
+    
+    toggleChartPoints() {
+        if (!this.mainChart) return;
+        const show = this.mainChart.data.datasets[0]?.pointRadius === 0;
+        console.log("🔄 Toggle puntos:", show ? "mostrar" : "ocultar");
+        this.mainChart.data.datasets.forEach(ds => { 
+            ds.pointRadius = show ? 4 : 0; 
+            ds.pointHoverRadius = show ? 7 : 6; 
+        });
+        this.mainChart.update('active'); // Con animación
+    }
+    
+    zoomChart(dir) {
+        if (!this.mainChart) return;
+        const scale = dir === 'in' ? 0.8 : 1.2;
+        console.log("🔍 Zoom:", dir);
+        if (this.mainChart.options.scales.x.min && this.mainChart.options.scales.x.max) {
+            const range = this.mainChart.options.scales.x.max - this.mainChart.options.scales.x.min;
+            const center = (this.mainChart.options.scales.x.min + this.mainChart.options.scales.x.max) / 2;
+            this.mainChart.options.scales.x.min = center - (range * scale) / 2;
+            this.mainChart.options.scales.x.max = center + (range * scale) / 2;
+            this.mainChart.update('active');
+        }
+    }
+    
+    resetChartZoom() {
+        console.log("🔄 Reset zoom");
+        if (!this.mainChart) return;
+        this.mainChart.options.scales.x.min = undefined;
+        this.mainChart.options.scales.x.max = undefined;
+        this.mainChart.options.scales.y.min = undefined;
+        this.mainChart.options.scales.y.max = undefined;
+        this.mainChart.update('active'); // Con animación
+    }
+    
+    onGroupByChange() {
+        this.groupBy = document.getElementById('groupBy')?.value || 'alimentador';
+        console.log("🔄 Agrupación cambiada a:", this.groupBy);
+        this.updateCharts();
+    }
+    
+    // ========== EXPANDIR GRÁFICOS ==========
+    expandChart() {
+        console.log("🖥️ Expandiendo gráficos a nueva ventana");
+        const chartData = {
+            mainChart: {
+                labels: this.mainChart?.data.labels || [],
+                datasets: (this.mainChart?.data.datasets || []).map(ds => ({
+                    label: ds.label,
+                    data: ds.data,
+                    borderColor: ds.borderColor,
+                    backgroundColor: ds.backgroundColor
+                }))
+            },
+            rankingChart: {
+                labels: this.rankingChart?.data.labels || [],
+                data: this.rankingChart?.data.datasets[0]?.data || [],
+                colors: this.rankingChart?.data.datasets[0]?.backgroundColor || []
+            },
+            scatterChart: {
+                datasets: this.scatterChart?.data.datasets || []
+            },
+            pieFeeder: {
+                labels: this.pieChartByFeeder?.data.labels || [],
+                data: this.pieChartByFeeder?.data.datasets[0]?.data || [],
+                colors: this.pieChartByFeeder?.data.datasets[0]?.backgroundColor || []
+            },
+            pieType: {
+                labels: this.pieChartByType?.data.labels || [],
+                data: this.pieChartByType?.data.datasets[0]?.data || [],
+                colors: this.pieChartByType?.data.datasets[0]?.backgroundColor || []
+            },
+            stationSummary: {
+                labels: this.stationSummaryChart?.data.labels || [],
+                data: this.stationSummaryChart?.data.datasets[0]?.data || [],
+                colors: this.stationSummaryChart?.data.datasets[0]?.backgroundColor || [],
+                stationName: this.currentStationGroup || ''
+            },
+            seriesCount: this.mainChart?.data.datasets?.length || 0,
+            dataPoints: this.data.length,
+            periodRange: this.getPeriodRange(),
+            palette: this.chartPalette
+        };
+        localStorage.setItem('ande_chart_data', JSON.stringify(chartData));
+        window.open('chart.html', '_blank', 'width=1400,height=900');
+    }
+    
+    getPeriodRange() {
+        if (!this.data.length) return 'N/A';
+        const dates = this.data.map(d => new Date(d.fecha));
+        const min = new Date(Math.min(...dates)), max = new Date(Math.max(...dates));
+        return `${min.toLocaleDateString('es-ES',{year:'numeric',month:'short'})} - ${max.toLocaleDateString('es-ES',{year:'numeric',month:'short'})}`;
+    }
+    
+    // ========== TABLA ==========
     updateTable() {
+        console.log("📋 Actualizando tabla...");
         const tbody = document.getElementById('dataTable');
         if (!tbody) return;
-        
-        tbody.innerHTML = '';
-        const start = (this.pagination.currentPage - 1) * this.pagination.rowsPerPage;
-        const end = start + this.pagination.rowsPerPage;
-        const pageData = this.filteredData.slice(start, end);
-
-        if(pageData.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="8" style="text-align:center; padding:3rem; color:#94a3b8;">
-                        <i class="fas fa-exchange-alt" style="font-size:2rem; margin-bottom:1rem; display:block; opacity:0.5;"></i>
-                        No hay datos para comparar con los filtros actuales<br>
-                        <small>Selecciona al menos un año, un alimentador y un tipo de medición</small>
-                    </td>
-                </tr>`;
-            this.updatePaginationInfo(0, 0, 0);
+        if (!this.filteredData.length) {
+            tbody.innerHTML = `<tr><td colspan="8" class="no-data"><i class="fas fa-database"></i> No hay datos para mostrar</td></tr>`;
+            this.updatePaginationControls(0,0,0);
             return;
         }
-
-        pageData.forEach(item => {
-            const tr = document.createElement('tr');
-            const color = this.activeColorMap[item.combinationKey] || '#94a3b8';
-            
-            // Estado basado en desviación del promedio de la serie
-            const serieItems = this.data.filter(d => d.combinationKey === item.combinationKey);
-            const serieAvg = serieItems.reduce((a, b) => a + b.frecuencia, 0) / serieItems.length;
-            const diff = Math.abs(item.frecuencia - serieAvg) / serieAvg;
-            
-            let statusClass = 'status-optimal';
-            let statusText = 'Normal';
-            let statusIcon = 'fa-check-circle';
-            
-            if(diff >= 0.1 && diff < 0.3) {
-                statusClass = 'status-regular';
-                statusText = 'Desviado';
-                statusIcon = 'fa-exclamation-circle';
-            }
-            if(diff >= 0.3) {
-                statusClass = 'status-critical';
-                statusText = 'Anómalo';
-                statusIcon = 'fa-times-circle';
-            }
-
-            tr.innerHTML = `
-                <td style="display:flex; align-items:center; gap:12px; font-weight:600;">
-                    <span style="width:14px; height:14px; border-radius:50%; background:${color}; 
-                        box-shadow:0 0 0 3px ${color}20, 0 2px 4px rgba(0,0,0,0.1);"></span>
-                    ${item.combinationLabel}
-                </td>
-                <td style="font-weight:600; color:#475569;">${item.transformador}</td>
-                <td style="font-weight:500;">${item.year}</td>
-                <td style="font-weight:500; color:#8b5cf6;">${item.tipo}</td>
-                <td style="font-weight:500; color:#475569;">${item.fecha}</td>
-                <td style="font-family:'Roboto Mono', monospace; font-size:1.05em; font-weight:700; color:#0f172a;">
-                    ${this.safeToFixed(item.frecuencia)}
-                </td>
-                <td>
-                    <span class="status-indicator ${statusClass}">
-                        <i class="fas ${statusIcon}"></i>
-                        ${statusText}
-                    </span>
-                </td>
-                <td>
-                    <button class="btn-icon small" title="Ver detalles" onclick="dashboard.showSeriesDetails('${item.combinationKey}')">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="btn-icon small" title="Aislar serie" onclick="dashboard.isolateSeries('${item.combinationKey}')">
-                        <i class="fas fa-filter"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(tr);
+        const total = this.filteredData.length;
+        const perPage = parseInt(document.getElementById('rowsPerPage')?.value) || 25;
+        this.pagination.totalPages = Math.ceil(total / perPage);
+        if (this.pagination.currentPage > this.pagination.totalPages) this.pagination.currentPage = this.pagination.totalPages || 1;
+        const start = (this.pagination.currentPage - 1) * perPage;
+        const end = Math.min(start + perPage, total);
+        const pageData = this.filteredData.slice(start, end);
+        let html = '';
+        pageData.forEach((row, i) => {
+            const idx = start + i + 1;
+            html += `<tr>
+                <td>${idx}</td>
+                <td>${row.transformador || 'N/A'}</td>
+                <td>${row.year || 'N/A'}</td>
+                <td>${row.tipo || 'N/A'}</td>
+                <td>${row.fecha || 'N/A'}</td>
+                <td>${this.safeToFixed(row.frecuencia)}</td>
+                <td><span class="status-badge ${this.getStatusClass(row.frecuencia)}">${this.getStatusText(row.frecuencia)}</span></td>
+                <td><button class="btn-icon small" onclick="dashboard.viewDetails(${JSON.stringify(row).replace(/"/g,'&quot;')})" title="Ver detalles"><i class="fas fa-eye"></i></button></td>
+            </tr>`;
         });
-
-        this.updatePaginationInfo(start + 1, end, this.filteredData.length);
-        this.updatePaginationButtons();
+        tbody.innerHTML = html;
+        this.updatePaginationControls(start, end, total);
     }
-
-    // --- NUEVOS MÉTODOS PARA COMPARACIÓN ---
-    showSeriesDetails(combinationKey) {
-        const serieItems = this.data.filter(d => d.combinationKey === combinationKey);
-        if (serieItems.length === 0) return;
-        
-        const firstItem = serieItems[0];
-        const valores = serieItems.map(i => i.frecuencia);
-        const avg = valores.reduce((a, b) => a + b, 0) / valores.length;
-        const min = Math.min(...valores);
-        const max = Math.max(...valores);
-        const std = Math.sqrt(valores.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / valores.length);
-        
-        const modalBody = document.getElementById('modalBody');
-        if (!modalBody) return;
-        
-        modalBody.innerHTML = `
-            <div class="series-details">
-                <div class="series-header" style="display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem;">
-                    <span style="width:20px; height:20px; border-radius:50%; background:${this.activeColorMap[combinationKey] || '#94a3b8'}"></span>
-                    <h4 style="margin:0;">${firstItem.combinationLabel}</h4>
-                </div>
-                
-                <div class="stats-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:1rem; margin-bottom:1.5rem;">
-                    <div class="stat-card" style="background:#f8fafc; padding:1rem; border-radius:8px;">
-                        <div style="font-size:0.85rem; color:#64748b;">Promedio</div>
-                        <div style="font-size:1.5rem; font-weight:700; color:#0f172a;">${this.safeToFixed(avg)}</div>
-                    </div>
-                    <div class="stat-card" style="background:#f8fafc; padding:1rem; border-radius:8px;">
-                        <div style="font-size:0.85rem; color:#64748b;">Rango</div>
-                        <div style="font-size:1.5rem; font-weight:700; color:#0f172a;">${this.safeToFixed(min)} - ${this.safeToFixed(max)}</div>
-                    </div>
-                    <div class="stat-card" style="background:#f8fafc; padding:1rem; border-radius:8px;">
-                        <div style="font-size:0.85rem; color:#64748b;">Desviación</div>
-                        <div style="font-size:1.5rem; font-weight:700; color:#0f172a;">${this.safeToFixed(std)}</div>
-                    </div>
-                    <div class="stat-card" style="background:#f8fafc; padding:1rem; border-radius:8px;">
-                        <div style="font-size:0.85rem; color:#64748b;">Muestras</div>
-                        <div style="font-size:1.5rem; font-weight:700; color:#0f172a;">${serieItems.length}</div>
-                    </div>
-                </div>
-                
-                <div class="series-info">
-                    <p><strong>Alimentador:</strong> ${firstItem.transformador}</p>
-                    <p><strong>Año:</strong> ${firstItem.year}</p>
-                    <p><strong>Tipo de medición:</strong> ${firstItem.tipo}</p>
-                    <p><strong>Departamento:</strong> ${firstItem.departamento || 'N/A'}</p>
-                    <p><strong>Periodo:</strong> ${serieItems[0].fecha} - ${serieItems[serieItems.length-1].fecha}</p>
-                </div>
-            </div>
-        `;
-        
-        const modal = document.getElementById('seriesModal');
-        if (modal) {
-            modal.style.display = 'flex';
-        }
+    
+    updatePaginationControls(start, end, total) {
+        const ids = ['rowsShownStart','rowsShownEnd','rowsTotal','currentPage'];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (id === 'rowsShownStart') el.textContent = total > 0 ? start+1 : 0;
+            else if (id === 'rowsShownEnd') el.textContent = end;
+            else if (id === 'rowsTotal') el.textContent = total;
+            else if (id === 'currentPage') el.textContent = this.pagination.currentPage;
+        });
+        ['firstPage','prevPage'].forEach(id => { const el=document.getElementById(id); if(el) el.disabled = this.pagination.currentPage === 1; });
+        ['nextPage','lastPage'].forEach(id => { const el=document.getElementById(id); if(el) el.disabled = this.pagination.currentPage === this.pagination.totalPages; });
     }
-
-    isolateSeries(combinationKey) {
-        // Aislar esta serie en el gráfico
-        const datasets = this.mainChart.data.datasets;
-        datasets.forEach((dataset, index) => {
-            const meta = this.mainChart.getDatasetMeta(index);
-            const isTargetSeries = dataset.label.includes(combinationKey.split('-')[0]);
-            meta.hidden = !isTargetSeries;
-        });
-        
-        this.mainChart.update();
-        this.showNotification(`Aislando serie: ${combinationKey.split('-')[0]}`, "success");
+    
+    goToPage(p) {
+        if (p < 1 || p > this.pagination.totalPages) return;
+        console.log("📄 Ir a página:", p);
+        this.pagination.currentPage = p;
+        this.updateTable();
+        document.querySelector('.table-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-
-    // --- EVENTOS MEJORADOS ---
-    initializeEvents() {
-        // Aplicar filtros
-        const applyFiltersBtn = document.getElementById('applyFilters');
-        if (applyFiltersBtn) {
-            applyFiltersBtn.addEventListener('click', () => {
-                this.syncFilters();
-                
-                // Validar según modo global
-                if (this.globalComparisonMode === 'unique') {
-                    // En modo único, validar que haya al menos un valor en cada filtro
-                    if (!this.filters.transformador[0] || !this.filters.year[0] || !this.filters.tipoMedicion[0]) {
-                        this.showNotification("Selecciona un valor en cada filtro", "warning");
-                        return;
-                    }
-                } else {
-                    // En modo múltiple, validar que haya al menos una selección
-                    if (this.filters.transformador.length === 0) {
-                        this.showNotification("Selecciona al menos un alimentador", "warning");
-                        return;
-                    }
-                    if (this.filters.year.length === 0) {
-                        this.showNotification("Selecciona al menos un año", "warning");
-                        return;
-                    }
-                    if (this.filters.tipoMedicion.length === 0) {
-                        this.showNotification("Selecciona al menos un tipo de medición", "warning");
-                        return;
-                    }
-                }
-                
-                if(window.innerWidth <= 768) {
-                    const sidebar = document.getElementById('sidebar');
-                    if (sidebar) sidebar.classList.remove('active');
-                }
-                this.loadData();
-                this.updateComparisonTags();
-            });
-        }
-
-        // Restablecer filtros
-        const resetFiltersBtn = document.getElementById('resetFilters');
-        if (resetFiltersBtn) {
-            resetFiltersBtn.addEventListener('click', () => {
-                this.setInitialDefaults();
-                this.loadData();
-                this.showNotification("Filtros restablecidos", "success");
-            });
-        }
-
-        // Limpiar todo
-        const clearAllBtn = document.getElementById('clearAll');
-        if (clearAllBtn) {
-            clearAllBtn.addEventListener('click', () => {
-                const tipoMedicionSel = document.getElementById('filterTipoMedicion');
-                const yearSel = document.getElementById('filterYear');
-                const transformadorSel = document.getElementById('filterTransformador');
-                const monthSel = document.getElementById('filterMonth');
-                const estacionSel = document.getElementById('filterEstacion');
-                const periodoSel = document.getElementById('filterPeriodo');
-                
-                if (tipoMedicionSel) tipoMedicionSel.selectedIndex = -1;
-                if (yearSel) yearSel.selectedIndex = -1;
-                if (transformadorSel) transformadorSel.selectedIndex = -1;
-                if (monthSel) monthSel.selectedIndex = -1;
-                if (estacionSel) estacionSel.value = '';
-                if (periodoSel) periodoSel.value = 'select_months';
-                
-                // Limpiar botones de meses
-                this.clearMonthSelection();
-                
-                // Mostrar selectores de mes
-                const monthModeGroup = document.getElementById('monthModeGroup');
-                const monthSelectorGroup = document.getElementById('monthSelectorGroup');
-                if (monthModeGroup) monthModeGroup.style.display = 'block';
-                if (monthSelectorGroup) monthSelectorGroup.style.display = 'block';
-                
-                // Restaurar todos los alimentadores cuando se limpia la estación
-                this.filterAlimentadoresByEstacion('');
-                
-                // Restaurar modo único global
-                this.setGlobalComparisonMode('unique');
-                
-                this.syncFilters();
-                this.updateComparisonTags();
-                this.showNotification("Filtros limpiados", "info");
-            });
-        }
-
-        // Cambiar tipo de gráfico
-        const chartTypeSel = document.getElementById('chartType');
-        if (chartTypeSel) {
-            chartTypeSel.addEventListener('change', () => {
-                this.updateCharts();
-            });
-        }
-
-        // Cambiar agrupación
-        const groupBySel = document.getElementById('groupBy');
-        if (groupBySel) {
-            groupBySel.addEventListener('change', () => {
-                this.syncFilters();
-                this.loadData();
-            });
-        }
-
-        // Cambiar ranking
-        const rankingSortSel = document.getElementById('rankingSort');
-        if (rankingSortSel) {
-            rankingSortSel.addEventListener('change', () => {
-                this.updateCharts();
-            });
-        }
-
-        // Cambiar scatter plot
-        const scatterXSel = document.getElementById('scatterX');
-        const scatterYSel = document.getElementById('scatterY');
-        if (scatterXSel) {
-            scatterXSel.addEventListener('change', () => {
-                this.updateCharts();
-            });
-        }
-        if (scatterYSel) {
-            scatterYSel.addEventListener('change', () => {
-                this.updateCharts();
-            });
-        }
-
-        // Control del sidebar
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        if (sidebarToggle) {
-            sidebarToggle.addEventListener('click', () => {
-                const sidebar = document.getElementById('sidebar');
-                if (sidebar) sidebar.classList.add('active');
-            });
-        }
-        
-        const sidebarClose = document.getElementById('sidebarClose');
-        if (sidebarClose) {
-            sidebarClose.addEventListener('click', () => {
-                const sidebar = document.getElementById('sidebar');
-                if (sidebar) sidebar.classList.remove('active');
-            });
-        }
-
-        // Paginación
-        const firstPageBtn = document.getElementById('firstPage');
-        const prevPageBtn = document.getElementById('prevPage');
-        const nextPageBtn = document.getElementById('nextPage');
-        const lastPageBtn = document.getElementById('lastPage');
-        
-        if (firstPageBtn) {
-            firstPageBtn.addEventListener('click', () => {
-                this.pagination.currentPage = 1;
-                this.updateTable();
-            });
-        }
-        
-        if (prevPageBtn) {
-            prevPageBtn.addEventListener('click', () => {
-                if(this.pagination.currentPage > 1) { 
-                    this.pagination.currentPage--; 
-                    this.updateTable(); 
-                }
-            });
-        }
-        
-        if (nextPageBtn) {
-            nextPageBtn.addEventListener('click', () => {
-                const maxPage = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
-                if(this.pagination.currentPage < maxPage) { 
-                    this.pagination.currentPage++; 
-                    this.updateTable(); 
-                }
-            });
-        }
-        
-        if (lastPageBtn) {
-            lastPageBtn.addEventListener('click', () => {
-                this.pagination.currentPage = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
-                this.updateTable();
-            });
-        }
-
-        // Filas por página
-        const rowsPerPageSel = document.getElementById('rowsPerPage');
-        if (rowsPerPageSel) {
-            rowsPerPageSel.addEventListener('change', (e) => {
-                this.pagination.rowsPerPage = parseInt(e.target.value);
-                this.pagination.currentPage = 1;
-                this.updateTable();
-            });
-        }
-
-        // Búsqueda en tabla
-        const tableSearchInput = document.getElementById('tableSearch');
-        if (tableSearchInput) {
-            tableSearchInput.addEventListener('keyup', (e) => {
-                const term = e.target.value.toLowerCase();
-                this.filteredData = this.data.filter(d => 
-                    d.transformador.toLowerCase().includes(term) ||
-                    d.combinationLabel.toLowerCase().includes(term) ||
-                    d.tipo.toLowerCase().includes(term) ||
-                    d.frecuencia.toString().includes(term)
-                );
-                this.pagination.currentPage = 1;
-                this.updateTable();
-            });
-        }
-
-        // Ordenar tabla
-        document.querySelectorAll('.data-table th[data-sort]').forEach(th => {
-            th.addEventListener('click', () => {
-                this.sortTable(th.dataset.sort);
-            });
-        });
-
-        // Control de zoom de gráficos
-        document.getElementById('zoomIn').addEventListener('click', () => {
-            if (this.mainChart.scales.y) {
-                const currentMin = this.mainChart.scales.y.min;
-                const currentMax = this.mainChart.scales.y.max;
-                const range = currentMax - currentMin;
-                this.mainChart.scales.y.min = currentMin + range * 0.1;
-                this.mainChart.scales.y.max = currentMax - range * 0.1;
-                this.mainChart.update();
-            }
-        });
-
-        document.getElementById('zoomOut').addEventListener('click', () => {
-            if (this.mainChart.scales.y) {
-                const currentMin = this.mainChart.scales.y.min;
-                const currentMax = this.mainChart.scales.y.max;
-                const range = currentMax - currentMin;
-                this.mainChart.scales.y.min = currentMin - range * 0.1;
-                this.mainChart.scales.y.max = currentMax + range * 0.1;
-                this.mainChart.update();
-            }
-        });
-
-        document.getElementById('resetZoom').addEventListener('click', () => {
-            if (this.mainChart.scales.y) {
-                this.mainChart.scales.y.min = null;
-                this.mainChart.scales.y.max = null;
-                this.mainChart.update();
-            }
-        });
-
-        // Ir a sección de importación Excel
-        const goToExcelUpload = document.getElementById('goToExcelUpload');
-        if (goToExcelUpload) {
-            goToExcelUpload.addEventListener('click', () => {
-                const section = document.getElementById('excelUploadSection');
-                if (section) {
-                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    this.showNotification('Sección de importación Excel visible', 'info');
-                }
-            });
-        }
-
-        // Exportar datos
-        const exportDataBtn = document.getElementById('exportData');
-        if (exportDataBtn) {
-            exportDataBtn.addEventListener('click', () => {
-                this.exportData();
-            });
-        }
-
-        // Pantalla completa
-        const fullscreenToggleBtn = document.getElementById('fullscreenToggle');
-        if (fullscreenToggleBtn) {
-            fullscreenToggleBtn.addEventListener('click', () => {
-                this.toggleFullscreen();
-            });
-        }
-
-        // Alternar leyenda
-        const toggleLegendBtn = document.getElementById('toggleLegend');
-        if (toggleLegendBtn) {
-            toggleLegendBtn.addEventListener('click', () => {
-                if (this.mainChart) {
-                    const legend = this.mainChart.options.plugins.legend;
-                    legend.display = !legend.display;
-                    this.mainChart.update();
-                }
-            });
-        }
-
-        // Alternar puntos
-        const togglePointsBtn = document.getElementById('togglePoints');
-        if (togglePointsBtn) {
-            togglePointsBtn.addEventListener('click', () => {
-                if (this.mainChart && this.mainChart.data.datasets.length > 0) {
-                    const datasets = this.mainChart.data.datasets;
-                    const showPoints = datasets[0]?.pointRadius > 0;
-                    
-                    datasets.forEach(dataset => {
-                        dataset.pointRadius = showPoints ? 0 : 4;
-                        dataset.pointHoverRadius = showPoints ? 0 : 8;
-                    });
-                    
-                    this.mainChart.update();
-                }
-            });
-        }
-
-        // Cerrar modal
-        const modalCloseBtn = document.getElementById('modalClose');
-        if (modalCloseBtn) {
-            modalCloseBtn.addEventListener('click', () => {
-                const modal = document.getElementById('seriesModal');
-                if (modal) modal.style.display = 'none';
-            });
-        }
-
-        // Cerrar modal al hacer clic fuera
-        const modal = document.getElementById('seriesModal');
-        if (modal) {
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        }
-
-        // Filtro de estación
-        const estacionSel = document.getElementById('filterEstacion');
-        if (estacionSel) {
-            estacionSel.addEventListener('change', (e) => {
-                const estacion = e.target.value;
-                this.filters.estacion = estacion;
-                this.filterAlimentadoresByEstacion(estacion);
-                this.showNotification(`Filtro de estación: ${estacion || 'Todas'}`, "info");
-            });
-        }
-
-        // Filtro de período
-        document.getElementById('filterPeriodo').addEventListener('change', (e) => {
-            const periodo = e.target.value;
-            this.filters.periodo = periodo;
-            
-            if (periodo === 'select_months') {
-                // Mostrar selectores de modo y meses
-                this.updateMonthModeVisibility();
-            } else {
-                // Ocultar selectores y aplicar período predefinido
-                document.getElementById('monthModeGroup').style.display = 'none';
-                document.getElementById('monthSelectorGroup').style.display = 'none';
-                this.applyPeriodoFilter(periodo);
-            }
-        });
-
-        // Carga de Excel
-        const uploadExcelBtn = document.getElementById('uploadExcelBtn');
-        if (uploadExcelBtn) {
-            uploadExcelBtn.addEventListener('click', () => this.handleExcelUpload());
-        }
-        
-        // Eventos para botones de meses
-        document.querySelectorAll('.month-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                this.toggleMonthSelection(e.target.dataset.month, e.shiftKey);
-            });
-        });
-
-        // Eventos para modo global único/múltiple
-        const globalModeUniqueBtn = document.getElementById('globalModeUnique');
-        const globalModeMultipleBtn = document.getElementById('globalModeMultiple');
-        
-        if (globalModeUniqueBtn) {
-            globalModeUniqueBtn.addEventListener('click', () => {
-                this.setGlobalComparisonMode('unique');
-            });
-        }
-        
-        if (globalModeMultipleBtn) {
-            globalModeMultipleBtn.addEventListener('click', () => {
-                this.setGlobalComparisonMode('multiple');
-            });
-        }
-        
-        // Eventos para selectores múltiples que respeten el modo global
-        ['filterYear', 'filterTipoMedicion', 'filterTransformador', 'filterMonth'].forEach(selectId => {
-            const select = document.getElementById(selectId);
-            if (select) {
-                select.addEventListener('change', (e) => {
-                    if (this.globalComparisonMode === 'unique') {
-                        this.limitToSingleSelection(selectId);
-                    }
-                    this.syncFilters();
-                    this.updateComparisonTags();
-                });
-            }
-        });
-
-        // Cerrar sidebar al hacer clic fuera (en móviles)
-        document.addEventListener('click', (e) => {
-            const sidebar = document.getElementById('sidebar');
-            const sidebarToggle = document.getElementById('sidebarToggle');
-            
-            if (window.innerWidth <= 768 && 
-                sidebar && sidebar.classList.contains('active') && 
-                !sidebar.contains(e.target) && 
-                (!sidebarToggle || !sidebarToggle.contains(e.target)) &&
-                !e.target.closest('.sidebar-toggle-btn')) {
-                sidebar.classList.remove('active');
-            }
-        });
-
-        // Tecla Escape para cerrar sidebar
-        document.addEventListener('keydown', (e) => {
-            const sidebar = document.getElementById('sidebar');
-            if (e.key === 'Escape' && sidebar && sidebar.classList.contains('active')) {
-                sidebar.classList.remove('active');
-            }
-        });
-    }
-
-    // --- FUNCIONES ADICIONALES ---
-    sortTable(column) {
-        if (this.sortConfig.column === column) {
-            this.sortConfig.direction = this.sortConfig.direction === 'asc' ? 'desc' : 'asc';
-        } else {
-            this.sortConfig.column = column;
-            this.sortConfig.direction = 'asc';
-        }
-
-        this.filteredData.sort((a, b) => {
-            let aValue = a[column];
-            let bValue = b[column];
-
-            // Manejar valores numéricos y de fecha
-            if (column === 'valor' || column === 'frecuencia') {
-                aValue = parseFloat(aValue);
-                bValue = parseFloat(bValue);
-            } else if (column === 'fecha') {
-                aValue = new Date(aValue);
-                bValue = new Date(bValue);
-            }
-
-            if (aValue < bValue) return this.sortConfig.direction === 'asc' ? -1 : 1;
-            if (aValue > bValue) return this.sortConfig.direction === 'asc' ? 1 : -1;
+    
+    sortTable(col) {
+        if (this.sortConfig.column === col) this.sortConfig.direction = this.sortConfig.direction === 'asc' ? 'desc' : 'asc';
+        else { this.sortConfig.column = col; this.sortConfig.direction = 'asc'; }
+        console.log("🔽 Ordenando tabla por:", col, this.sortConfig.direction);
+        this.filteredData.sort((a,b) => {
+            let av = a[col], bv = b[col];
+            if (col === 'fecha') { av = new Date(av); bv = new Date(bv); }
+            else if (col === 'valor') { av = parseFloat(av) || 0; bv = parseFloat(bv) || 0; }
+            if (av < bv) return this.sortConfig.direction === 'asc' ? -1 : 1;
+            if (av > bv) return this.sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-
+        this.updateTable();
+        this.updateSortIcons(col);
+    }
+    
+    updateSortIcons(col) {
+        document.querySelectorAll('th[data-sort]').forEach(th => {
+            const icon = th.querySelector('i');
+            if (icon) icon.className = th.dataset.sort === col ? (this.sortConfig.direction === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort';
+        });
+    }
+    
+    filterTable(term) {
+        console.log("🔍 Filtrando tabla por:", term);
+        if (!term?.trim()) this.filteredData = [...this.data];
+        else {
+            const t = term.toLowerCase().trim();
+            this.filteredData = this.data.filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(t)));
+        }
         this.pagination.currentPage = 1;
         this.updateTable();
-        this.updateSortIndicators();
-    }
-
-    updateSortIndicators() {
-        document.querySelectorAll('.data-table th').forEach(th => {
-            const icon = th.querySelector('i');
-            if (th.dataset.sort === this.sortConfig.column) {
-                if (icon) {
-                    icon.className = this.sortConfig.direction === 'asc' ? 
-                        'fas fa-sort-up' : 'fas fa-sort-down';
-                }
-            } else {
-                if (icon) {
-                    icon.className = 'fas fa-sort';
-                }
-            }
-        });
-    }
-
-    updatePaginationInfo(start, end, total) {
-        const rowsShownStartEl = document.getElementById('rowsShownStart');
-        const rowsShownEndEl = document.getElementById('rowsShownEnd');
-        const rowsTotalEl = document.getElementById('rowsTotal');
-        const currentPageEl = document.getElementById('currentPage');
-        
-        if (rowsShownStartEl) rowsShownStartEl.textContent = Math.min(start, total);
-        if (rowsShownEndEl) rowsShownEndEl.textContent = Math.min(end, total);
-        if (rowsTotalEl) rowsTotalEl.textContent = total;
-        if (currentPageEl) currentPageEl.textContent = this.pagination.currentPage;
-    }
-
-    updatePaginationButtons() {
-        const totalPages = Math.ceil(this.filteredData.length / this.pagination.rowsPerPage);
-        
-        const firstPageBtn = document.getElementById('firstPage');
-        const prevPageBtn = document.getElementById('prevPage');
-        const nextPageBtn = document.getElementById('nextPage');
-        const lastPageBtn = document.getElementById('lastPage');
-        
-        if (firstPageBtn) firstPageBtn.disabled = this.pagination.currentPage === 1;
-        if (prevPageBtn) prevPageBtn.disabled = this.pagination.currentPage === 1;
-        if (nextPageBtn) nextPageBtn.disabled = this.pagination.currentPage === totalPages || totalPages === 0;
-        if (lastPageBtn) lastPageBtn.disabled = this.pagination.currentPage === totalPages || totalPages === 0;
-    }
-
-    showDetails(alimentador, fecha) {
-        const detalles = this.data.find(d => d.transformador === alimentador && d.fecha === fecha);
-        if (detalles) {
-            alert(`📋 Detalles de ${alimentador} en ${fecha}\n\n` +
-                  `• Tipo: ${detalles.tipo || 'N/A'}\n` +
-                  `• Valor: ${this.safeToFixed(detalles.frecuencia)}\n` +
-                  `• Departamento: ${detalles.departamento || 'N/A'}`);
-        } else {
-            alert(`No se encontraron detalles para ${alimentador} en ${fecha}`);
-        }
-    }
-
-    exportData() {
-        if (this.filteredData.length === 0) {
-            this.showNotification("No hay datos para exportar", "warning");
-            return;
-        }
-        
-        const dataStr = JSON.stringify(this.filteredData, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(dataBlob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ande-comparacion-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        this.showNotification("Datos de comparación exportados", "success");
-    }
-
-    toggleFullscreen() {
-        const elem = document.documentElement;
-        if (!document.fullscreenElement) {
-            elem.requestFullscreen().catch(err => {
-                console.error(`Error al activar pantalla completa: ${err.message}`);
-            });
-            const fullscreenToggleBtn = document.getElementById('fullscreenToggle');
-            if (fullscreenToggleBtn) {
-                fullscreenToggleBtn.innerHTML = '<i class="fas fa-compress"></i>';
-            }
-        } else {
-            document.exitFullscreen();
-            const fullscreenToggleBtn = document.getElementById('fullscreenToggle');
-            if (fullscreenToggleBtn) {
-                fullscreenToggleBtn.innerHTML = '<i class="fas fa-expand"></i>';
-            }
-        }
-    }
-
-    startLiveUpdates() {
-        // Simular actualizaciones cada 30 segundos
-        setInterval(() => {
-            if (Math.random() > 0.7) { // 30% de probabilidad
-                console.log("🔄 Actualización automática de datos...");
-                this.loadData();
-            }
-        }, 30000);
-    }
-
-    // ============================================
-    // FUNCIONES PARA SELECCIÓN DE MESES
-    // ============================================
-    
-    setMonthSelectionMode(mode) {
-        this.monthSelectionMode = mode;
-        
-        if (mode === 'unique') {
-            // En modo único, mantener solo un mes seleccionado
-            const selectedMonths = Array.from(document.querySelectorAll('.month-btn.selected'));
-            if (selectedMonths.length > 1) {
-                // Deseleccionar todos excepto el primero
-                selectedMonths.slice(1).forEach(btn => {
-                    btn.classList.remove('selected');
-                });
-                this.syncMonthsToHiddenSelect();
-            }
-            
-            document.getElementById('monthHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Selecciona un mes';
-        } else {
-            document.getElementById('monthHint').innerHTML = 
-                '<i class="fas fa-info-circle"></i> Selecciona varios meses (Ctrl + Click) o rangos (Shift + Click)';
-        }
-        
-        this.showNotification(`Modo ${mode === 'unique' ? 'único' : 'múltiple'} activado`, "info");
     }
     
-    toggleMonthSelection(month, isRangeSelection = false) {
-        const btn = document.querySelector(`.month-btn[data-month="${month}"]`);
-        if (!btn) return;
-        
-        if (this.monthSelectionMode === 'unique') {
-            // Modo único: deseleccionar todos los demás
-            document.querySelectorAll('.month-btn.selected').forEach(b => {
-                b.classList.remove('selected');
-            });
-            btn.classList.add('selected');
-            this.lastSelectedMonth = Number(month);
-        } else {
-            const currentMonth = Number(month);
-            if (isRangeSelection && this.lastSelectedMonth) {
-                const start = Math.min(this.lastSelectedMonth, currentMonth);
-                const end = Math.max(this.lastSelectedMonth, currentMonth);
-                document.querySelectorAll('.month-btn').forEach(button => {
-                    const btnMonth = Number(button.dataset.month);
-                    if (btnMonth >= start && btnMonth <= end) {
-                        button.classList.add('selected');
-                    }
-                });
-            } else {
-                // Modo múltiple: toggle del botón
-                btn.classList.toggle('selected');
-            }
-            this.lastSelectedMonth = currentMonth;
-        }
-        
-        // Sincronizar con el select oculto
-        this.syncMonthsToHiddenSelect();
-        this.syncFilters();
-        this.updateComparisonTags();
-    }
-
-    updateMonthModeVisibility() {
-        const periodo = document.getElementById('filterPeriodo').value;
-        const shouldShowMonthSelectors = periodo === 'select_months';
-        const shouldShowGuide = this.globalComparisonMode === 'multiple' && shouldShowMonthSelectors;
-        document.getElementById('monthModeGroup').style.display = shouldShowGuide ? 'block' : 'none';
-        document.getElementById('monthSelectorGroup').style.display = shouldShowMonthSelectors ? 'block' : 'none';
+    getStatusClass(v) { return v == null || isNaN(v) ? 'unknown' : v < 0.5 ? 'good' : v < 1.0 ? 'warning' : 'critical'; }
+    getStatusText(v) { return v == null || isNaN(v) ? 'DESCONOCIDO' : v < 0.5 ? 'NORMAL' : v < 1.0 ? 'ALERTA' : 'CRÍTICO'; }
+    
+    viewDetails(d) {
+        console.log("🔍 Ver detalles de:", d);
+        const modal = document.getElementById('modalBody');
+        if (!modal) return;
+        modal.innerHTML = `
+            <div class="detail-row"><span class="detail-label">Alimentador:</span><span class="detail-value">${d.transformador||'N/A'}</span></div>
+            <div class="detail-row"><span class="detail-label">Fecha:</span><span class="detail-value">${d.fecha||'N/A'}</span></div>
+            <div class="detail-row"><span class="detail-label">Tipo:</span><span class="detail-value">${d.tipo||'N/A'}</span></div>
+            <div class="detail-row"><span class="detail-label">Departamento:</span><span class="detail-value">${d.departamento||'N/A'}</span></div>
+            <div class="detail-row"><span class="detail-label">Valor:</span><span class="detail-value highlight">${this.safeToFixed(d.frecuencia)}</span></div>
+            <div class="detail-row"><span class="detail-label">Estado:</span><span class="detail-value status-badge ${this.getStatusClass(d.frecuencia)}">${this.getStatusText(d.frecuencia)}</span></div>
+        `;
+        const modalWin = document.getElementById('seriesModal');
+        if (modalWin) modalWin.style.display = 'flex';
     }
     
-    syncMonthsToHiddenSelect() {
-        const selectedBtns = document.querySelectorAll('.month-btn.selected');
-        const selectedMonths = Array.from(selectedBtns).map(btn => btn.dataset.month);
-        
-        const hiddenSelect = document.getElementById('filterMonth');
-        if (!hiddenSelect) return;
-        
-        // Deseleccionar todas las opciones
-        Array.from(hiddenSelect.options).forEach(option => {
-            option.selected = false;
-        });
-        
-        // Seleccionar las opciones correspondientes
-        selectedMonths.forEach(month => {
-            Array.from(hiddenSelect.options).forEach(option => {
-                if (option.value === month) {
-                    option.selected = true;
-                }
-            });
-        });
-    }
-    
-    clearMonthSelection() {
-        document.querySelectorAll('.month-btn.selected').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        this.syncMonthsToHiddenSelect();
-    }
-
-    applyPeriodoFilter(periodo) {
-        if (!periodo || periodo === 'select_months') {
-            // Modo seleccionar meses - no hacer nada, ya están los selectores visibles
-            return;
-        }
-
-        // Limpiar selección de meses en los botones
-        this.clearMonthSelection();
-
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth() + 1; // 0-11 to 1-12
-
-        let selectedYears = [];
-        let selectedMonths = [];
-
-        switch(periodo) {
-            case 'last3':
-                // Últimos 3 meses
-                selectedMonths = this.getLastNMonths(3, currentYear, currentMonth);
-                selectedYears = [currentYear];
-                if (selectedMonths.some(m => m > currentMonth)) {
-                    selectedYears.push(currentYear - 1);
-                }
-                break;
-            
-            case 'last6':
-                // Últimos 6 meses
-                selectedMonths = this.getLastNMonths(6, currentYear, currentMonth);
-                selectedYears = [currentYear];
-                if (selectedMonths.some(m => m > currentMonth)) {
-                    selectedYears.push(currentYear - 1);
-                }
-                break;
-            
-            case 'last12':
-                // Últimos 12 meses
-                selectedMonths = Array.from({length: 12}, (_, i) => i + 1);
-                selectedYears = [currentYear, currentYear - 1];
-                break;
-            
-            case 'currentYear':
-                // Año actual
-                selectedMonths = Array.from({length: currentMonth}, (_, i) => i + 1);
-                selectedYears = [currentYear];
-                break;
-            
-            case 'lastYear':
-                // Año pasado completo
-                selectedMonths = Array.from({length: 12}, (_, i) => i + 1);
-                selectedYears = [currentYear - 1];
-                break;
-        }
-
-        // Aplicar selecciones
-        this.selectMultipleOptions('filterYear', selectedYears.map(String));
-        this.selectMultipleOptions('filterMonth', selectedMonths.map(String));
-        
-        this.showNotification(`Período aplicado: ${this.getPeriodoLabel(periodo)}`, "success");
-    }
-
-    getLastNMonths(n, currentYear, currentMonth) {
-        const months = [];
-        for (let i = 0; i < n; i++) {
-            let month = currentMonth - i;
-            if (month <= 0) {
-                month += 12;
-            }
-            months.unshift(month);
-        }
-        return months;
-    }
-
-    getPeriodoLabel(periodo) {
-        const labels = {
-            'last3': 'Últimos 3 meses',
-            'last6': 'Últimos 6 meses',
-            'last12': 'Últimos 12 meses',
-            'currentYear': 'Año actual',
-            'lastYear': 'Año pasado'
-        };
-        return labels[periodo] || 'Personalizado';
-    }
-
-    selectMultipleOptions(selectId, values) {
-        const select = document.getElementById(selectId);
-        if (!select) return;
-        
-        // Deseleccionar todas las opciones primero
-        Array.from(select.options).forEach(option => {
-            option.selected = false;
-        });
-        
-        // Seleccionar las opciones especificadas
-        values.forEach(value => {
-            Array.from(select.options).forEach(option => {
-                if (option.value === value) {
-                    option.selected = true;
-                }
-            });
-        });
-        
-        // Si es el selector de meses, actualizar también los botones visuales
-        if (selectId === 'filterMonth') {
-            // Limpiar selección de botones
-            document.querySelectorAll('.month-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            
-            // Seleccionar los botones correspondientes
-            values.forEach(value => {
-                const btn = document.querySelector(`.month-btn[data-month="${value}"]`);
-                if (btn) {
-                    btn.classList.add('selected');
-                }
-            });
-        }
-    }
-
-    setExcelStatus(message, type = 'info') {
-        const statusEl = document.getElementById('excelUploadStatus');
-        if (!statusEl) return;
-
-        const colorMap = {
-            info: 'var(--text-muted)',
-            success: 'var(--success)',
-            error: 'var(--danger)',
-            warning: 'var(--warning)'
-        };
-
-        statusEl.textContent = message;
-        statusEl.style.color = colorMap[type] || colorMap.info;
-    }
-
-    async handleExcelUpload() {
-        const fileInput = document.getElementById('excelFileInput');
-        const uploadBtn = document.getElementById('uploadExcelBtn');
-        const file = fileInput?.files?.[0];
-
-        if (!file) {
-            this.setExcelStatus('Selecciona un archivo .xlsx antes de subir.', 'warning');
-            this.showNotification('Selecciona un archivo .xlsx', 'warning');
-            return;
-        }
-
-        if (!file.name.toLowerCase().endsWith('.xlsx')) {
-            this.setExcelStatus('Archivo inválido. Solo se admiten archivos .xlsx.', 'error');
-            this.showNotification('Formato inválido, usa .xlsx', 'error');
-            return;
-        }
-
+    // ========== EXCEL Y CARGAS ==========
+    async uploadExcel() {
+        const file = document.getElementById('excelFileInput')?.files[0];
+        if (!file) { this.showNotification("Selecciona un archivo Excel", "warning"); return; }
+        console.log("📤 Subiendo archivo:", file.name);
         const formData = new FormData();
         formData.append('archivo', file);
-
+        this.showLoading(true, "Subiendo Excel...", null);
         try {
-            uploadBtn.disabled = true;
-            this.setExcelStatus('Subiendo archivo y procesando datos...', 'info');
-
-            const response = await fetch(`${this.apiBaseUrl}/api/subir-excel`, {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.message || result.error || 'No se pudo procesar el archivo');
-            }
-
-            this.setExcelStatus(`Carga completada. Insertadas: ${result.insertadas}, ignoradas: ${result.ignoradas}.`, 'success');
-            this.showNotification('Excel cargado correctamente', 'success');
-            await this.loadData();
-        } catch (error) {
-            console.error('Error al subir Excel:', error);
-            this.setExcelStatus(`Error: ${error.message}`, 'error');
-            this.showNotification('Error al cargar Excel', 'error');
+            const res = await fetch(`${this.apiBaseUrl}/api/subir-excel`, { method: 'POST', body: formData });
+            const result = await res.json();
+            if (res.ok) {
+                this.showNotification(`✅ ${result.insertadas} filas insertadas, ${result.errores} errores`, "success");
+                setTimeout(async () => {
+                    await this.loadTiposMedicion();
+                    await this.loadSeccionesDisponibles();
+                    await this.loadYearsAvailable();
+                    await this.loadData();
+                    await this.loadCargas();
+                }, 1000);
+            } else throw new Error(result.error);
+        } catch (e) {
+            console.error("❌ Error subiendo Excel:", e);
+            this.showNotification(`Error: ${e.message}`, "error");
         } finally {
-            uploadBtn.disabled = false;
+            this.showLoading(false);
+            document.getElementById('excelFileInput').value = '';
         }
     }
-
-    updateKPIs() {
-        if(this.data.length === 0) {
+    
+    async loadCargas() {
+        console.log("📥 Cargando historial de cargas...");
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/cargas`);
+            const cargas = await res.json();
+            this.renderCargas(cargas);
+            await this.loadEstadisticas();
+        } catch (e) { console.error("Error cargando cargas:", e); }
+    }
+    
+    renderCargas(cargas) {
+        console.log("📋 Renderizando historial de cargas, total:", cargas.length);
+        const cont = document.getElementById('cargasContainer');
+        if (!cont) return;
+        if (!cargas.length) {
+            cont.innerHTML = `<div style="text-align:center;padding:2rem;"><i class="fas fa-inbox fa-2x"></i><p>No hay cargas registradas</p></div>`;
             return;
         }
+        let html = `<div class="cargas-table"><table><thead><tr><th>Archivo</th><th>Fecha</th><th>Insertadas</th><th>Errores</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`;
+        cargas.forEach(c => {
+            const fecha = new Date(c.fecha_carga).toLocaleString('es-ES');
+            const estadoClass = c.estado === 'completado' ? 'success' : c.estado === 'procesando' ? 'warning' : 'error';
+            html += `<tr>
+                <td><i class="fas fa-file-excel" style="color:#2e7d32;"></i> ${c.nombre_archivo}</td>
+                <td>${fecha}</td>
+                <td><span class="badge ${c.insertadas>0?'success':'secondary'}">${c.insertadas}</span></td>
+                <td><span class="badge ${c.errores>0?'danger':'secondary'}">${c.errores}</span></td>
+                <td><span class="status ${estadoClass}"><i class="fas fa-circle"></i> ${c.estado}</span></td>
+                <td><button class="btn-icon small" onclick="dashboard.eliminarCarga(${c.id})" title="Eliminar"><i class="fas fa-trash"></i></button></td>
+            </tr>`;
+        });
+        html += `</tbody></table></div>`;
+        cont.innerHTML = html;
+        
+        const total = document.getElementById('totalCargas');
+        if (total) total.textContent = cargas.length;
+        const completadas = document.getElementById('cargasCompletadas');
+        if (completadas) completadas.textContent = cargas.filter(c=>c.estado==='completado').length;
+        const conErrores = document.getElementById('cargasConErrores');
+        if (conErrores) conErrores.textContent = cargas.filter(c=>c.errores>0).length;
+    }
+    
+    async eliminarCarga(id) {
+        if (!confirm("¿Eliminar esta carga y sus datos?")) return;
+        console.log("🗑️ Eliminando carga ID:", id);
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/cargas/${id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (res.ok) {
+                this.showNotification(`Carga eliminada (${result.filas_eliminadas} filas)`, "success");
+                setTimeout(async () => { await this.loadCargas(); await this.loadData(); }, 1000);
+            } else throw new Error(result.error);
+        } catch (e) {
+            console.error("❌ Error eliminando carga:", e);
+            this.showNotification(`Error al eliminar: ${e.message}`, "error");
+        }
+    }
+    
+    async loadEstadisticas() {
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/estadisticas`);
+            const stats = await res.json();
+            const el = document.getElementById('totalDatosGlobal');
+            if (el) el.textContent = stats.total_datos.toLocaleString();
+        } catch (e) {}
+    }
+    
+    // ========== SIDEBAR ==========
+    toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const main = document.querySelector('.main-content');
+        if (sidebar && main) {
+            sidebar.classList.toggle('active');
+            main.classList.toggle('expanded');
+            const btn = document.getElementById('sidebarToggle');
+            if (btn) {
+                const icon = btn.querySelector('i');
+                const text = btn.querySelector('.btn-text');
+                if (sidebar.classList.contains('active')) {
+                    if (icon) icon.className = 'fas fa-times';
+                    if (text) text.textContent = 'Cerrar';
+                } else {
+                    if (icon) icon.className = 'fas fa-filter';
+                    if (text) text.textContent = 'Filtros';
+                }
+            }
+        }
+    }
+    
+    startLiveUpdates() {
+        setInterval(() => { if (this.serverConnected) { console.log("🔄 Actualización automática"); this.loadData(); this.loadCargas(); } }, 300000);
+    }
+    
+    formatValue(v) {
+        if (v === null || v === undefined || isNaN(v)) return '';
+        if (v >= 1e6) return (v/1e6).toFixed(2) + 'M';
+        if (v >= 1e3) return (v/1e3).toFixed(1) + 'k';
+        if (Math.abs(v) < 0.001) return v.toExponential(2);
+        if (Math.abs(v) < 1) return v.toFixed(4);
+        if (Math.abs(v) < 10) return v.toFixed(3);
+        return v.toFixed(2);
+    }
+}
 
-        const vals = this.data.map(d => d.frecuencia);
-        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-
-        // Calcular tendencia si hay datos anteriores
-        let trend = 0;
-        if (this.previousData && this.previousData.length > 0) {
-            const prevAvg = this.previousData.reduce((a, b) => a + b.frecuencia, 0) / this.previousData.length;
-            trend = ((avg - prevAvg) / prevAvg) * 100;
+// ========== GLOBAL INIT ==========
+function initializeDashboard() {
+    try {
+        window.dashboard = new ANDEDashboard();
+        const modalClose = document.getElementById('modalClose');
+        const seriesModal = document.getElementById('seriesModal');
+        if (modalClose && seriesModal) {
+            modalClose.addEventListener('click', () => seriesModal.style.display = 'none');
+            seriesModal.addEventListener('click', (e) => { if (e.target === seriesModal) seriesModal.style.display = 'none'; });
+        }
+        setTimeout(() => window.dashboard.initialize(), 500);
+    } catch (e) {
+        console.error("❌ Error crítico:", e);
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.innerHTML = `
+                <div class="loader-card">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 3.8rem; color: #f59e0b; margin-bottom: 1.2rem;"></i>
+                    <p class="loading-text" style="color: white;">Error al cargar la aplicación</p>
+                    <p style="color: #cbd5e1; margin-bottom: 1.8rem;">${e.message || 'Intenta recargar la página.'}</p>
+                    <button onclick="location.reload()" class="btn-retry">
+                        <i class="fas fa-sync-alt"></i> Recargar página
+                    </button>
+                </div>
+            `;
         }
     }
 }
 
-// Inicializar dashboard cuando el DOM esté cargado
-let dashboard;
+function checkRequiredElements() {
+    const required = ['globalModeUnique','globalModeMultiple','filterEstacion','applyFilters','filterTipoMedicion','filterTransformador','filterYear','mainChart'];
+    return required.filter(id => !document.getElementById(id));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    dashboard = new ANDEDashboard();
+    const missing = checkRequiredElements();
+    if (missing.length) {
+        console.warn("Elementos faltantes:", missing);
+        setTimeout(() => {
+            if (checkRequiredElements().length === 0) initializeDashboard();
+            else {
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay) {
+                    overlay.innerHTML = `
+                        <div class="loader-card">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 3.8rem; color: #f59e0b; margin-bottom: 1.2rem;"></i>
+                            <p class="loading-text" style="color: white;">Error de estructura</p>
+                            <p style="color: #cbd5e1; margin-bottom: 1.8rem;">No se encontraron algunos elementos necesarios.</p>
+                            <button onclick="location.reload()" class="btn-retry">
+                                <i class="fas fa-sync-alt"></i> Recargar página
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+        }, 500);
+    } else initializeDashboard();
 });
+window.addEventListener('load', () => { if (!window.dashboard) setTimeout(initializeDashboard, 1000); });
+window.dashboard = null;

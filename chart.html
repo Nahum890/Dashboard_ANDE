@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0, user-scalable=yes">
+    <title>Dashboard ANDE · Vista Completa</title>
+    <!-- Chart.js y adaptador de fechas -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* ---------- RESET Y VARIABLES ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0b1120;
+            --bg-card: rgba(17, 25, 40, 0.85);
+            --bg-card-hover: rgba(30, 41, 59, 0.9);
+            --border-light: rgba(148, 163, 184, 0.15);
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-glow: #60a5fa;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --border-radius: 20px;
+            --border-radius-sm: 14px;
+            --shadow: 0 8px 32px rgba(0,0,0,0.3);
+            --transition: all 0.25s ease;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+            color: var(--text-primary);
+            line-height: 1.5;
+            min-height: 100vh;
+            padding: 1.5rem;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 1920px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.75rem;
+        }
+
+        /* ---------- LOADING OVERLAY PROFESIONAL ---------- */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(145deg, rgba(11, 18, 30, 0.98), rgba(20, 30, 50, 0.98));
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+
+        .loader-card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            border-radius: 32px;
+            padding: 2.5rem;
+            max-width: 450px;
+            width: 90%;
+            text-align: center;
+            box-shadow: var(--shadow);
+            animation: fadeInUp 0.6s ease;
+        }
+
+        .spinner-ring {
+            width: 70px;
+            height: 70px;
+            border: 4px solid rgba(96, 165, 250, 0.2);
+            border-top: 4px solid var(--accent-glow);
+            border-right: 4px solid var(--accent-glow);
+            border-radius: 50%;
+            margin: 0 auto 1.5rem;
+            animation: spin 1s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .loading-text {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: white;
+            letter-spacing: -0.01em;
+        }
+
+        .progress-track {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 1.2rem 0 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #3b82f6, #60a5fa, #93c5fd);
+            border-radius: 10px;
+            transition: width 0.4s cubic-bezier(0.33, 1, 0.68, 1);
+            box-shadow: 0 0 10px #60a5fa;
+        }
+
+        /* ---------- HEADER RESPONSIVE ---------- */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--border-light);
+            border-radius: var(--border-radius);
+            padding: 1.25rem 2rem;
+            box-shadow: var(--shadow);
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(145deg, #2563eb, #1e40af);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.8rem;
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
+        }
+
+        .logo-text h1 {
+            font-size: 1.7rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(to right, #f1f5f9, #e2e8f0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-text span {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            display: block;
+            margin-top: 0.2rem;
+            -webkit-text-fill-color: var(--text-muted);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.8rem;
+        }
+
+        .btn {
+            padding: 0.6rem 1.4rem;
+            border-radius: 40px;
+            border: 1px solid var(--border-light);
+            background: rgba(148, 163, 184, 0.08);
+            color: var(--text-secondary);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            transition: var(--transition);
+            cursor: pointer;
+            font-size: 0.95rem;
+            backdrop-filter: blur(4px);
+        }
+
+        .btn:hover {
+            background: rgba(148, 163, 184, 0.2);
+            border-color: var(--accent-glow);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(145deg, #2563eb, #1d4ed8);
+            border-color: #60a5fa;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(145deg, #3b82f6, #2563eb);
+            box-shadow: 0 8px 18px rgba(37, 99, 235, 0.4);
+        }
+
+        /* ---------- GRID DE GRÁFICOS ---------- */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1.5rem;
+        }
+
+        /* Tarjetas de gráficos */
+        .chart-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid var(--border-light);
+            border-radius: var(--border-radius);
+            padding: 1.25rem 1.25rem 1.5rem;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+
+        .chart-card:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(96, 165, 250, 0.4);
+            box-shadow: 0 12px 36px rgba(0,0,0,0.4);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.8rem;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+        }
+
+        .card-header h2, .card-header h3 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            color: var(--text-primary);
+        }
+
+        .card-header i {
+            color: var(--accent-glow);
+        }
+
+        .chart-wrapper {
+            position: relative;
+            width: 100%;
+            flex: 1;
+            min-height: 260px;
+        }
+
+        .chart-wrapper-large {
+            min-height: 350px;
+        }
+
+        canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            border-radius: 12px;
+        }
+
+        /* Ocupación de columnas responsive */
+        .col-span-12 { grid-column: span 12; }
+        .col-span-8 { grid-column: span 8; }
+        .col-span-7 { grid-column: span 7; }
+        .col-span-6 { grid-column: span 6; }
+        .col-span-5 { grid-column: span 5; }
+        .col-span-4 { grid-column: span 4; }
+
+        /* Leyenda interactiva */
+        .legend-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            margin-top: 1rem;
+            padding: 0.8rem;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 16px;
+            max-height: 130px;
+            overflow-y: auto;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.3rem 1rem 0.3rem 0.7rem;
+            background: rgba(0,0,0,0.35);
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            border: 1px solid transparent;
+            transition: var(--transition);
+            color: var(--text-secondary);
+        }
+
+        .legend-item:hover {
+            border-color: var(--accent-glow);
+            background: rgba(96,165,250,0.15);
+        }
+
+        .legend-item.hidden {
+            opacity: 0.5;
+            text-decoration: line-through;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        /* Panel de info */
+        .info-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 1rem;
+            background: var(--bg-card);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-light);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .info-item {
+            text-align: center;
+            padding: 0.8rem;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 16px;
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 0.4rem;
+        }
+
+        .info-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-glow);
+            line-height: 1.2;
+        }
+
+        /* Controles embebidos */
+        .chart-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            align-items: center;
+        }
+
+        .control-select {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-light);
+            color: white;
+            padding: 0.35rem 1rem;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .control-btn-icon {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-light);
+            color: #cbd5e1;
+            width: 32px;
+            height: 32px;
+            border-radius: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .control-btn-icon:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent-glow);
+        }
+
+        .hidden-chart { display: none; }
+
+        /* ---------- RESPONSIVE ---------- */
+        @media screen and (max-width: 1200px) {
+            .col-span-8, .col-span-7, .col-span-6, .col-span-5, .col-span-4 {
+                grid-column: span 12;
+            }
+            .chart-wrapper-large { min-height: 320px; }
+        }
+
+        @media screen and (max-width: 992px) {
+            body { padding: 1rem; }
+            .app-header { flex-direction: column; align-items: stretch; text-align: center; }
+            .logo-area { justify-content: center; }
+            .header-actions { justify-content: center; }
+            .logo-text h1 { font-size: 1.4rem; }
+        }
+
+        @media screen and (max-width: 768px) {
+            .card-header { flex-direction: column; align-items: flex-start; }
+            .chart-controls { width: 100%; }
+            .chart-wrapper { min-height: 220px; }
+            .chart-wrapper-large { min-height: 260px; }
+            .info-panel { grid-template-columns: 1fr 1fr; }
+        }
+
+        @media screen and (max-width: 480px) {
+            .info-panel { grid-template-columns: 1fr; }
+            .loader-card { padding: 1.8rem; }
+            .logo-text h1 { font-size: 1.2rem; }
+            .btn { padding: 0.5rem 1rem; font-size: 0.85rem; }
+        }
+
+        /* Oculto hasta que termine la carga */
+        #chartsContainer {
+            display: none;
+            opacity: 0;
+            animation: fadeIn 0.6s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- LOADING PROFESIONAL (visible por defecto) -->
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="loader-card">
+                <div class="spinner-ring"></div>
+                <p id="loadingText" class="loading-text">Preparando visualización...</p>
+                <div class="progress-track">
+                    <div id="loaderProgress" class="progress-fill" style="width: 10%;"></div>
+                </div>
+                <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 1rem;">Cargando dashboard avanzado</p>
+            </div>
+        </div>
+
+        <!-- HEADER (siempre visible) -->
+        <header class="app-header">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <i class="fas fa-bolt"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>ANDE · Visión Integral</h1>
+                    <span><i class="fas fa-satellite-dish"></i> Monitoreo en tiempo real</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn" onclick="window.print()">
+                    <i class="fas fa-print"></i> Imprimir
+                </button>
+                <button class="btn btn-primary" onclick="window.close()">
+                    <i class="fas fa-times-circle"></i> Cerrar
+                </button>
+            </div>
+        </header>
+
+        <!-- CONTENEDOR DE GRÁFICOS (se muestra tras carga) -->
+        <div id="chartsContainer">
+            <!-- GRID PRINCIPAL -->
+            <div class="dashboard-grid">
+                
+                <!-- TARJETA 1: GRÁFICO PRINCIPAL (EVOLUCIÓN) -->
+                <div class="chart-card col-span-8">
+                    <div class="card-header">
+                        <h2><i class="fas fa-chart-line"></i> Evolución temporal</h2>
+                        <div class="chart-controls">
+                            <select id="chartTypeSelect" class="control-select">
+                                <option value="line">📈 Línea</option>
+                                <option value="bar">📊 Barras</option>
+                                <option value="scatter">🔹 Dispersión</option>
+                                <option value="area">🌊 Área</option>
+                            </select>
+                            <button id="togglePointsBtn" class="control-btn-icon" title="Mostrar puntos">
+                                <i class="fas fa-circle"></i>
+                            </button>
+                            <select id="tensionSelect" class="control-select">
+                                <option value="0">Suave: off</option>
+                                <option value="0.2" selected>Suave: bajo</option>
+                                <option value="0.4">Suave: medio</option>
+                                <option value="0.6">Suave: alto</option>
+                            </select>
+                            <button id="downloadChartBtn" class="control-btn-icon" title="Descargar PNG">
+                                <i class="fas fa-download"></i>
+                            </button>
+                            <button id="resetZoomBtn" class="control-btn-icon" title="Resetear zoom">
+                                <i class="fas fa-expand-arrows-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper chart-wrapper-large">
+                        <canvas id="mainChartExpanded"></canvas>
+                    </div>
+                    <div id="interactiveLegend" class="legend-container"></div>
+                </div>
+
+                <!-- TARJETA 2: RANKING DE SERIES -->
+                <div class="chart-card col-span-4">
+                    <div class="card-header">
+                        <h3><i class="fas fa-trophy"></i> Ranking por serie</h3>
+                        <select id="rankingSortSelect" class="control-select">
+                            <option value="avg">📊 Promedio</option>
+                            <option value="stability">⚖️ Estabilidad</option>
+                            <option value="trend">📈 Tendencia</option>
+                        </select>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="rankingChartExpanded"></canvas>
+                    </div>
+                </div>
+
+                <!-- TARJETA 3: GRÁFICO DE DISPERSIÓN (full width) -->
+                <div class="chart-card col-span-12">
+                    <div class="card-header">
+                        <h3><i class="fas fa-braille"></i> Dispersión por alimentador</h3>
+                        <span style="color: var(--text-muted); font-size: 0.85rem;">
+                            <i class="fas fa-calendar-alt"></i> Evolución mensual
+                        </span>
+                    </div>
+                    <div class="chart-wrapper chart-wrapper-large">
+                        <canvas id="scatterChartExpanded"></canvas>
+                    </div>
+                </div>
+
+                <!-- TARJETA 4: PASTEL ALIMENTADORES -->
+                <div class="chart-card col-span-6">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-pie"></i> Distribución por alimentador</h3>
+                    </div>
+                    <div class="chart-wrapper" style="height: 280px;">
+                        <canvas id="pieFeederExpanded"></canvas>
+                    </div>
+                </div>
+
+                <!-- TARJETA 5: PASTEL TIPOS -->
+                <div class="chart-card col-span-6">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-pie"></i> Distribución por tipo</h3>
+                    </div>
+                    <div class="chart-wrapper" style="height: 280px;">
+                        <canvas id="pieTypeExpanded"></canvas>
+                    </div>
+                </div>
+
+                <!-- TARJETA 6: RESUMEN POR ESTACIÓN (oculta si no aplica) -->
+                <div id="stationSummaryCard" class="chart-card col-span-12 hidden-chart">
+                    <div class="card-header">
+                        <h3><i class="fas fa-layer-group"></i> Resumen estación <span id="stationNameSpan"></span></h3>
+                    </div>
+                    <div class="chart-wrapper chart-wrapper-large">
+                        <canvas id="stationSummaryExpanded"></canvas>
+                    </div>
+                </div>
+            </div> <!-- dashboard-grid -->
+
+            <!-- PANEL DE INFORMACIÓN GLOBAL -->
+            <div class="info-panel">
+                <div class="info-item">
+                    <div class="info-label">Series activas</div>
+                    <div class="info-value" id="seriesCountDisplay">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Puntos de datos</div>
+                    <div class="info-value" id="dataPointsDisplay">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Período</div>
+                    <div class="info-value" id="periodRangeDisplay">--</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Última actualización</div>
+                    <div class="info-value" id="lastUpdateDisplay">--:--</div>
+                </div>
+            </div>
+        </div> <!-- chartsContainer -->
+    </div> <!-- container -->
+
+    <script>
+        (function() {
+            "use strict";
+
+            // ---- Configuración global de Chart.js - ALTA CALIDAD ----
+            Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+            Chart.defaults.font.size = 11;
+            Chart.defaults.color = '#cbd5e1';
+            Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.98)';
+            Chart.defaults.plugins.tooltip.titleColor = '#ffffff';
+            Chart.defaults.plugins.tooltip.bodyColor = '#e2e8f0';
+            Chart.defaults.plugins.tooltip.borderColor = '#60a5fa';
+            Chart.defaults.plugins.tooltip.borderWidth = 2;
+            Chart.defaults.plugins.tooltip.padding = 12;
+            Chart.defaults.plugins.tooltip.cornerRadius = 8;
+            Chart.defaults.responsive = true;
+            Chart.defaults.maintainAspectRatio = false;
+            Chart.defaults.devicePixelRatio = window.devicePixelRatio || 2; // 4K ready
+            Chart.defaults.animation.duration = 500;
+            Chart.defaults.animation.easing = 'easeOutQuart';
+
+            // ---- Elementos DOM ----
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            const progressFill = document.getElementById('loaderProgress');
+            const chartsContainer = document.getElementById('chartsContainer');
+
+            // ---- Utilidades ----
+            function updateProgress(percent, text) {
+                if (progressFill) progressFill.style.width = Math.min(percent, 100) + '%';
+                if (loadingText) loadingText.textContent = text || 'Procesando...';
+            }
+
+            function formatNumber(value) {
+                if (value === null || value === undefined || isNaN(value)) return 'N/A';
+                if (value >= 1e6) return (value / 1e6).toFixed(2) + 'M';
+                if (value >= 1e3) return (value / 1e3).toFixed(1) + 'k';
+                if (Math.abs(value) < 0.001) return value.toExponential(2);
+                if (Math.abs(value) < 1) return value.toFixed(4);
+                if (Math.abs(value) < 10) return value.toFixed(3);
+                return value.toFixed(2);
+            }
+
+            // ---- Cargar datos desde localStorage ----
+            updateProgress(10, 'Leyendo datos del dashboard...');
+            let rawData = null;
+            try {
+                const stored = localStorage.getItem('ande_chart_data');
+                if (!stored) throw new Error('No hay datos almacenados');
+                rawData = JSON.parse(stored);
+                console.log('✅ Datos cargados:', rawData);
+                updateProgress(25, 'Datos listos, preparando gráficos...');
+            } catch (e) {
+                console.error('❌ Error al cargar datos:', e);
+                loadingOverlay.innerHTML = `
+                    <div class="loader-card" style="background: rgba(30,41,59,0.9);">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 3.5rem; color: #f59e0b; margin-bottom: 1rem;"></i>
+                        <p style="font-size: 1.3rem; font-weight: 600; color: white;">No hay datos disponibles</p>
+                        <p style="color: #94a3b8; margin: 1rem 0;">Regresa al panel principal y presiona "Expandir Gráficos".</p>
+                        <button onclick="window.close()" style="background: #3b82f6; border: none; color: white; padding: 0.7rem 2rem; border-radius: 40px; font-weight: 600; margin-top: 1rem; cursor: pointer;">
+                            <i class="fas fa-times"></i> Cerrar ventana
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            // ---- Paleta de colores (heredada o por defecto) ----
+            const palette = rawData.palette || [
+                '#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0', '#118AB2',
+                '#EF476F', '#7B68EE', '#20B2AA', '#FF8C00', '#9ACD32',
+                '#DA70D6', '#00CED1', '#FF6347', '#4682B4', '#DAA520'
+            ];
+
+            // ---- REFERENCIAS A LOS CANVAS ----
+            const mainCtx = document.getElementById('mainChartExpanded')?.getContext('2d');
+            const rankCtx = document.getElementById('rankingChartExpanded')?.getContext('2d');
+            const scatterCtx = document.getElementById('scatterChartExpanded')?.getContext('2d');
+            const pieFeedCtx = document.getElementById('pieFeederExpanded')?.getContext('2d');
+            const pieTypeCtx = document.getElementById('pieTypeExpanded')?.getContext('2d');
+            const stationCtx = document.getElementById('stationSummaryExpanded')?.getContext('2d');
+
+            // ---- GRÁFICO PRINCIPAL ----
+            updateProgress(35, 'Dibujando evolución temporal...');
+            let mainChart = null;
+            if (mainCtx && rawData.mainChart) {
+                const labels = rawData.mainChart.labels || [];
+                const datasets = (rawData.mainChart.datasets || []).map((ds, i) => ({
+                    label: ds.label || `Serie ${i+1}`,
+                    data: ds.data || [],
+                    borderColor: ds.borderColor || palette[i % palette.length],
+                    backgroundColor: ds.backgroundColor || (palette[i % palette.length] + '20'),
+                    borderWidth: 2.5,
+                    tension: 0.2,
+                    fill: false,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    pointHoverBorderWidth: 2,
+                    pointHoverBackgroundColor: '#fff'
+                }));
+
+                mainChart = new Chart(mainCtx, {
+                    type: 'line',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        devicePixelRatio: window.devicePixelRatio || 2,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    title: (items) => {
+                                        if (!items.length) return '';
+                                        return `${items[0].dataset.label} · ${items[0].label}`;
+                                    },
+                                    label: (ctx) => `Valor: ${formatNumber(ctx.parsed.y)}`
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                grid: { color: 'rgba(148,163,184,0.15)' },
+                                ticks: { color: '#94a3b8', callback: formatNumber }
+                            },
+                            x: {
+                                grid: { color: 'rgba(148,163,184,0.15)' },
+                                ticks: {
+                                    color: '#94a3b8',
+                                    maxRotation: 45,
+                                    minRotation: 30,
+                                    callback: function(val, idx) {
+                                        const lbl = labels[idx];
+                                        if (!lbl) return '';
+                                        const parts = lbl.split('-');
+                                        if (parts.length >= 2) {
+                                            const month = parseInt(parts[1]);
+                                            const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                                            return `${months[month-1] || ''} ${parts[0]}`;
+                                        }
+                                        return lbl;
+                                    }
+                                }
+                            }
+                        },
+                        interaction: { mode: 'index', intersect: false }
+                    }
+                });
+            }
+
+            // ---- Leyenda interactiva ----
+            function buildLegend() {
+                const legendContainer = document.getElementById('interactiveLegend');
+                if (!legendContainer || !mainChart) return;
+                legendContainer.innerHTML = '';
+                mainChart.data.datasets.forEach((ds, i) => {
+                    const meta = mainChart.getDatasetMeta(i);
+                    const hidden = meta.hidden === true;
+                    const item = document.createElement('div');
+                    item.className = `legend-item ${hidden ? 'hidden' : ''}`;
+                    item.dataset.index = i;
+                    item.innerHTML = `
+                        <span class="legend-color" style="background: ${ds.borderColor};"></span>
+                        <span class="legend-text">${ds.label}</span>
+                        <span class="legend-action"><i class="fas fa-eye${hidden ? '-slash' : ''}"></i></span>
+                    `;
+                    item.addEventListener('click', (e) => {
+                        if (e.target.closest('.legend-action')) {
+                            const idx = parseInt(item.dataset.index);
+                            const meta = mainChart.getDatasetMeta(idx);
+                            meta.hidden = !meta.hidden;
+                            mainChart.update();
+                            buildLegend();
+                        }
+                    });
+                    legendContainer.appendChild(item);
+                });
+            }
+            setTimeout(buildLegend, 150);
+
+            // ---- Controles del gráfico principal ----
+            if (mainChart) {
+                const typeSelect = document.getElementById('chartTypeSelect');
+                if (typeSelect) {
+                    typeSelect.addEventListener('change', function(e) {
+                        mainChart.config.type = e.target.value;
+                        if (e.target.value === 'area') {
+                            mainChart.data.datasets.forEach(ds => { ds.fill = true; ds.backgroundColor = ds.borderColor + '30'; });
+                        } else if (e.target.value === 'bar') {
+                            mainChart.data.datasets.forEach(ds => { ds.fill = false; ds.borderWidth = 1; ds.borderRadius = 4; });
+                        } else {
+                            mainChart.data.datasets.forEach(ds => { ds.fill = false; ds.borderWidth = 2.5; });
+                        }
+                        mainChart.update();
+                        buildLegend();
+                    });
+                }
+                // Puntos
+                let pointsVisible = false;
+                const toggleBtn = document.getElementById('togglePointsBtn');
+                if (toggleBtn) {
+                    toggleBtn.addEventListener('click', function() {
+                        pointsVisible = !pointsVisible;
+                        mainChart.data.datasets.forEach(ds => {
+                            ds.pointRadius = pointsVisible ? 5 : 0;
+                            ds.pointHoverRadius = pointsVisible ? 8 : 6;
+                        });
+                        this.classList.toggle('active', pointsVisible);
+                        mainChart.update();
+                    });
+                }
+                // Tension
+                const tensionSel = document.getElementById('tensionSelect');
+                if (tensionSel) {
+                    tensionSel.addEventListener('change', function(e) {
+                        mainChart.data.datasets.forEach(ds => ds.tension = parseFloat(e.target.value));
+                        mainChart.update();
+                    });
+                }
+                // Descargar PNG
+                const downloadBtn = document.getElementById('downloadChartBtn');
+                if (downloadBtn) {
+                    downloadBtn.addEventListener('click', function() {
+                        const link = document.createElement('a');
+                        link.download = `ande-evolucion-${new Date().toISOString().slice(0,10)}.png`;
+                        link.href = mainChart.toBase64Image();
+                        link.click();
+                    });
+                }
+                // Reset zoom
+                const resetBtn = document.getElementById('resetZoomBtn');
+                if (resetBtn) {
+                    resetBtn.addEventListener('click', function() {
+                        if (mainChart.resetZoom) mainChart.resetZoom();
+                        mainChart.options.scales.x.min = undefined;
+                        mainChart.options.scales.x.max = undefined;
+                        mainChart.options.scales.y.min = undefined;
+                        mainChart.options.scales.y.max = undefined;
+                        mainChart.update();
+                    });
+                }
+            }
+
+            // ---- RANKING CHART ----
+            updateProgress(50, 'Procesando ranking...');
+            let rankingChart = null;
+            if (rankCtx && rawData.rankingChart) {
+                const rankLabels = rawData.rankingChart.labels || [];
+                const rankData = rawData.rankingChart.data || [];
+                const rankColors = rawData.rankingChart.colors || rankLabels.map((_, i) => palette[i % palette.length]);
+                rankingChart = new Chart(rankCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: rankLabels,
+                        datasets: [{
+                            label: 'Promedio',
+                            data: rankData,
+                            backgroundColor: rankColors.map(c => c + '80'),
+                            borderColor: rankColors,
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => `Promedio: ${formatNumber(ctx.parsed.x)}`
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(148,163,184,0.15)' },
+                                ticks: { color: '#94a3b8', callback: formatNumber }
+                            },
+                            y: {
+                                grid: { display: false },
+                                ticks: { color: '#94a3b8', font: { size: 11 } }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // ---- DISPERSIÓN ----
+            updateProgress(65, 'Renderizando dispersión...');
+            if (scatterCtx && rawData.scatterChart && rawData.scatterChart.datasets) {
+                new Chart(scatterCtx, {
+                    type: 'scatter',
+                    data: { datasets: rawData.scatterChart.datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'top', labels: { color: '#cbd5e1' } },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => {
+                                        const d = new Date(ctx.raw.x);
+                                        const fecha = d.toLocaleDateString('es-ES', { year: 'numeric', month: 'short' });
+                                        return `${ctx.dataset.label}: ${fecha} → ${formatNumber(ctx.raw.y)}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: { unit: 'month', tooltipFormat: 'MMM yyyy', displayFormats: { month: 'MMM yyyy' } },
+                                grid: { color: 'rgba(148,163,184,0.15)' },
+                                ticks: { color: '#94a3b8' }
+                            },
+                            y: {
+                                grid: { color: 'rgba(148,163,184,0.15)' },
+                                ticks: { color: '#94a3b8', callback: formatNumber }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // ---- PASTEL ALIMENTADORES ----
+            updateProgress(75, 'Distribución por alimentador...');
+            if (pieFeedCtx && rawData.pieFeeder && rawData.pieFeeder.labels?.length) {
+                new Chart(pieFeedCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: rawData.pieFeeder.labels,
+                        datasets: [{
+                            data: rawData.pieFeeder.data,
+                            backgroundColor: rawData.pieFeeder.colors || palette,
+                            borderWidth: 2,
+                            borderColor: 'rgba(15,23,42,0.5)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '65%',
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 11 } } },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => {
+                                        const total = ctx.dataset.data.reduce((a,b) => a + b, 0);
+                                        const percent = ((ctx.raw / total) * 100).toFixed(1);
+                                        return `${ctx.label}: ${formatNumber(ctx.raw)} (${percent}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                document.getElementById('pieFeederExpanded')?.closest('.chart-card')?.classList.add('hidden-chart');
+            }
+
+            // ---- PASTEL TIPOS ----
+            if (pieTypeCtx && rawData.pieType && rawData.pieType.labels?.length) {
+                new Chart(pieTypeCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: rawData.pieType.labels,
+                        datasets: [{
+                            data: rawData.pieType.data,
+                            backgroundColor: rawData.pieType.colors || palette.slice(5),
+                            borderWidth: 2,
+                            borderColor: 'rgba(15,23,42,0.5)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '65%',
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 11 } } },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => {
+                                        const total = ctx.dataset.data.reduce((a,b) => a + b, 0);
+                                        const percent = ((ctx.raw / total) * 100).toFixed(1);
+                                        return `${ctx.label}: ${formatNumber(ctx.raw)} (${percent}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                document.getElementById('pieTypeExpanded')?.closest('.chart-card')?.classList.add('hidden-chart');
+            }
+
+            // ---- RESUMEN POR ESTACIÓN ----
+            updateProgress(90, 'Cargando resumen de estación...');
+            const stationCard = document.getElementById('stationSummaryCard');
+            const stationNameSpan = document.getElementById('stationNameSpan');
+            if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+                stationCard.classList.remove('hidden-chart');
+                if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
+                new Chart(stationCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: rawData.stationSummary.labels,
+                        datasets: [{
+                            label: 'Promedio',
+                            data: rawData.stationSummary.data,
+                            backgroundColor: rawData.stationSummary.colors || palette,
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: (ctx) => `Promedio: ${formatNumber(ctx.raw)}` } }
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(148,163,184,0.15)' },
+                                ticks: { color: '#94a3b8', callback: formatNumber }
+                            },
+                            y: {
+                                grid: { display: false },
+                                ticks: { color: '#94a3b8', font: { size: 11 } }
+                            }
+                        }
+                    }
+                });
+            } else {
+                stationCard.classList.add('hidden-chart');
+            }
+
+            // ---- ACTUALIZAR PANEL DE INFORMACIÓN ----
+            document.getElementById('seriesCountDisplay').textContent = rawData.seriesCount || '0';
+            document.getElementById('dataPointsDisplay').textContent = (rawData.dataPoints || 0).toLocaleString();
+            document.getElementById('periodRangeDisplay').textContent = rawData.periodRange || 'N/A';
+            document.getElementById('lastUpdateDisplay').textContent = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+            // ---- FINALIZAR Y MOSTRAR ----
+            updateProgress(100, '¡Visualización completa!');
+            setTimeout(() => {
+                loadingOverlay.style.opacity = '0';
+                loadingOverlay.style.visibility = 'hidden';
+                chartsContainer.style.display = 'block';
+            }, 600);
+
+            // ---- REDIMENSIONAMIENTO SUAVE ----
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(() => {
+                    if (mainChart) mainChart.resize();
+                    if (rankingChart) rankingChart.resize();
+                    // Chart.js se encarga del resto
+                }, 200);
+            });
+        })();
+    </script>
+</body>
+</html>

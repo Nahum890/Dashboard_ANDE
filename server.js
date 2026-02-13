@@ -1,306 +1,498 @@
+// server.js - Versión Mejorada con Gestión de Cargas
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-<<<<<<< HEAD
-const { Pool } = require("pg");
-require("dotenv").config();
-=======
-const fs = require("fs");
+const sqlite3 = require("sqlite3").verbose();
 const multer = require("multer");
 const XLSX = require("xlsx");
-const { Pool } = require("pg");
->>>>>>> ArreglarKPICard
+require("dotenv").config();
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-const pgPool = process.env.DATABASE_URL
-    ? new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
-    })
-    : null;
+// ========================
+// 1. CONFIGURACIÓN SQLITE
+// ========================
+console.log("🚀 Inicializando servidor ANDE Dashboard...");
+
+const dbPath = path.resolve(__dirname, "ANDE.db");
+
+const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE, (err) => {
+    if (err) {
+        console.error("❌ Error conectando a la base de datos:", err.message);
+        console.error("   Asegúrate de que el archivo 'ANDE.db' esté en la carpeta raíz.");
+    } else {
+        console.log("✅ Conexión establecida con:", dbPath);
+        verificarTablas();
+    }
+});
+
+function verificarTablas() {
+    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='mediciones_completas'", (err, row) => {
+        if (err) {
+            console.error(err);
+        } else if (row) {
+            console.log("✅ Tabla 'mediciones_completas' encontrada y lista.");
+        } else {
+            console.warn("⚠️ ALERTA: No se encontró la tabla 'mediciones_completas'.");
+            console.warn("   Es posible que el archivo ANDE.db esté vacío o tenga otro nombre de tabla.");
+        }
+    });
+}
+
+function ejecutarConsulta(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => {
+            if (err) {
+                console.error("❌ Error SQL:", err.message);
+                reject(err);
+            } else {
+                resolve(rows);
+            }
+        });
+    });
+}
+
+function ejecutarComando(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params, function (err) {
+            if (err) {
+                console.error("❌ Error SQL:", err.message);
+                reject(err);
+            } else {
+                resolve({ id: this.lastID, changes: this.changes });
+            }
+        });
+    });
+}
 
 // ========================
-// 1. MIDDLEWARES
+// 2. MIDDLEWARES
 // ========================
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
 // ========================
-// 2. CONEXIÓN A POSTGRESQL
-// ========================
-console.log("🚀 Inicializando servidor ANDE Dashboard...");
-console.log("📁 Directorio actual:", __dirname);
-
-let pool = null;
-
-try {
-    // Configuración de conexión PostgreSQL
-    const poolConfig = {
-        user: process.env.PG_USER || 'postgres',
-        host: process.env.PG_HOST || 'localhost',
-        database: process.env.PG_DATABASE || 'ande_dashboard',
-        password: process.env.PG_PASSWORD || 'whysoshy777',
-        port: process.env.PG_PORT || 5432,
-        ssl: process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false,
-        max: 20, // máximo de clientes en el pool
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
-    };
-
-    console.log("🔧 Configurando conexión PostgreSQL...");
-    console.log("📊 Configuración:", {
-        host: poolConfig.host,
-        database: poolConfig.database,
-        port: poolConfig.port,
-        ssl: poolConfig.ssl ? 'activado' : 'desactivado'
-    });
-
-    pool = new Pool(poolConfig);
-
-    // Probar conexión
-    pool.query('SELECT NOW()', (err, res) => {
-        if (err) {
-            console.error("❌ Error conectando a PostgreSQL:", err.message);
-            console.error("🔍 Detalles:", err);
-            pool = null;
-        } else {
-            console.log("✅ Conexión a PostgreSQL establecida");
-            console.log("🕐 Hora del servidor:", res.rows[0].now);
-            
-            // Verificar estructura de la tabla
-            pool.query(`
-                SELECT table_name, column_name, data_type 
-                FROM information_schema.columns 
-                WHERE table_name = 'mediciones_completas'
-                ORDER BY ordinal_position
-            `, (err, result) => {
-                if (err) {
-                    console.error("❌ Error obteniendo estructura de tabla:", err.message);
-                } else if (result.rows.length > 0) {
-                    console.log("📋 Estructura de la tabla 'mediciones_completas':");
-                    result.rows.forEach(col => {
-                        console.log(`  - ${col.column_name} (${col.data_type})`);
-                    });
-                    
-                    // Contar registros
-                    pool.query('SELECT COUNT(*) FROM mediciones_completas', (err, countRes) => {
-                        if (!err && countRes.rows[0]) {
-                            console.log(`📊 Total de registros: ${parseInt(countRes.rows[0].count).toLocaleString()}`);
-                        }
-                    });
-                } else {
-                    console.log("⚠️  La tabla 'mediciones_completas' no existe o está vacía");
-                }
-            });
-        }
-    });
-
-    // Manejar errores del pool
-    pool.on('error', (err) => {
-        console.error('❌ Error inesperado en el pool de PostgreSQL:', err.message);
-        console.error('🔍 Stack:', err.stack);
-    });
-
-} catch (error) {
-    console.error("❌ Error crítico al inicializar:", error.message);
-    console.error("🔍 Stack trace:", error.stack);
-    pool = null;
-}
-
-// Función auxiliar para ejecutar consultas PostgreSQL
-async function ejecutarConsulta(sql, params = []) {
-    if (!pool) {
-        console.error("❌ Pool de PostgreSQL no disponible");
-        throw new Error("Base de datos no disponible");
-    }
-
-    console.log("🔍 Ejecutando SQL:", sql);
-    if (params.length > 0) {
-        console.log("📌 Parámetros:", params);
-    }
-
-    try {
-        const result = await pool.query(sql, params);
-        console.log(`✅ Consulta exitosa: ${result.rows.length} registros`);
-        return result.rows;
-    } catch (err) {
-        console.error("❌ Error en consulta PostgreSQL:", err.message);
-        console.error("🔍 SQL que causó el error:", sql);
-        console.error("🔍 Parámetros:", params);
-        throw err;
-    }
-}
-
-// ========================
 // 3. ENDPOINTS
 // ========================
 
-// Health check
+// Health check mejorado
 app.get("/api/health", async (req, res) => {
-    const dbStatus = pool ? "Connected" : "Disconnected";
-    console.log(`🏥 Health check - PostgreSQL: ${dbStatus}`);
-    
-    const response = {
-        status: "OK",
-        timestamp: new Date().toISOString(),
-        database: dbStatus,
-        service: "ANDE Dashboard API",
-        version: "3.0.0",
-        database_type: "PostgreSQL"
-    };
-    
-    if (pool) {
-        try {
-            const result = await pool.query('SELECT version()');
-            response.db_version = result.rows[0].version.split(' ')[1];
-        } catch (err) {
-            response.db_version = "Error obteniendo versión";
-        }
-    }
-    
-    res.json(response);
-});
-
-// Test endpoint
-app.get("/api/test", async (req, res) => {
     try {
-        if (!pool) {
-            return res.json({ 
-                message: "Servidor activo pero PostgreSQL no disponible",
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        const result = await pool.query('SELECT 1 + 1 as test');
-        res.json({
-            message: "Conexión PostgreSQL funcionando",
-            test_result: result.rows[0].test,
+        const test = await ejecutarConsulta("SELECT 1 as test");
+        res.json({ 
+            status: "OK", 
+            database: "SQLite", 
+            file: "ANDE.db",
             timestamp: new Date().toISOString()
         });
     } catch (error) {
-        res.status(500).json({
-            error: "Error en PostgreSQL",
-            message: error.message
+        res.status(500).json({ 
+            status: "ERROR", 
+            error: error.message,
+            timestamp: new Date().toISOString()
         });
     }
 });
 
-// Tipos de medición
-app.get("/api/tipos-medicion", async (req, res) => {
-    console.log("📋 Solicitud: /api/tipos-medicion");
-    
-    if (!pool) {
-        console.log("⚠️  PostgreSQL no disponible, usando datos por defecto");
-        return res.json(['ACCID.DEP', 'ACCID.FEP', 'PROG.FEP', 'PROD.FEP', 'TOTAL FEP', 'ACCID.PENF', 'PROG.PENF', 'PROD.PENF', 'TOTAL PENEF', 'PROG.DEP', 'PROD.DEP', 'TOTAL DEP']);
+// Nuevo: Verificar datos en la base de datos
+app.get("/api/verificar-datos", async (req, res) => {
+    try {
+        // Verificar si la tabla existe
+        const tablaExists = await ejecutarConsulta(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='mediciones_completas'"
+        );
+        
+        if (tablaExists.length === 0) {
+            return res.json({ 
+                tabla_existe: false, 
+                mensaje: "La tabla 'mediciones_completas' no existe. Sube un archivo Excel para crearla." 
+            });
+        }
+        
+        // Contar registros
+        const count = await ejecutarConsulta("SELECT COUNT(*) as total FROM mediciones_completas");
+        const total = count[0]?.total || 0;
+        
+        // Obtener muestras de datos
+        const tipos = await ejecutarConsulta("SELECT DISTINCT tipo_medicion FROM mediciones_completas WHERE tipo_medicion IS NOT NULL LIMIT 10");
+        const años = await ejecutarConsulta("SELECT DISTINCT anio FROM mediciones_completas WHERE anio IS NOT NULL ORDER BY anio DESC LIMIT 10");
+        const secciones = await ejecutarConsulta("SELECT DISTINCT seccion FROM mediciones_completas WHERE seccion IS NOT NULL ORDER BY seccion LIMIT 10");
+        
+        // Muestra de datos
+        let muestra = [];
+        if (total > 0) {
+            muestra = await ejecutarConsulta("SELECT seccion, anio, mes, tipo_medicion, valor FROM mediciones_completas LIMIT 5");
+        }
+        
+        res.json({
+            tabla_existe: true,
+            total_registros: total,
+            tipos_disponibles: tipos.map(t => t.tipo_medicion),
+            años_disponibles: años.map(a => a.anio),
+            secciones_disponibles: secciones.map(s => s.seccion),
+            muestra: muestra,
+            estructura_tabla: await ejecutarConsulta("PRAGMA table_info(mediciones_completas)")
+        });
+        
+    } catch (error) {
+        res.status(500).json({ 
+            error: error.message 
+        });
     }
+});
+
+// ==================== NUEVO: Estadísticas Globales ====================
+app.get("/api/estadisticas", async (req, res) => {
+    try {
+        const totalDatos = await ejecutarConsulta("SELECT COUNT(*) as total FROM mediciones_completas");
+        const totalCargas = await ejecutarConsulta("SELECT COUNT(*) as total FROM cargas_excel WHERE 1=1");
+        
+        res.json({
+            total_datos: totalDatos[0]?.total || 0,
+            total_cargas: totalCargas[0]?.total || 0,
+            ultima_actualizacion: new Date().toISOString()
+        });
+    } catch (error) {
+        res.json({ 
+            total_datos: 0, 
+            total_cargas: 0,
+            ultima_actualizacion: new Date().toISOString()
+        });
+    }
+});
+
+// ==================== MEJORADO: Obtener cargas con más detalles ====================
+app.get("/api/cargas", async (req, res) => {
+    try {
+        // Verificar si la tabla existe
+        const check = await ejecutarConsulta("SELECT name FROM sqlite_master WHERE type='table' AND name='cargas_excel'");
+        if (check.length === 0) {
+            // Crear tabla si no existe
+            await ejecutarComando(`
+                CREATE TABLE IF NOT EXISTS cargas_excel (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre_archivo TEXT,
+                    fecha_carga TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    insertadas INTEGER DEFAULT 0,
+                    errores INTEGER DEFAULT 0,
+                    estado TEXT
+                )
+            `);
+            return res.json([]);
+        }
+        
+        const cargas = await ejecutarConsulta(`
+            SELECT 
+                id,
+                nombre_archivo,
+                fecha_carga,
+                insertadas,
+                errores,
+                estado,
+                (SELECT COUNT(*) FROM mediciones_completas WHERE carga_id = cargas_excel.id) as filas_asociadas
+            FROM cargas_excel 
+            ORDER BY fecha_carga DESC
+        `);
+        res.json(cargas);
+    } catch (error) {
+        console.error("Error obteniendo cargas:", error);
+        res.json([]);
+    }
+});
+
+// ==================== NUEVO: Eliminar carga en cascada ====================
+app.delete("/api/cargas/:id", async (req, res) => {
+    const { id } = req.params;
     
+    try {
+        // Primero verificar que la carga existe
+        const carga = await ejecutarConsulta("SELECT * FROM cargas_excel WHERE id = ?", [id]);
+        
+        if (carga.length === 0) {
+            return res.status(404).json({ error: "Carga no encontrada" });
+        }
+        
+        // Contar cuántas filas se eliminarán
+        const count = await ejecutarConsulta(
+            "SELECT COUNT(*) as total FROM mediciones_completas WHERE carga_id = ?", 
+            [id]
+        );
+        
+        const filasEliminadas = count[0]?.total || 0;
+        
+        // Eliminar los datos asociados
+        await ejecutarComando("DELETE FROM mediciones_completas WHERE carga_id = ?", [id]);
+        
+        // Eliminar el registro de carga
+        await ejecutarComando("DELETE FROM cargas_excel WHERE id = ?", [id]);
+        
+        res.json({ 
+            success: true, 
+            mensaje: `Carga eliminada exitosamente`,
+            filas_eliminadas: filasEliminadas,
+            nombre_archivo: carga[0].nombre_archivo
+        });
+        
+    } catch (error) {
+        console.error("Error eliminando carga:", error);
+        res.status(500).json({ error: "Error al eliminar la carga" });
+    }
+});
+
+// Tipos de medición - MEJORADO para manejar casos vacíos
+app.get("/api/tipos-medicion", async (req, res) => {
     try {
         const rows = await ejecutarConsulta(
             "SELECT DISTINCT tipo_medicion FROM mediciones_completas WHERE tipo_medicion IS NOT NULL AND tipo_medicion != '' ORDER BY tipo_medicion"
         );
-        const tipos = rows.map(r => r.tipo_medicion);
-        console.log(`✅ Enviando ${tipos.length} tipos de medición`);
-        res.json(tipos);
+        
+        if (rows.length === 0) {
+            // Si no hay tipos, devolver algunos por defecto
+            res.json(['ACCID.DEP', 'TOTAL FEP', 'ENERGIA', 'POTENCIA']);
+        } else {
+            res.json(rows.map(r => r.tipo_medicion));
+        }
     } catch (err) {
-        console.error("❌ Error, usando datos por defecto:", err.message);
-        res.json(['ACCID.DEP', 'ACCID.FEP', 'PROG.FEP', 'PROD.FEP', 'TOTAL FEP', 'ACCID.PENF', 'PROG.PENF', 'PROD.PENF', 'TOTAL PENEF', 'PROG.DEP', 'PROD.DEP', 'TOTAL DEP']);
+        console.error("Error obteniendo tipos:", err.message);
+        // Devolver valores por defecto en caso de error
+        res.json(['ACCID.DEP', 'TOTAL FEP', 'ENERGIA', 'POTENCIA']);
     }
 });
 
-// Secciones
+// Secciones - MEJORADO
 app.get("/api/secciones", async (req, res) => {
-    console.log("📋 Solicitud: /api/secciones");
-    
-    if (!pool) {
-        console.log("⚠️  PostgreSQL no disponible, usando datos por defecto");
-        return res.json(['ACY1', 'ACY2', 'ACY3', 'ACY4', 'ACY5', 'ACY6']);
-    }
-    
     try {
         const rows = await ejecutarConsulta(
             "SELECT DISTINCT seccion FROM mediciones_completas WHERE seccion IS NOT NULL AND seccion != '' ORDER BY seccion"
         );
-        const secciones = rows.map(r => r.seccion);
-        console.log(`✅ Enviando ${secciones.length} secciones`);
-        res.json(secciones);
+        
+        if (rows.length === 0) {
+            // Si no hay secciones, devolver algunas por defecto
+            res.json(['ACY1', 'ACY2', 'ACY3', 'ACY4']);
+        } else {
+            res.json(rows.map(r => r.seccion));
+        }
     } catch (err) {
-        console.error("❌ Error, usando datos por defecto:", err.message);
-        res.json(['ACY1', 'ACY2', 'ACY3', 'ACY4', 'ACY5', 'ACY6']);
+        console.error("Error obteniendo secciones:", err);
+        // Devolver valores por defecto en caso de error
+        res.json(['ACY1', 'ACY2', 'ACY3', 'ACY4']);
     }
 });
 
-// Años
+// Años - MEJORADO
 app.get("/api/anios", async (req, res) => {
-    console.log("📋 Solicitud: /api/anios");
-    
-    if (!pool) {
-        console.log("⚠️  PostgreSQL no disponible, usando datos por defecto");
-        return res.json([2025, 2024, 2023, 2022, 2021, 2020, 2019]);
-    }
-    
     try {
         const rows = await ejecutarConsulta(
             "SELECT DISTINCT anio FROM mediciones_completas WHERE anio IS NOT NULL ORDER BY anio DESC"
         );
-        const anios = rows.map(r => r.anio);
-        console.log(`✅ Enviando ${anios.length} años`);
-        res.json(anios);
+        
+        if (rows.length === 0) {
+            // Si no hay años, devolver los últimos 5 años
+            const currentYear = new Date().getFullYear();
+            const years = [];
+            for (let i = 4; i >= 0; i--) {
+                years.push(currentYear - i);
+            }
+            res.json(years);
+        } else {
+            res.json(rows.map(r => r.anio));
+        }
     } catch (err) {
-        console.error("❌ Error, usando datos por defecto:", err.message);
-        res.json([2025, 2024, 2023, 2022, 2021, 2020, 2019]);
+        console.error("Error obteniendo años:", err);
+        // Devolver años por defecto
+        const currentYear = new Date().getFullYear();
+        res.json([currentYear, currentYear - 1, currentYear - 2]);
     }
 });
 
-// Endpoint principal de datos
+// ==================== CORREGIDO: Endpoint de datos con manejo de errores ====================
 app.get("/api/datos", async (req, res) => {
-    const { seccion, anio, mes, tipo_medicion } = req.query;
+    console.log("📥 Petición a /api/datos recibida con parámetros:", req.query);
     
-    console.log("📥 Solicitud /api/datos con parámetros:", req.query);
+    let { seccion, anio, mes, tipo_medicion, estacion, periodo } = req.query;
     
-    // Validar parámetros requeridos
-    if (!seccion || !anio || !tipo_medicion) {
-        console.warn("⚠️  Faltan parámetros requeridos");
-        return res.status(400).json({ 
-            error: "Se requieren parámetros: seccion, anio, tipo_medicion" 
-        });
+    // VALORES POR DEFECTO SEGUROS
+    if (!seccion || seccion === '' || seccion === 'all') {
+        seccion = 'ACY1'; // Valor por defecto seguro
     }
     
-    if (!pool) {
-        console.error("❌ PostgreSQL no disponible");
-        return res.status(500).json({ 
-            error: "PostgreSQL no disponible",
-            message: "El servidor no pudo conectar con la base de datos"
-        });
+    if (!anio || anio === '' || anio === 'all') {
+        anio = '2024'; // Año por defecto seguro
     }
     
-    try {
-        // Construir consulta SQL
-        let sql = `
-            SELECT seccion, anio, mes, departamento, tipo_medicion, valor
-            FROM mediciones_completas 
-            WHERE seccion = $1 
-              AND anio = $2 
-              AND tipo_medicion = $3
-        `;
+    if (!tipo_medicion || tipo_medicion === '' || tipo_medicion === 'all') {
+        tipo_medicion = 'ACCID.DEP'; // Tipo por defecto seguro
+    }
+    
+    // Log de parámetros ajustados
+    console.log("📊 Parámetros ajustados:", { seccion, anio, mes, tipo_medicion, estacion, periodo });
+    
+    let sql = `SELECT seccion, anio, mes, departamento, tipo_medicion, valor 
+               FROM mediciones_completas WHERE 1=1`;
+    const params = [];
+
+    // 1. Filtrar por Secciones - CORREGIDO
+    if (seccion && seccion !== 'all') {
+        // Manejar diferentes formatos de sección
+        if (seccion.includes(',')) {
+            const seccionesArray = seccion.split(',').map(s => s.trim());
+            const placeholders = seccionesArray.map(() => '?').join(',');
+            sql += ` AND seccion IN (${placeholders})`;
+            params.push(...seccionesArray);
+        } else {
+            sql += " AND seccion = ?";
+            params.push(seccion);
+        }
+    }
+
+    // 2. Filtrar por Estación (si se proporciona y es diferente de seccion)
+    if (estacion && estacion !== '' && estacion !== seccion) {
+        sql += " AND seccion LIKE ?";
+        params.push(`${estacion}%`);
+    }
+
+    // 3. Filtrar por Años - CORREGIDO
+    if (anio && anio !== 'all') {
+        if (anio.includes(',')) {
+            const aniosArray = anio.split(',').map(a => a.trim());
+            const placeholders = aniosArray.map(() => '?').join(',');
+            sql += ` AND anio IN (${placeholders})`;
+            params.push(...aniosArray);
+        } else {
+            sql += " AND anio = ?";
+            params.push(anio);
+        }
+    }
+
+    // 4. Filtrar por Meses - CORREGIDO
+    if (mes && mes !== 'all' && mes !== '') {
+        if (mes.includes(',')) {
+            const mesesArray = mes.split(',').map(m => m.trim());
+            const placeholders = mesesArray.map(() => '?').join(',');
+            sql += ` AND mes IN (${placeholders})`;
+            params.push(...mesesArray);
+        } else {
+            sql += " AND mes = ?";
+            params.push(mes);
+        }
+    } else if (periodo && periodo !== 'select_months') {
+        // Si hay período dinámico, manejarlo
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const currentMonth = currentDate.getMonth() + 1;
         
-        const params = [seccion, parseInt(anio), tipo_medicion];
+        let mesesArray = [];
         
-        if (mes) {
-            sql += " AND mes = $4";
-            params.push(parseInt(mes));
+        if (periodo === 'last3') {
+            // Últimos 3 meses
+            for (let i = 0; i < 3; i++) {
+                let targetMonth = currentMonth - i;
+                let targetYear = currentYear;
+                
+                if (targetMonth <= 0) {
+                    targetMonth += 12;
+                    targetYear -= 1;
+                }
+                
+                mesesArray.push(targetMonth);
+            }
+        } else if (periodo === 'last6') {
+            // Últimos 6 meses
+            for (let i = 0; i < 6; i++) {
+                let targetMonth = currentMonth - i;
+                let targetYear = currentYear;
+                
+                if (targetMonth <= 0) {
+                    targetMonth += 12;
+                    targetYear -= 1;
+                }
+                
+                mesesArray.push(targetMonth);
+            }
+        } else if (periodo === 'last12' || periodo === 'currentYear') {
+            // Últimos 12 meses o año actual
+            for (let i = 1; i <= 12; i++) {
+                mesesArray.push(i);
+            }
+        } else if (periodo === 'lastYear') {
+            // Año pasado
+            for (let i = 1; i <= 12; i++) {
+                mesesArray.push(i);
+            }
+            sql += " AND anio = ?";
+            params.push(currentYear - 1);
         }
         
-        sql += " ORDER BY mes ASC";
+        if (mesesArray.length > 0 && periodo !== 'lastYear') {
+            const placeholders = mesesArray.map(() => '?').join(',');
+            sql += ` AND mes IN (${placeholders})`;
+            params.push(...mesesArray);
+        }
+    }
+
+    // 5. Tipo de medición - CORREGIDO
+    if (tipo_medicion && tipo_medicion !== 'all') {
+        if (tipo_medicion.includes(',')) {
+            const tiposArray = tipo_medicion.split(',').map(t => t.trim());
+            const placeholders = tiposArray.map(() => '?').join(',');
+            sql += ` AND tipo_medicion IN (${placeholders})`;
+            params.push(...tiposArray);
+        } else {
+            sql += " AND tipo_medicion = ?";
+            params.push(tipo_medicion);
+        }
+    }
+
+    sql += " ORDER BY anio DESC, mes ASC, seccion ASC";
+    
+    console.log("🔧 SQL final:", sql);
+    console.log("📊 Parámetros:", params);
+
+    try {
+        // Verificar si hay datos en la tabla primero
+        const tablaCheck = await ejecutarConsulta("SELECT COUNT(*) as total FROM mediciones_completas");
+        const totalRegistros = tablaCheck[0]?.total || 0;
         
-        console.log("🔍 Ejecutando consulta SQL completa...");
+        if (totalRegistros === 0) {
+            console.log("📭 Tabla 'mediciones_completas' está vacía");
+            return res.json([]);
+        }
         
         const rows = await ejecutarConsulta(sql, params);
-        console.log(`✅ Encontrados ${rows.length} registros`);
+        console.log(`📈 Registros encontrados: ${rows.length}`);
         
-        // Transformar datos para el frontend
+        if (rows.length === 0) {
+            console.log("⚠️ No se encontraron registros con los filtros proporcionados");
+            console.log("   Intentando con valores más amplios...");
+            
+            // Intentar con valores más amplios
+            const fallbackSql = `SELECT seccion, anio, mes, departamento, tipo_medicion, valor 
+                                FROM mediciones_completas 
+                                WHERE seccion LIKE ? 
+                                ORDER BY anio DESC, mes ASC, seccion ASC 
+                                LIMIT 50`;
+            const fallbackParams = [seccion + '%'];
+            
+            const fallbackRows = await ejecutarConsulta(fallbackSql, fallbackParams);
+            console.log(`🔄 Registros con búsqueda ampliada: ${fallbackRows.length}`);
+            
+            const datos = fallbackRows.map(row => ({
+                transformador: row.seccion,
+                frecuencia: parseFloat(row.valor) || 0,
+                fecha: `${row.anio}-${String(row.mes).padStart(2, "0")}-01`,
+                tipo: row.tipo_medicion,
+                departamento: row.departamento || 'N/A',
+                year: row.anio,
+                month: row.mes,
+                combinationKey: `${row.seccion}-${row.anio}-${row.tipo_medicion}`,
+                combinationLabel: `${row.seccion} (${row.anio})`
+            }));
+            
+            return res.json(datos);
+        }
+        
         const datos = rows.map(row => ({
             transformador: row.seccion,
             frecuencia: parseFloat(row.valor) || 0,
@@ -308,175 +500,196 @@ app.get("/api/datos", async (req, res) => {
             tipo: row.tipo_medicion,
             departamento: row.departamento || 'N/A',
             year: row.anio,
+            month: row.mes,
             combinationKey: `${row.seccion}-${row.anio}-${row.tipo_medicion}`,
-            combinationLabel: `${row.seccion} (${row.anio}, ${row.tipo_medicion})`
+            combinationLabel: `${row.seccion} (${row.anio})`
         }));
         
         res.json(datos);
+        
     } catch (err) {
-        console.error("❌ Error en consulta de datos:", err.message);
+        console.error("❌ Error en consulta SQL:", err.message);
+        console.error("❌ Stack trace:", err.stack);
+        
+        // Enviar error detallado
         res.status(500).json({ 
-            error: "Error en consulta de datos",
-            message: err.message
+            error: err.message,
+            sql: sql,
+            params: params,
+            timestamp: new Date().toISOString()
         });
     }
 });
 
-// Subida de Excel (PostgreSQL)
+// ==================== RUTA NUEVA: Vista ampliada de gráficos ====================
+app.get('/chart.html', (req, res) => {
+    const filePath = path.join(__dirname, 'chart.html');
+    res.sendFile(filePath);
+});
+
+// Subida de Excel - MEJORADO con más validaciones
 app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
-    if (!pgPool) {
-        return res.status(500).json({
-            error: "Conexión PostgreSQL no configurada",
-            message: "Define DATABASE_URL para habilitar la carga de Excel"
-        });
+    if (!req.file) {
+        return res.status(400).json({ error: "No se seleccionó ningún archivo" });
     }
-
-    if (!req.file || !req.file.buffer) {
-        return res.status(400).json({ error: "No se recibió ningún archivo .xlsx" });
-    }
-
-    const client = await pgPool.connect();
 
     try {
+        // Validar tipo de archivo
+        const validExtensions = ['.xlsx', '.xls'];
+        const fileExtension = req.file.originalname.substring(req.file.originalname.lastIndexOf('.')).toLowerCase();
+        
+        if (!validExtensions.includes(fileExtension)) {
+            return res.status(400).json({ error: "Formato inválido. Solo se aceptan archivos .xlsx o .xls" });
+        }
+
+        // Aseguramos que la tabla de cargas exista
+        await ejecutarComando(`
+            CREATE TABLE IF NOT EXISTS cargas_excel (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre_archivo TEXT,
+                fecha_carga TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                insertadas INTEGER DEFAULT 0,
+                errores INTEGER DEFAULT 0,
+                estado TEXT
+            )
+        `);
+
+        // Aseguramos que la tabla principal exista
+        await ejecutarComando(`
+            CREATE TABLE IF NOT EXISTS mediciones_completas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                seccion TEXT,
+                anio INTEGER,
+                mes INTEGER,
+                departamento TEXT,
+                tipo_medicion TEXT,
+                valor REAL,
+                carga_id INTEGER,
+                UNIQUE(seccion, anio, mes, tipo_medicion)
+            )
+        `);
+
         const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-        const firstSheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet);
 
-        if (!firstSheetName) {
-            return res.status(400).json({ error: "El Excel no contiene hojas" });
-        }
+        console.log(`📄 Archivo '${req.file.originalname}' cargado: ${rows.length} filas`);
 
-        const worksheet = workbook.Sheets[firstSheetName];
-        const rows = XLSX.utils.sheet_to_json(worksheet, { defval: null });
-
-        if (!rows.length) {
-            return res.status(400).json({ error: "El Excel no contiene filas de datos" });
-        }
-
-        await client.query("BEGIN");
-
-        const insertQuery = `
-            INSERT INTO mediciones_completas
-                (seccion, anio, mes, departamento, tipo_medicion, valor)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT ON CONSTRAINT unique_medicion DO NOTHING
-        `;
+        // Insertar registro de carga
+        const carga = await ejecutarComando(
+            "INSERT INTO cargas_excel (nombre_archivo, estado) VALUES (?, 'procesando')",
+            [req.file.originalname]
+        );
 
         let insertadas = 0;
-        let ignoradas = 0;
+        let errores = 0;
+        const erroresDetalle = [];
 
-        for (const row of rows) {
-            const valores = [
-                row.seccion,
-                row.anio,
-                row.mes,
-                row.departamento,
-                row.tipo_medicion,
-                row.valor
-            ];
+        // Preparar statement para inserción
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO mediciones_completas 
+            (seccion, anio, mes, departamento, tipo_medicion, valor, carga_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
 
-            if (valores.some((value) => value === undefined)) {
-                throw new Error("Formato inválido: verifica cabeceras requeridas (seccion, anio, mes, departamento, tipo_medicion, valor)");
-            }
-
-            const result = await client.query(insertQuery, valores);
-            if (result.rowCount === 1) {
-                insertadas += 1;
-            } else {
-                ignoradas += 1;
-            }
-        }
-
-        await client.query("COMMIT");
-        return res.json({
-            message: "Carga procesada correctamente",
-            totalFilas: rows.length,
-            insertadas,
-            ignoradas
+        // Procesar filas
+        db.serialize(() => {
+            db.run("BEGIN TRANSACTION");
+            
+            rows.forEach((row, index) => {
+                try {
+                    // Validar datos mínimos
+                    if (!row.seccion || row.seccion === '') {
+                        errores++;
+                        erroresDetalle.push(`Fila ${index + 2}: Falta 'seccion'`);
+                        return;
+                    }
+                    
+                    if (!row.anio || isNaN(row.anio)) {
+                        errores++;
+                        erroresDetalle.push(`Fila ${index + 2}: 'anio' inválido: ${row.anio}`);
+                        return;
+                    }
+                    
+                    if (!row.mes || isNaN(row.mes) || row.mes < 1 || row.mes > 12) {
+                        errores++;
+                        erroresDetalle.push(`Fila ${index + 2}: 'mes' inválido: ${row.mes}`);
+                        return;
+                    }
+                    
+                    if (!row.tipo_medicion || row.tipo_medicion === '') {
+                        errores++;
+                        erroresDetalle.push(`Fila ${index + 2}: Falta 'tipo_medicion'`);
+                        return;
+                    }
+                    
+                    if (row.valor === undefined || row.valor === null || isNaN(row.valor)) {
+                        errores++;
+                        erroresDetalle.push(`Fila ${index + 2}: 'valor' inválido: ${row.valor}`);
+                        return;
+                    }
+                    
+                    // Insertar datos
+                    stmt.run(
+                        String(row.seccion).trim(),
+                        parseInt(row.anio),
+                        parseInt(row.mes),
+                        row.departamento ? String(row.departamento).trim() : null,
+                        String(row.tipo_medicion).trim(),
+                        parseFloat(row.valor),
+                        carga.id
+                    );
+                    insertadas++;
+                    
+                } catch (e) {
+                    errores++;
+                    erroresDetalle.push(`Fila ${index + 2}: Error - ${e.message}`);
+                }
+            });
+            
+            db.run("COMMIT");
         });
+        stmt.finalize();
+
+        // Actualizar estado de la carga
+        await ejecutarComando(
+            "UPDATE cargas_excel SET insertadas=?, errores=?, estado='completado' WHERE id=?",
+            [insertadas, errores, carga.id]
+        );
+
+        console.log(`✅ Procesamiento completado: ${insertadas} insertadas, ${errores} errores`);
+
+        res.json({ 
+            success: true,
+            message: "Archivo procesado correctamente", 
+            carga_id: carga.id, 
+            insertadas: insertadas,
+            errores: errores,
+            total_filas: rows.length,
+            detalles_errores: erroresDetalle.slice(0, 10) // Mostrar solo primeros 10 errores
+        });
+
     } catch (error) {
-        await client.query("ROLLBACK");
-        return res.status(400).json({
+        console.error("❌ Error procesando Excel:", error);
+        res.status(500).json({ 
             error: "Error procesando el archivo Excel",
-            message: error.message
+            detalles: error.message 
         });
-    } finally {
-        client.release();
     }
 });
 
-// ========================
-// 4. SERVIR FRONTEND
-// ========================
+// Servir Frontend para cualquier otra ruta
 app.get("*", (req, res) => {
-    // Si no es una ruta de API, servir archivos estáticos
     if (!req.path.startsWith("/api/")) {
-        const filePath = path.join(__dirname, req.path === "/" ? "index.html" : req.path);
-        
-        // Servir archivo si existe
-        const fs = require('fs');
-        if (fs.existsSync(filePath) && !fs.statSync(filePath).isDirectory()) {
-            res.sendFile(filePath);
-        } else {
-            // Si no existe, servir index.html (SPA)
-            res.sendFile(path.join(__dirname, "index.html"));
-        }
+        const filePath = path.join(__dirname, "index.html");
+        res.sendFile(filePath);
     }
 });
 
-// ========================
-// 5. INICIAR SERVIDOR
-// ========================
 const PORT = process.env.PORT || 10000;
-const HOST = '0.0.0.0';
-
-const server = app.listen(PORT, HOST, () => {
-    console.log("=".repeat(70));
-    console.log(`🚀 ANDE DASHBOARD - SERVIDOR INICIADO`);
-    console.log(`🌐 URL: http://${HOST}:${PORT}`);
-    console.log(`📊 Base de datos: ${pool ? "POSTGRESQL CONECTADA ✓" : "NO CONECTADA ✗"}`);
-    console.log(`⚙️  Entorno: ${process.env.NODE_ENV || 'production'}`);
-    console.log("=".repeat(70));
+app.listen(PORT, () => {
+    console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
+    console.log(`📁 Base de datos: ANDE.db`);
+    console.log(`🌐 URL: http://localhost:${PORT}`);
+    console.log(`📊 API disponible en: http://localhost:${PORT}/api/`);
 });
-
-// Manejo de cierre limpio
-process.on('SIGTERM', () => {
-    console.log("🔻 Recibida señal SIGTERM, cerrando servidor...");
-    
-    server.close(() => {
-        console.log("✅ Servidor HTTP cerrado");
-        
-        if (pool) {
-            pool.end(() => {
-                console.log("✅ Pool de PostgreSQL cerrado");
-                process.exit(0);
-            });
-        } else {
-            process.exit(0);
-<<<<<<< HEAD
-        }
-    });
-});
-
-process.on('SIGINT', () => {
-    console.log("🔻 Recibida señal SIGINT, cerrando servidor...");
-    
-    server.close(() => {
-        console.log("✅ Servidor HTTP cerrado");
-        
-        if (pool) {
-            pool.end(() => {
-                console.log("✅ Pool de PostgreSQL cerrado");
-                process.exit(0);
-            });
-        } else {
-            process.exit(0);
-        }
-    });
-});
-=======
-        });
-    } else {
-        process.exit(0);
-    }
-});
->>>>>>> ArreglarKPICard

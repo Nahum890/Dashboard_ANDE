@@ -2,16 +2,34 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ANDE Dashboard - Zona Este</title>
-    <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0, user-scalable=yes">
+    <title>ANDE Dashboard · Monitoreo Inteligente</title>
+    <!-- Chart.js y adaptador de fechas -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <!-- Font Awesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Estilos personalizados -->
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- LOADING OVERLAY PROFESIONAL -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loader-card" id="loaderCard">
+            <div class="spinner-ring"></div>
+            <p id="loadingText" class="loading-text">Cargando dashboard...</p>
+            <div class="progress-track">
+                <div id="loaderProgress" class="progress-fill" style="width: 0%;"></div>
+            </div>
+            <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 1rem;">
+                <i class="fas fa-bolt"></i> ANDE · Zona Este
+            </p>
+        </div>
+    </div>
+
+    <!-- NAVBAR -->
     <header class="navbar">
         <div class="navbar-brand">
             <div class="logo-circle">
@@ -19,26 +37,27 @@
             </div>
             <div class="brand-text">
                 <h1>ANDE Dashboard</h1>
-                <p>Monitoreo Inteligente - Zona Este</p>
+                <p>Monitoreo Inteligente · Zona Este</p>
             </div>
         </div>
         <div class="navbar-actions">
-             <span class="status-badge"><i class="fas fa-circle"></i> Sistema Operativo</span>
-             <span class="time-display" id="currentTime"></span>
+            <span class="status-badge"><i class="fas fa-circle"></i> Sistema operativo</span>
+            <span class="time-display" id="currentTime"></span>
         </div>
     </header>
 
+    <!-- WRAPPER PRINCIPAL -->
     <div class="dashboard-wrapper">
+        <!-- SIDEBAR (FILTROS INTELIGENTES) -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h3><i class="fas fa-sliders-h"></i> Filtros Avanzados</h3>
-                <button class="sidebar-close" id="sidebarClose" aria-label="Cerrar panel"><i class="fas fa-times"></i></button>
+                <h3><i class="fas fa-sliders-h"></i> Filtros inteligentes</h3>
+                <button class="sidebar-close" id="sidebarClose"><i class="fas fa-times"></i></button>
             </div>
-            
-            <div class="sidebar-content">
-                <!-- Modo de Comparación Global -->
+            <div class="sidebar-content compact">
+                <!-- MODO DE COMPARACIÓN -->
                 <div class="filter-group">
-                    <label class="form-label"><i class="fas fa-exchange-alt"></i> Modo de Comparación</label>
+                    <label class="form-label">Modo de comparación</label>
                     <div class="toggle-buttons">
                         <button type="button" class="toggle-btn active" id="globalModeUnique" data-mode="unique">
                             <i class="fas fa-check-circle"></i> Único
@@ -47,114 +66,111 @@
                             <i class="fas fa-check-double"></i> Múltiple
                         </button>
                     </div>
-                    <small class="form-hint">
-                        <i class="fas fa-info-circle"></i> 
-                        <span id="globalModeHint">
-                            Único: un valor por filtro | Múltiple: varios valores por filtro
-                        </span>
+                    <small class="form-hint" id="globalModeHint">
+                        <i class="fas fa-info-circle"></i> Único: un valor por filtro
                     </small>
                 </div>
 
-                <!-- Año - Ahora múltiple -->
+                <!-- AÑO(S) -->
                 <div class="filter-group">
-                    <label class="form-label"><i class="fas fa-calendar"></i> Año (Comparar)</label>
+                    <label class="form-label"><i class="fas fa-calendar"></i> Año(s)</label>
                     <div class="multi-select-container">
                         <select id="filterYear" class="form-select multi-select" multiple size="4"></select>
                     </div>
-                    <small class="form-hint"><i class="fas fa-info-circle"></i> Usa <b>Ctrl + Click</b> para seleccionar varios</small>
+                    <small class="form-hint"><i class="fas fa-info-circle"></i> Ctrl+Click para varios</small>
                 </div>
 
-                <!-- Variable - Ahora múltiple -->
+                <!-- FILTRO DE ALIMENTADORES INTELIGENTE -->
                 <div class="filter-group">
-                    <label class="form-label"><i class="fas fa-chart-line"></i> Variables (Comparar)</label>
-                    <div class="multi-select-container">
-                        <select id="filterTipoMedicion" class="form-select multi-select" multiple size="6"></select>
+                    <label class="form-label"><i class="fas fa-transformer"></i> Alimentadores</label>
+                    
+                    <div class="selection-mode-tabs">
+                        <button type="button" class="mode-tab active" data-mode="manual">
+                            <i class="fas fa-mouse-pointer"></i> Manual
+                        </button>
+                        <button type="button" class="mode-tab" data-mode="station">
+                            <i class="fas fa-building"></i> Todos de estación
+                        </button>
+                        <button type="button" class="mode-tab" data-mode="all">
+                            <i class="fas fa-layer-group"></i> Todos
+                        </button>
                     </div>
-                    <small class="form-hint"><i class="fas fa-info-circle"></i> Compara diferentes tipos de medición</small>
-                </div>
-                
-                <!-- Estaciones - Nuevo filtro -->
-                <div class="filter-group">
-                    <label class="form-label"><i class="fas fa-building"></i> Estación</label>
-                    <select id="filterEstacion" class="form-select">
-                        <option value="">Todas las estaciones</option>
-                    </select>
-                    <small class="form-hint"><i class="fas fa-info-circle"></i> Filtra por las primeras 3 letras del alimentador</small>
-                </div>
-                
-                <!-- Alimentadores - Múltiple -->
-                <div class="filter-group">
-                    <label class="form-label"><i class="fas fa-transformer"></i> Alimentadores (Comparar)</label>
+
+                    <div id="stationSelectorContainer" style="margin-top: 0.8rem;">
+                        <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
+                            <i class="fas fa-building"></i> Estación
+                        </label>
+                        <select id="filterEstacion" class="form-select">
+                            <option value="">Todas las estaciones</option>
+                        </select>
+                        <small class="form-hint" id="estacionHint">
+                            <i class="fas fa-info-circle"></i> Filtra los alimentadores por estación
+                        </small>
+                    </div>
+
+                    <div class="feeder-actions" id="feederActions">
+                        <button type="button" class="btn-outline small" id="selectAllFeedersBtn">
+                            <i class="fas fa-check-double"></i> Todos
+                        </button>
+                        <button type="button" class="btn-outline small" id="selectStationFeedersBtn">
+                            <i class="fas fa-building"></i> Todos de esta estación
+                        </button>
+                        <button type="button" class="btn-outline small" id="clearFeedersBtn">
+                            <i class="fas fa-times"></i> Limpiar
+                        </button>
+                    </div>
+
                     <div class="multi-select-container">
                         <select id="filterTransformador" class="form-select multi-select" multiple size="6"></select>
                     </div>
-                    <small class="form-hint"><i class="fas fa-info-circle"></i> Selecciona múltiples para comparar</small>
-                </div>
-
-                <!-- Período - Selector mejorado -->
-                <div class="filter-group">
-                    <label class="form-label"><i class="fas fa-clock"></i> Período</label>
-                    <select id="filterPeriodo" class="form-select">
-                        <option value="select_months">Seleccionar Meses</option>
-                        <option value="last3">Últimos 3 meses</option>
-                        <option value="last6">Últimos 6 meses</option>
-                        <option value="last12">Últimos 12 meses</option>
-                        <option value="currentYear">Año actual</option>
-                        <option value="lastYear">Año pasado</option>
-                    </select>
-                    <small class="form-hint"><i class="fas fa-info-circle"></i> Selección de período temporal</small>
-                </div>
-
-                <!-- Guía de selección múltiple -->
-                <div class="filter-group selection-guide" id="monthModeGroup" style="display: none;">
-                    <label class="form-label"><i class="fas fa-list-check"></i> Guía de selección múltiple</label>
-                    <ul class="selection-steps">
-                        <li><i class="fas fa-mouse-pointer"></i> <strong>Ctrl + Click</strong> para agregar o quitar valores.</li>
-                        <li><i class="fas fa-arrows-left-right-to-line"></i> <strong>Shift + Click</strong> para seleccionar un rango de meses.</li>
-                        <li><i class="fas fa-check-double"></i> Usa este modo para comparar varios alimentadores, años o meses.</li>
-                    </ul>
-                    <small class="form-hint"><i class="fas fa-info-circle"></i> La guía aparece solo en modo de selección múltiple.</small>
-                </div>
-
-                <!-- Selector de Meses - Mejorado -->
-                <div class="filter-group" id="monthSelectorGroup" style="display: none;">
-                    <label class="form-label"><i class="fas fa-calendar-alt"></i> Meses</label>
-                    <div class="month-grid" id="monthGrid">
-                        <button type="button" class="month-btn" data-month="1">Enero</button>
-                        <button type="button" class="month-btn" data-month="2">Febrero</button>
-                        <button type="button" class="month-btn" data-month="3">Marzo</button>
-                        <button type="button" class="month-btn" data-month="4">Abril</button>
-                        <button type="button" class="month-btn" data-month="5">Mayo</button>
-                        <button type="button" class="month-btn" data-month="6">Junio</button>
-                        <button type="button" class="month-btn" data-month="7">Julio</button>
-                        <button type="button" class="month-btn" data-month="8">Agosto</button>
-                        <button type="button" class="month-btn" data-month="9">Septiembre</button>
-                        <button type="button" class="month-btn" data-month="10">Octubre</button>
-                        <button type="button" class="month-btn" data-month="11">Noviembre</button>
-                        <button type="button" class="month-btn" data-month="12">Diciembre</button>
-                    </div>
-                    <small class="form-hint" id="monthHint">
-                        <i class="fas fa-info-circle"></i> Haz clic para seleccionar
+                    <small class="form-hint" id="feederCountHint">
+                        <i class="fas fa-info-circle"></i> <span id="feederCount">0</span> alimentadores seleccionados
                     </small>
                 </div>
 
-                <!-- Select oculto para mantener compatibilidad -->
-                <select id="filterMonth" class="form-select" multiple style="display: none;">
-                    <option value="1">Enero</option>
-                    <option value="2">Febrero</option>
-                    <option value="3">Marzo</option>
-                    <option value="4">Abril</option>
-                    <option value="5">Mayo</option>
-                    <option value="6">Junio</option>
-                    <option value="7">Julio</option>
-                    <option value="8">Agosto</option>
-                    <option value="9">Septiembre</option>
-                    <option value="10">Octubre</option>
-                    <option value="11">Noviembre</option>
-                    <option value="12">Diciembre</option>
-                </select>
+                <!-- VARIABLE -->
+                <div class="filter-group">
+                    <label class="form-label"><i class="fas fa-chart-line"></i> Variable</label>
+                    <div class="multi-select-container">
+                        <select id="filterTipoMedicion" class="form-select multi-select" multiple size="5"></select>
+                    </div>
+                    <small class="form-hint">Selecciona uno o varios tipos</small>
+                </div>
 
-                <!-- Nuevo: Agrupación -->
+                <!-- PERÍODO -->
+                <div class="filter-group">
+                    <label class="form-label"><i class="fas fa-clock"></i> Período</label>
+                    <div class="period-tabs">
+                        <button type="button" class="period-tab" data-period="last3">3 meses</button>
+                        <button type="button" class="period-tab" data-period="last6">6 meses</button>
+                        <button type="button" class="period-tab" data-period="last12">12 meses</button>
+                        <button type="button" class="period-tab active" data-period="select_months">Meses</button>
+                    </div>
+                    <div id="monthSelectorGroup" style="margin-top: 0.75rem;">
+                        <div class="month-grid" id="monthGrid">
+                            <button type="button" class="month-btn" data-month="1">Ene</button>
+                            <button type="button" class="month-btn" data-month="2">Feb</button>
+                            <button type="button" class="month-btn" data-month="3">Mar</button>
+                            <button type="button" class="month-btn" data-month="4">Abr</button>
+                            <button type="button" class="month-btn" data-month="5">May</button>
+                            <button type="button" class="month-btn" data-month="6">Jun</button>
+                            <button type="button" class="month-btn" data-month="7">Jul</button>
+                            <button type="button" class="month-btn" data-month="8">Ago</button>
+                            <button type="button" class="month-btn" data-month="9">Sep</button>
+                            <button type="button" class="month-btn" data-month="10">Oct</button>
+                            <button type="button" class="month-btn" data-month="11">Nov</button>
+                            <button type="button" class="month-btn" data-month="12">Dic</button>
+                        </div>
+                        <div class="month-actions">
+                            <button type="button" class="btn-link" id="selectAllMonths">Todos</button>
+                            <button type="button" class="btn-link" id="deselectAllMonths">Ninguno</button>
+                        </div>
+                        <small class="form-hint" id="monthHint"></small>
+                    </div>
+                    <select id="filterMonth" multiple style="display: none;"></select>
+                </div>
+
+                <!-- AGRUPACIÓN GRÁFICO MULTIDIMENSIONAL -->
                 <div class="filter-group">
                     <label class="form-label"><i class="fas fa-layer-group"></i> Agrupar por</label>
                     <select id="groupBy" class="form-select">
@@ -163,47 +179,50 @@
                         <option value="tipo">Tipo de medición</option>
                         <option value="combinado">Combinación completa</option>
                     </select>
-                    <small class="form-hint"><i class="fas fa-info-circle"></i> Define cómo se agrupan las series en el gráfico</small>
                 </div>
-                
+
+                <!-- ACCIONES PRINCIPALES -->
+                <div class="filter-actions">
+                    <button id="applyFilters" class="btn-primary">
+                        <i class="fas fa-sync-alt"></i> Aplicar filtros
+                    </button>
+                    <button id="resetFilters" class="btn-outline">
+                        <i class="fas fa-undo"></i> Restablecer
+                    </button>
+                    <button id="clearAll" class="btn-outline">
+                        <i class="fas fa-times"></i> Limpiar todo
+                    </button>
+                </div>
+
+                <!-- ESTADÍSTICAS -->
                 <div class="filter-stats">
                     <div class="stat-item">
-                        <span class="stat-label"><i class="fas fa-database"></i> Datos cargados:</span>
+                        <span class="stat-label"><i class="fas fa-database"></i> Datos:</span>
                         <span class="stat-value" id="dataCount">0</span>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-label"><i class="fas fa-microchip"></i> Última actualización:</span>
-                        <span class="stat-value" id="lastUpdate">--:--</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label"><i class="fas fa-chart-bar"></i> Series activas:</span>
+                        <span class="stat-label"><i class="fas fa-microchip"></i> Series:</span>
                         <span class="stat-value" id="seriesCount">0</span>
                     </div>
-                </div>
-                
-                <div class="filter-actions">
-                    <button id="applyFilters" class="btn btn-primary pulse-hover">
-                        <i class="fas fa-sync-alt"></i> Actualizar Dashboard
-                    </button>
-                    <button id="resetFilters" class="btn btn-outline">
-                        <i class="fas fa-undo"></i> Restablecer Filtros
-                    </button>
-                    <button id="clearAll" class="btn btn-outline">
-                        <i class="fas fa-times"></i> Limpiar Todo
-                    </button>
+                    <div class="stat-item">
+                        <span class="stat-label"><i class="fas fa-sync"></i> Actualizado:</span>
+                        <span class="stat-value" id="lastUpdate">--:--</span>
+                    </div>
                 </div>
             </div>
         </aside>
 
+        <!-- CONTENIDO PRINCIPAL -->
         <main class="main-content">
-            <button class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Mostrar filtros">
+            <button class="sidebar-toggle-btn" id="sidebarToggle">
                 <i class="fas fa-filter"></i> <span class="btn-text">Filtros</span>
             </button>
 
+            <!-- HEADER -->
             <div class="dashboard-header">
-                <h2><i class="fas fa-chart-bar"></i> Panel de Control - Comparación Avanzada</h2>
+                <h2><i class="fas fa-chart-bar"></i> Panel de control · Comparación avanzada</h2>
                 <div class="header-actions">
-                    <button class="btn-icon" id="goToExcelUpload" title="Ir a importación Excel">
+                    <button class="btn-icon" id="goToExcelUpload" title="Importar Excel">
                         <i class="fas fa-file-excel"></i>
                     </button>
                     <button class="btn-icon" id="exportData" title="Exportar datos">
@@ -218,89 +237,176 @@
                 </div>
             </div>
 
-            <div class="comparison-info card" style="margin-bottom: 1.5rem; padding: 1rem;">
-                <div class="comparison-header">
-                    <i class="fas fa-exchange-alt"></i>
-                    <h4 style="margin: 0; font-weight: 600;">Comparación Activa</h4>
+            <!-- CONSEJOS -->
+            <div class="comparison-tips card" style="margin-bottom: 1.5rem; padding: 1rem; background: #f0f9ff;">
+                <div class="tips-header">
+                    <i class="fas fa-lightbulb"></i>
+                    <h4 style="margin: 0; font-weight: 600;">Consejos para comparación</h4>
                 </div>
-                <div class="comparison-tags" id="comparisonTags">
-                    <span class="tag">Selecciona filtros para comparar</span>
+                <div class="tips-content">
+                    <ul style="margin: 0.5rem 0 0 1rem; padding: 0;">
+                        <li>Activa <strong>Modo Múltiple</strong> para seleccionar varios elementos con Ctrl+Click.</li>
+                        <li>Usa las pestañas de alimentadores para elegir el modo de selección.</li>
+                        <li>En el ranking, puedes agrupar por <strong>Alimentador</strong> o <strong>Estación</strong>.</li>
+                        <li>Los gráficos de pastel muestran distribución acumulada.</li>
+                    </ul>
                 </div>
             </div>
 
+            <!-- COMPARACIÓN ACTIVA -->
+            <div class="comparison-info card" style="margin-bottom: 1.5rem; padding: 1rem;">
+                <div class="comparison-header">
+                    <i class="fas fa-exchange-alt"></i>
+                    <h4 style="margin: 0; font-weight: 600;">Comparación activa</h4>
+                </div>
+                <div class="comparison-tags" id="comparisonTags">
+                    <span class="tag hint">Selecciona filtros para comparar</span>
+                </div>
+            </div>
+
+            <!-- CARGA EXCEL -->
             <section class="excel-upload card">
                 <div class="excel-upload-header">
                     <h3><i class="fas fa-file-excel"></i> Cargar datos desde Excel</h3>
-                    <small>Formato esperado: seccion, anio, mes, departamento, tipo_medicion, valor</small>
+                    <small>Formato: seccion, anio, mes, departamento, tipo_medicion, valor</small>
                 </div>
                 <div class="excel-upload-body">
                     <input type="file" id="excelFileInput" accept=".xlsx" class="form-select" />
-                    <button id="uploadExcelBtn" class="btn btn-primary">
+                    <button id="uploadExcelBtn" class="btn-primary">
                         <i class="fas fa-upload"></i> Subir Excel
                     </button>
                 </div>
                 <p id="excelUploadStatus" class="excel-upload-status">Selecciona un archivo .xlsx para comenzar.</p>
             </section>
 
+            <!-- HISTORIAL DE CARGAS -->
+            <div class="card" style="margin-top: 1.5rem; margin-bottom: 1.5rem;">
+                <div class="card-header">
+                    <h3><i class="fas fa-history"></i> Historial de cargas</h3>
+                    <small>Gestiona las cargas anteriores</small>
+                </div>
+                <div class="card-body">
+                    <div id="cargasContainer">
+                        <div style="text-align: center; padding: 2rem; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin" style="font-size: 2rem;"></i>
+                            <p>Cargando historial...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <div class="footer-stats">
+                        <span class="stat"><i class="fas fa-database"></i> Total cargas: <strong id="totalCargas">0</strong></span>
+                        <span class="stat"><i class="fas fa-check-circle"></i> Completadas: <strong id="cargasCompletadas">0</strong></span>
+                        <span class="stat"><i class="fas fa-exclamation-triangle"></i> Con errores: <strong id="cargasConErrores">0</strong></span>
+                        <span class="stat"><i class="fas fa-chart-bar"></i> Datos en BD: <strong id="totalDatosGlobal">0</strong></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPIs NORMALES -->
             <div class="kpi-grid">
-                 <!-- KPI 1: Series activas -->
-                 <div class="card kpi-card delay-1">
-                     <div class="kpi-header">
-                        <span class="kpi-title">Series Activas</span>
+                <div class="card kpi-card delay-1">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Series activas</span>
                         <i class="fas fa-chart-line kpi-icon text-blue"></i>
-                     </div>
-                     <div class="kpi-body">
-                         <span class="kpi-value" id="activeSeries">0</span>
-                         <span class="kpi-unit">series</span>
-                     </div>
-                     <div class="kpi-meta">en comparación</div>
-                 </div>
-
-                 <!-- KPI 2: Rango de valores -->
-                 <div class="card kpi-card delay-2">
-                     <div class="kpi-header">
-                        <span class="kpi-title">Rango Global</span>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="activeSeries">0</span>
+                        <span class="kpi-unit">series</span>
+                    </div>
+                    <div class="kpi-meta">en comparación</div>
+                </div>
+                <div class="card kpi-card delay-2">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Rango global</span>
                         <i class="fas fa-arrows-alt-h kpi-icon text-orange"></i>
-                     </div>
-                     <div class="kpi-body">
-                         <span class="kpi-value" id="rangeValue">0.0000</span>
-                         <span class="kpi-unit">diferencia</span>
-                     </div>
-                     <div class="kpi-meta" id="rangeInfo">Max-Min</div>
-                 </div>
-
-                 <!-- KPI 3: Variabilidad -->
-                 <div class="card kpi-card delay-3">
-                     <div class="kpi-header">
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="rangeValue">0.0000</span>
+                        <span class="kpi-unit">diferencia</span>
+                    </div>
+                    <div class="kpi-meta" id="rangeInfo">Max-Min</div>
+                </div>
+                <div class="card kpi-card delay-3">
+                    <div class="kpi-header">
                         <span class="kpi-title">Variabilidad</span>
                         <i class="fas fa-wave-square kpi-icon text-purple"></i>
-                     </div>
-                     <div class="kpi-body">
-                         <span class="kpi-value" id="variabilityValue">0.00%</span>
-                         <span class="kpi-unit">CV</span>
-                     </div>
-                     <div class="kpi-badge" id="variabilityBadge">--</div>
-                 </div>
-
-                 <!-- KPI 4: Peor desempeño -->
-                 <div class="card kpi-card delay-4">
-                     <div class="kpi-header">
-                        <span class="kpi-title">Peor Desempeño</span>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="variabilityValue">0.00%</span>
+                        <span class="kpi-unit">CV</span>
+                    </div>
+                    <div class="kpi-badge" id="variabilityBadge">--</div>
+                </div>
+                <div class="card kpi-card delay-4">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Peor desempeño</span>
                         <i class="fas fa-exclamation-triangle kpi-icon text-red"></i>
-                     </div>
-                     <div class="kpi-body">
-                         <span class="kpi-value" id="worstSeries">--</span>
-                         <span class="kpi-unit">alimentador</span>
-                     </div>
-                     <div class="kpi-meta" id="worstValue">0.0000</div>
-                 </div>
-             </div>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="worstSeries">--</span>
+                        <span class="kpi-unit">alimentador</span>
+                    </div>
+                    <div class="kpi-meta" id="worstValue">0.0000</div>
+                </div>
+            </div>
 
+            <!-- KPIs ESPECIALES -->
+            <div id="specialKpiSection" class="kpi-grid" style="display: none; margin-bottom: 1.5rem;">
+                <div class="card kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Estaciones activas</span>
+                        <i class="fas fa-building kpi-icon text-blue"></i>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="stationCount">0</span>
+                        <span class="kpi-unit">estaciones</span>
+                    </div>
+                    <div class="kpi-meta" id="stationNames">--</div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Mejor estación</span>
+                        <i class="fas fa-trophy kpi-icon text-green"></i>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="bestStationName">--</span>
+                    </div>
+                    <div class="kpi-meta" id="bestStationValue">0.0000</div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Alimentador destacado</span>
+                        <i class="fas fa-star kpi-icon text-yellow"></i>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="topFeederName">--</span>
+                    </div>
+                    <div class="kpi-meta" id="topFeederValue">0.0000</div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Variabilidad global</span>
+                        <i class="fas fa-wave-square kpi-icon text-purple"></i>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="globalCV">0.00%</span>
+                    </div>
+                    <div class="kpi-badge" id="globalCVBadge">--</div>
+                </div>
+            </div>
+
+            <!-- GRÁFICOS PRINCIPALES -->
             <div class="charts-grid">
-                <!-- Gráfico principal -->
+                <!-- GRÁFICO MULTIDIMENSIONAL -->
                 <div class="card chart-card main-chart-area delay-5">
                     <div class="card-header">
-                        <h3><i class="fas fa-chart-area"></i> Comparación Multidimensional</h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 0.8rem;">
+                            <h3><i class="fas fa-chart-area"></i> Comparación multidimensional</h3>
+                            <button class="btn-outline small" id="expandChartBtn" style="display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-expand-alt"></i> Expandir gráficos
+                            </button>
+                        </div>
                         <div class="chart-controls">
                             <div class="chart-options">
                                 <select id="chartType" class="chart-select">
@@ -332,21 +438,25 @@
                     </div>
                     <div class="chart-footer">
                         <div class="chart-legend" id="mainChartLegend"></div>
-                        <div class="chart-hint" id="chartHint">
-                            <i class="fas fa-info-circle"></i> Hover sobre las líneas para ver detalles
+                        <div class="chart-hint">
+                            <i class="fas fa-info-circle"></i> Haz clic en la leyenda para ocultar series
                         </div>
                     </div>
                 </div>
 
-                <!-- Gráfico de ranking -->
+                <!-- RANKING -->
                 <div class="card chart-card side-chart-area delay-6">
                     <div class="card-header">
-                        <h3><i class="fas fa-trophy"></i> Ranking de Series</h3>
-                        <div class="chart-options">
-                            <select id="rankingSort" class="chart-select">
-                                <option value="avg">Por promedio</option>
-                                <option value="stability">Por estabilidad</option>
-                                <option value="trend">Por tendencia</option>
+                        <h3><i class="fas fa-trophy"></i> Ranking</h3>
+                        <div class="ranking-controls">
+                            <select id="rankingGroup" class="ranking-select">
+                                <option value="alimentador">Agrupar por: Alimentador</option>
+                                <option value="estacion">Agrupar por: Estación</option>
+                            </select>
+                            <select id="rankingSort" class="ranking-select">
+                                <option value="avg">Ordenar por: Promedio</option>
+                                <option value="stability">Ordenar por: Estabilidad</option>
+                                <option value="trend">Ordenar por: Tendencia</option>
                             </select>
                         </div>
                     </div>
@@ -357,21 +467,57 @@
                     </div>
                     <div class="chart-footer">
                         <div class="chart-note">
-                            <i class="fas fa-info-circle"></i> Ranking basado en promedio mensual
+                            <i class="fas fa-info-circle"></i> Ranking según agrupación y métrica seleccionadas
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Gráfico de dispersión adicional -->
+
+            <!-- GRÁFICOS DE PASTEL -->
+            <div class="pie-charts-container">
+                <div class="card pie-chart-card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-pie"></i> Distribución por alimentador</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-wrapper-small">
+                            <canvas id="pieChartFeeder"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="card pie-chart-card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-pie"></i> Distribución por tipo</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-wrapper-small">
+                            <canvas id="pieChartType"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RESUMEN POR ESTACIÓN -->
+            <div id="stationSummaryContainer" class="card" style="margin-top: 1.5rem; display: none;">
+                <div class="card-header">
+                    <h3><i class="fas fa-layer-group"></i> Resumen de la estación <span id="stationName"></span></h3>
+                </div>
+                <div class="card-body">
+                    <div class="chart-wrapper" style="height: 300px;">
+                        <canvas id="stationSummaryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DISPERSIÓN -->
             <div class="card chart-card delay-7" style="margin-top: 1.5rem;">
                 <div class="card-header">
-                    <h3><i class="fas fa-braille"></i> Dispersión por Variables</h3>
+                    <h3><i class="fas fa-braille"></i> Dispersión por alimentador</h3>
                     <div class="chart-options">
                         <select id="scatterX" class="chart-select">
                             <option value="fecha">Fecha</option>
                             <option value="alimentador">Alimentador</option>
-                            <option value="tipo">Tipo de medición</option>
+                            <option value="tipo">Tipo</option>
                         </select>
                         <select id="scatterY" class="chart-select">
                             <option value="valor">Valor</option>
@@ -387,10 +533,10 @@
                 </div>
             </div>
 
-            <!-- Tabla de datos -->
+            <!-- TABLA -->
             <div class="card table-card delay-8" style="margin-top: 1.5rem;">
                 <div class="card-header with-controls">
-                    <h3><i class="fas fa-list-ul"></i> Registro Detallado - Vista Comparativa</h3>
+                    <h3><i class="fas fa-list-ul"></i> Registro detallado</h3>
                     <div class="table-controls">
                         <div class="search-box">
                             <i class="fas fa-search"></i>
@@ -408,7 +554,7 @@
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th data-sort="serie">Serie <i class="fas fa-sort"></i></th>
+                                <th data-sort="serie"># <i class="fas fa-sort"></i></th>
                                 <th data-sort="alimentador">Alimentador <i class="fas fa-sort"></i></th>
                                 <th data-sort="year">Año <i class="fas fa-sort"></i></th>
                                 <th data-sort="tipo">Tipo <i class="fas fa-sort"></i></th>
@@ -443,12 +589,13 @@
                 </div>
             </div>
 
+            <!-- FOOTER -->
             <div class="footer-info">
                 <div class="footer-text">
-                    <i class="fas fa-shield-alt"></i> Sistema de Monitoreo ANDE v3.0 - Modo Comparación Avanzada
+                    <i class="fas fa-shield-alt"></i> Sistema de Monitoreo ANDE · v5.7
                 </div>
                 <div class="footer-stats">
-                    <span class="stat"><i class="fas fa-server"></i> Series cargadas: <strong id="loadedSeries">0</strong></span>
+                    <span class="stat"><i class="fas fa-server"></i> Series: <strong id="loadedSeries">0</strong></span>
                     <span class="stat"><i class="fas fa-chart-line"></i> Puntos: <strong id="totalPoints">0</strong></span>
                     <span class="stat"><i class="fas fa-sync"></i> Actualizado: <strong id="updateTime">--:--</strong></span>
                 </div>
@@ -456,16 +603,7 @@
         </main>
     </div>
 
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="loader-content">
-            <div class="spinner-border"></div>
-            <p>Procesando comparación...</p>
-            <div class="loader-progress">
-                <div class="progress-bar" id="loaderProgress"></div>
-            </div>
-        </div>
-    </div>
-
+    <!-- NOTIFICACIÓN -->
     <div class="notification" id="notification">
         <div class="notification-content">
             <i class="fas fa-check-circle"></i>
@@ -473,16 +611,14 @@
         </div>
     </div>
 
-    <!-- Modal para detalles de serie -->
+    <!-- MODAL -->
     <div class="modal-overlay" id="seriesModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3><i class="fas fa-info-circle"></i> Detalles de Serie</h3>
+                <h3><i class="fas fa-info-circle"></i> Detalles de serie</h3>
                 <button class="modal-close" id="modalClose">&times;</button>
             </div>
-            <div class="modal-body" id="modalBody">
-                <!-- Contenido dinámico -->
-            </div>
+            <div class="modal-body" id="modalBody"></div>
         </div>
     </div>
 
