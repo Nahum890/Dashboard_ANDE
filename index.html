@@ -80,11 +80,10 @@
                     <small class="form-hint"><i class="fas fa-info-circle"></i> Ctrl+Click para varios</small>
                 </div>
 
-                <!-- ========== FILTRO DE ALIMENTADORES (REDISEÑADO) ========== -->
+                <!-- FILTRO DE ALIMENTADORES INTELIGENTE -->
                 <div class="filter-group">
                     <label class="form-label"><i class="fas fa-transformer"></i> Alimentadores</label>
                     
-                    <!-- Pestañas de modo de selección -->
                     <div class="selection-mode-tabs">
                         <button type="button" class="mode-tab active" data-mode="manual">
                             <i class="fas fa-mouse-pointer"></i> Manual
@@ -97,7 +96,6 @@
                         </button>
                     </div>
 
-                    <!-- Selector de estación (visible en modo "station" y también en modo "manual" como filtro) -->
                     <div id="stationSelectorContainer" style="margin-top: 0.8rem;">
                         <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
                             <i class="fas fa-building"></i> Estación
@@ -110,7 +108,6 @@
                         </small>
                     </div>
 
-                    <!-- Acciones rápidas contextuales -->
                     <div class="feeder-actions" id="feederActions">
                         <button type="button" class="btn-outline small" id="selectAllFeedersBtn">
                             <i class="fas fa-check-double"></i> Todos
@@ -123,7 +120,6 @@
                         </button>
                     </div>
 
-                    <!-- Selector múltiple de alimentadores -->
                     <div class="multi-select-container">
                         <select id="filterTransformador" class="form-select multi-select" multiple size="6"></select>
                     </div>
@@ -132,7 +128,7 @@
                     </small>
                 </div>
 
-                <!-- VARIABLE (TIPO DE MEDICIÓN) -->
+                <!-- VARIABLE -->
                 <div class="filter-group">
                     <label class="form-label"><i class="fas fa-chart-line"></i> Variable</label>
                     <div class="multi-select-container">
@@ -150,7 +146,6 @@
                         <button type="button" class="period-tab" data-period="last12">12 meses</button>
                         <button type="button" class="period-tab active" data-period="select_months">Meses</button>
                     </div>
-                    <!-- Selector de meses -->
                     <div id="monthSelectorGroup" style="margin-top: 0.75rem;">
                         <div class="month-grid" id="monthGrid">
                             <button type="button" class="month-btn" data-month="1">Ene</button>
@@ -175,7 +170,7 @@
                     <select id="filterMonth" multiple style="display: none;"></select>
                 </div>
 
-                <!-- AGRUPACIÓN -->
+                <!-- AGRUPACIÓN GRÁFICO MULTIDIMENSIONAL -->
                 <div class="filter-group">
                     <label class="form-label"><i class="fas fa-layer-group"></i> Agrupar por</label>
                     <select id="groupBy" class="form-select">
@@ -199,7 +194,7 @@
                     </button>
                 </div>
 
-                <!-- ESTADÍSTICAS DE FILTRO -->
+                <!-- ESTADÍSTICAS -->
                 <div class="filter-stats">
                     <div class="stat-item">
                         <span class="stat-label"><i class="fas fa-database"></i> Datos:</span>
@@ -217,13 +212,13 @@
             </div>
         </aside>
 
-        <!-- CONTENIDO PRINCIPAL (se mantiene igual) -->
+        <!-- CONTENIDO PRINCIPAL -->
         <main class="main-content">
             <button class="sidebar-toggle-btn" id="sidebarToggle">
                 <i class="fas fa-filter"></i> <span class="btn-text">Filtros</span>
             </button>
 
-            <!-- HEADER DEL DASHBOARD -->
+            <!-- HEADER -->
             <div class="dashboard-header">
                 <h2><i class="fas fa-chart-bar"></i> Panel de control · Comparación avanzada</h2>
                 <div class="header-actions">
@@ -242,7 +237,7 @@
                 </div>
             </div>
 
-            <!-- CONSEJOS DE COMPARACIÓN -->
+            <!-- CONSEJOS -->
             <div class="comparison-tips card" style="margin-bottom: 1.5rem; padding: 1rem; background: #f0f9ff;">
                 <div class="tips-header">
                     <i class="fas fa-lightbulb"></i>
@@ -252,12 +247,13 @@
                     <ul style="margin: 0.5rem 0 0 1rem; padding: 0;">
                         <li>Activa <strong>Modo Múltiple</strong> para seleccionar varios elementos con Ctrl+Click.</li>
                         <li>Usa las pestañas de alimentadores para elegir el modo de selección.</li>
+                        <li>En el ranking, puedes agrupar por <strong>Alimentador</strong> o <strong>Estación</strong>.</li>
                         <li>Los gráficos de pastel muestran distribución acumulada.</li>
                     </ul>
                 </div>
             </div>
 
-            <!-- COMPARACIÓN ACTIVA (TAGS) -->
+            <!-- COMPARACIÓN ACTIVA -->
             <div class="comparison-info card" style="margin-bottom: 1.5rem; padding: 1rem;">
                 <div class="comparison-header">
                     <i class="fas fa-exchange-alt"></i>
@@ -268,7 +264,7 @@
                 </div>
             </div>
 
-            <!-- CARGA DE EXCEL -->
+            <!-- CARGA EXCEL -->
             <section class="excel-upload card">
                 <div class="excel-upload-header">
                     <h3><i class="fas fa-file-excel"></i> Cargar datos desde Excel</h3>
@@ -283,7 +279,7 @@
                 <p id="excelUploadStatus" class="excel-upload-status">Selecciona un archivo .xlsx para comenzar.</p>
             </section>
 
-            <!-- GESTIÓN DE CARGAS -->
+            <!-- HISTORIAL DE CARGAS -->
             <div class="card" style="margin-top: 1.5rem; margin-bottom: 1.5rem;">
                 <div class="card-header">
                     <h3><i class="fas fa-history"></i> Historial de cargas</h3>
@@ -357,12 +353,52 @@
 
             <!-- KPIs ESPECIALES -->
             <div id="specialKpiSection" class="kpi-grid" style="display: none; margin-bottom: 1.5rem;">
-                <!-- ... (se mantiene igual) ... -->
+                <div class="card kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Estaciones activas</span>
+                        <i class="fas fa-building kpi-icon text-blue"></i>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="stationCount">0</span>
+                        <span class="kpi-unit">estaciones</span>
+                    </div>
+                    <div class="kpi-meta" id="stationNames">--</div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Mejor estación</span>
+                        <i class="fas fa-trophy kpi-icon text-green"></i>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="bestStationName">--</span>
+                    </div>
+                    <div class="kpi-meta" id="bestStationValue">0.0000</div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Alimentador destacado</span>
+                        <i class="fas fa-star kpi-icon text-yellow"></i>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="topFeederName">--</span>
+                    </div>
+                    <div class="kpi-meta" id="topFeederValue">0.0000</div>
+                </div>
+                <div class="card kpi-card">
+                    <div class="kpi-header">
+                        <span class="kpi-title">Variabilidad global</span>
+                        <i class="fas fa-wave-square kpi-icon text-purple"></i>
+                    </div>
+                    <div class="kpi-body">
+                        <span class="kpi-value" id="globalCV">0.00%</span>
+                    </div>
+                    <div class="kpi-badge" id="globalCVBadge">--</div>
+                </div>
             </div>
 
             <!-- GRÁFICOS PRINCIPALES -->
             <div class="charts-grid">
-                <!-- GRÁFICO PRINCIPAL -->
+                <!-- GRÁFICO MULTIDIMENSIONAL -->
                 <div class="card chart-card main-chart-area delay-5">
                     <div class="card-header">
                         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 0.8rem;">
@@ -408,15 +444,19 @@
                     </div>
                 </div>
 
-                <!-- RANKING DE SERIES -->
+                <!-- RANKING -->
                 <div class="card chart-card side-chart-area delay-6">
                     <div class="card-header">
-                        <h3><i class="fas fa-trophy"></i> Ranking de series</h3>
+                        <h3><i class="fas fa-trophy"></i> Ranking</h3>
                         <div class="ranking-controls">
+                            <select id="rankingGroup" class="ranking-select">
+                                <option value="alimentador">Agrupar por: Alimentador</option>
+                                <option value="estacion">Agrupar por: Estación</option>
+                            </select>
                             <select id="rankingSort" class="ranking-select">
-                                <option value="avg">Promedio</option>
-                                <option value="stability">Estabilidad</option>
-                                <option value="trend">Tendencia</option>
+                                <option value="avg">Ordenar por: Promedio</option>
+                                <option value="stability">Ordenar por: Estabilidad</option>
+                                <option value="trend">Ordenar por: Tendencia</option>
                             </select>
                         </div>
                     </div>
@@ -427,7 +467,7 @@
                     </div>
                     <div class="chart-footer">
                         <div class="chart-note">
-                            <i class="fas fa-info-circle"></i> Ranking basado en la métrica seleccionada
+                            <i class="fas fa-info-circle"></i> Ranking según agrupación y métrica seleccionadas
                         </div>
                     </div>
                 </div>
@@ -469,7 +509,7 @@
                 </div>
             </div>
 
-            <!-- GRÁFICO DE DISPERSIÓN -->
+            <!-- DISPERSIÓN -->
             <div class="card chart-card delay-7" style="margin-top: 1.5rem;">
                 <div class="card-header">
                     <h3><i class="fas fa-braille"></i> Dispersión por alimentador</h3>
@@ -493,7 +533,7 @@
                 </div>
             </div>
 
-            <!-- TABLA DE DATOS -->
+            <!-- TABLA -->
             <div class="card table-card delay-8" style="margin-top: 1.5rem;">
                 <div class="card-header with-controls">
                     <h3><i class="fas fa-list-ul"></i> Registro detallado</h3>
@@ -552,7 +592,7 @@
             <!-- FOOTER -->
             <div class="footer-info">
                 <div class="footer-text">
-                    <i class="fas fa-shield-alt"></i> Sistema de Monitoreo ANDE · v4.7
+                    <i class="fas fa-shield-alt"></i> Sistema de Monitoreo ANDE · v5.7
                 </div>
                 <div class="footer-stats">
                     <span class="stat"><i class="fas fa-server"></i> Series: <strong id="loadedSeries">0</strong></span>
@@ -571,7 +611,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE DETALLES -->
+    <!-- MODAL -->
     <div class="modal-overlay" id="seriesModal">
         <div class="modal-content">
             <div class="modal-header">

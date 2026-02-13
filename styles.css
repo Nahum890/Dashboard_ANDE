@@ -1,11 +1,7 @@
 /* =============================================
-   styles.css - VERSIÓN 5.0 - MEGA COMPLETA
-   Dashboard ANDE · Monitoreo Inteligente
+   styles.css - VERSIÓN 5.7 - FONDO BLANCO GARANTIZADO
    ============================================= */
 
-/* ---------------------------------------------
-   1. VARIABLES Y RESET
-   --------------------------------------------- */
 :root {
     --primary: #2563eb;
     --primary-dark: #1d4ed8;
@@ -55,9 +51,7 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* ---------------------------------------------
-   2. LOADING OVERLAY PROFESIONAL
-   --------------------------------------------- */
+/* LOADING OVERLAY */
 .loading-overlay {
     position: fixed;
     top: 0;
@@ -136,7 +130,6 @@ body {
     box-shadow: 0 0 15px #60a5fa;
 }
 
-/* Botón de reintentar en overlay de error */
 .btn-retry {
     background: linear-gradient(145deg, #3b82f6, #2563eb);
     border: none;
@@ -162,9 +155,7 @@ body {
 .btn-retry:active { transform: translateY(0); }
 .btn-retry i { font-size: 1.2rem; }
 
-/* ---------------------------------------------
-   3. NAVBAR
-   --------------------------------------------- */
+/* NAVBAR */
 .navbar {
     height: 85px;
     background: var(--gradient-primary);
@@ -262,18 +253,14 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
-/* ---------------------------------------------
-   4. LAYOUT PRINCIPAL
-   --------------------------------------------- */
+/* LAYOUT */
 .dashboard-wrapper {
     display: flex;
     height: calc(100vh - 85px);
     position: relative;
 }
 
-/* ---------------------------------------------
-   5. SIDEBAR
-   --------------------------------------------- */
+/* SIDEBAR */
 .sidebar {
     width: 360px;
     background: var(--gradient-sidebar);
@@ -358,9 +345,7 @@ body {
     background: rgba(255,255,255,0.3);
 }
 
-/* ---------------------------------------------
-   6. FILTROS (SIDEBAR) - BASE
-   --------------------------------------------- */
+/* FILTROS BASE */
 .filter-group {
     margin-bottom: 0;
     position: relative;
@@ -480,8 +465,7 @@ body {
     color: white;
 }
 
-/* ===== FILTRO DE ALIMENTADORES INTELIGENTE ===== */
-/* Pestañas de modo de selección */
+/* FILTRO DE ALIMENTADORES */
 .selection-mode-tabs {
     display: flex;
     gap: 0.6rem;
@@ -532,13 +516,11 @@ body {
     color: white;
 }
 
-/* Selector de estación contextual */
 #stationSelectorContainer {
     transition: all 0.2s ease;
     margin-bottom: 0.5rem;
 }
 
-/* Hint específico para estación */
 #estacionHint {
     margin-top: 8px;
     font-size: 0.75rem;
@@ -546,7 +528,6 @@ body {
     border-left-color: #94a3b8;
 }
 
-/* Botones de acciones rápidas para alimentadores */
 .feeder-actions {
     display: flex;
     gap: 0.6rem;
@@ -554,7 +535,40 @@ body {
     flex-wrap: wrap;
 }
 
-/* Contador de alimentadores */
+.btn-outline.small {
+    padding: 0.6rem 1rem;
+    font-size: 0.8rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(96,165,250,0.3);
+    color: #e2e8f0;
+    border-radius: 10px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: var(--transition);
+    flex: 1 1 auto;
+    justify-content: center;
+    cursor: pointer;
+    letter-spacing: 0.3px;
+    backdrop-filter: blur(4px);
+}
+
+.btn-outline.small:hover {
+    background: rgba(96,165,250,0.2);
+    border-color: var(--primary-light);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(37,99,235,0.25);
+}
+.btn-outline.small:active { transform: translateY(0); }
+.btn-outline.small:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.btn-outline.small i { font-size: 0.9rem; }
+
 #feederCountHint {
     display: flex;
     align-items: center;
@@ -572,7 +586,7 @@ body {
     border-radius: 30px;
 }
 
-/* Botones de modo único/múltiple */
+/* Toggle buttons */
 .toggle-buttons {
     display: flex;
     gap: 0.6rem;
@@ -613,7 +627,7 @@ body {
 }
 .toggle-btn i { font-size: 1rem; }
 
-/* Pestañas de período */
+/* Period tabs */
 .period-tabs {
     display: flex;
     gap: 0.6rem;
@@ -651,7 +665,7 @@ body {
 }
 .period-tab:active { transform: translateY(0); }
 
-/* Botones de meses */
+/* Month grid */
 .month-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -690,7 +704,6 @@ body {
 }
 .month-btn:active { transform: translateY(0); }
 
-/* Botones de acciones de meses (Todos / Ninguno) */
 .month-actions {
     display: flex;
     justify-content: flex-end;
@@ -721,7 +734,7 @@ body {
 }
 .btn-link:active { background: rgba(96,165,250,0.2); }
 
-/* Botones principales (Aplicar filtros, Restablecer, Limpiar todo) */
+/* Acciones principales */
 .filter-actions {
     display: flex;
     flex-direction: column;
@@ -798,7 +811,7 @@ body {
     cursor: not-allowed;
 }
 
-/* Estadísticas de filtro */
+/* Estadísticas */
 .filter-stats {
     background: rgba(0,0,0,0.3);
     border: 1px solid rgba(96,165,250,0.15);
@@ -839,9 +852,7 @@ body {
     font-size: 0.9rem;
 }
 
-/* ---------------------------------------------
-   7. CONTENIDO PRINCIPAL
-   --------------------------------------------- */
+/* CONTENIDO PRINCIPAL */
 .main-content {
     flex: 1;
     padding: 2.5rem;
@@ -861,7 +872,6 @@ body {
     pointer-events: none;
 }
 
-/* Botón toggle sidebar para móviles */
 .sidebar-toggle-btn {
     position: fixed;
     top: 105px;
@@ -890,9 +900,7 @@ body {
 }
 .sidebar-toggle-btn:active { transform: translateY(0); }
 
-/* ---------------------------------------------
-   8. DASHBOARD HEADER
-   --------------------------------------------- */
+/* DASHBOARD HEADER */
 .dashboard-header {
     display: flex;
     justify-content: space-between;
@@ -956,9 +964,7 @@ body {
     cursor: not-allowed;
 }
 
-/* ---------------------------------------------
-   9. TARJETAS KPI
-   --------------------------------------------- */
+/* KPI CARDS */
 .kpi-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -1064,7 +1070,6 @@ body {
     letter-spacing: 0.5px;
 }
 
-/* Colores de iconos KPI */
 .text-blue { color: var(--primary); background: linear-gradient(145deg, #eff6ff, #dbeafe); }
 .text-orange { color: var(--warning); background: linear-gradient(145deg, #fff7ed, #fed7aa); }
 .text-red { color: var(--danger); background: linear-gradient(145deg, #fef2f2, #fecaca); }
@@ -1072,14 +1077,11 @@ body {
 .text-green { color: var(--success); background: linear-gradient(145deg, #f0fdf4, #bbf7d0); }
 .text-yellow { color: var(--yellow); background: linear-gradient(145deg, #fefce8, #fef9c3); }
 
-/* KPIs especiales */
 #specialKpiSection .kpi-card {
     border-top-width: 6px;
 }
 
-/* ---------------------------------------------
-   10. TARJETAS DE GRÁFICOS
-   --------------------------------------------- */
+/* GRÁFICOS */
 .charts-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
@@ -1131,35 +1133,61 @@ body {
 }
 
 .card-body {
-    padding: 2rem;
+    padding: 1.5rem;
     flex: 1;
-    min-height: 380px;
+    background: white;
 }
 
+/* Contenedores con relación de aspecto y fondo blanco asegurado */
 .chart-wrapper {
     position: relative;
-    height: 100%;
     width: 100%;
-    min-height: 340px;
+    height: 0;
+    padding-bottom: 50%; /* 2:1 */
+    min-height: 300px;
+    max-height: 500px;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.chart-wrapper canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+    background: white !important; /* Forzar fondo blanco */
 }
 
 .chart-wrapper-small {
     position: relative;
-    height: 280px;
     width: 100%;
+    height: 0;
+    padding-bottom: 75%; /* 4:3 */
+    min-height: 220px;
+    max-height: 300px;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
 }
 
-.chart-footer {
-    padding: 1.2rem 2rem;
-    border-top: 1px solid #f1f5f9;
-    background: #fafcff;
-    font-size: 0.85rem;
-    color: var(--text-light);
+.chart-wrapper-small canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    background: white !important;
 }
 
-/* ---------------------------------------------
-   11. CONTROLES DE GRÁFICOS
-   --------------------------------------------- */
+#stationSummaryContainer .chart-wrapper {
+    padding-bottom: 50%;
+    min-height: 300px;
+}
+
+/* Controles de gráficos */
 .chart-controls {
     display: flex;
     gap: 0.6rem;
@@ -1216,9 +1244,7 @@ body {
     cursor: not-allowed;
 }
 
-/* ---------------------------------------------
-   12. LEYENDA INTERACTIVA
-   --------------------------------------------- */
+/* Leyenda */
 .chart-legend {
     display: flex;
     flex-wrap: wrap;
@@ -1272,9 +1298,7 @@ body {
     font-size: 0.8rem;
 }
 
-/* ---------------------------------------------
-   13. GRÁFICOS DE PASTEL
-   --------------------------------------------- */
+/* Pasteles */
 .pie-charts-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1283,16 +1307,14 @@ body {
 }
 
 .pie-chart-card .card-body {
-    padding: 1.5rem;
-    min-height: 300px;
+    padding: 1rem;
+    min-height: auto;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-/* ---------------------------------------------
-   14. RESUMEN POR ESTACIÓN
-   --------------------------------------------- */
+/* Resumen estación */
 #stationSummaryContainer {
     margin-top: 2rem;
     transition: all 0.3s ease;
@@ -1307,9 +1329,7 @@ body {
     margin-left: 0.5rem;
 }
 
-/* ---------------------------------------------
-   15. TABLA DE DATOS
-   --------------------------------------------- */
+/* Tabla */
 .table-card .card-body {
     padding: 0;
     min-height: auto;
@@ -1376,7 +1396,6 @@ body {
     box-shadow: inset 0 0 0 1px #e2e8f0;
 }
 
-/* Estados de las filas según valor */
 .status-badge {
     display: inline-block;
     padding: 0.3rem 1rem;
@@ -1404,9 +1423,7 @@ body {
     color: #475569;
 }
 
-/* ---------------------------------------------
-   16. PAGINACIÓN
-   --------------------------------------------- */
+/* Paginación */
 .table-pagination {
     display: flex;
     justify-content: space-between;
@@ -1450,9 +1467,7 @@ body {
     border-width: 1.5px;
 }
 
-/* ---------------------------------------------
-   17. MODAL
-   --------------------------------------------- */
+/* Modal */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -1571,9 +1586,7 @@ body {
     font-weight: 800;
 }
 
-/* ---------------------------------------------
-   18. HISTORIAL DE CARGAS
-   --------------------------------------------- */
+/* Historial de cargas */
 .cargas-table {
     width: 100%;
     overflow-x: auto;
@@ -1628,7 +1641,6 @@ body {
 .status.warning { color: var(--warning); }
 .status.error { color: var(--danger); }
 
-/* Botón eliminar en historial de cargas */
 .cargas-table .btn-icon.small {
     width: 32px;
     height: 32px;
@@ -1641,9 +1653,7 @@ body {
     color: var(--danger);
 }
 
-/* ---------------------------------------------
-   19. NOTIFICACIÓN
-   --------------------------------------------- */
+/* Notificación */
 .notification {
     position: fixed;
     bottom: 2.5rem;
@@ -1674,9 +1684,7 @@ body {
     font-size: 1.3rem;
 }
 
-/* ---------------------------------------------
-   20. FOOTER
-   --------------------------------------------- */
+/* Footer */
 .footer-info {
     margin-top: 3.5rem;
     padding-top: 1.8rem;
@@ -1724,9 +1732,7 @@ body {
     font-family: var(--font-mono);
 }
 
-/* ---------------------------------------------
-   21. ANIMACIONES
-   --------------------------------------------- */
+/* Animaciones */
 @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(30px); }
     to { opacity: 1; transform: translateY(0); }
@@ -1750,9 +1756,7 @@ body {
 .delay-7 { animation: fadeInUp 0.8s ease-out 0.7s forwards; opacity: 0; }
 .delay-8 { animation: fadeInUp 0.8s ease-out 0.8s forwards; opacity: 0; }
 
-/* ---------------------------------------------
-   22. RESPONSIVE AVANZADO
-   --------------------------------------------- */
+/* Responsive */
 @media (max-width: 1400px) {
     .sidebar { width: 320px; }
     .main-content { padding: 2rem; }
@@ -1814,8 +1818,6 @@ body {
     }
     .footer-stats { flex-direction: column; gap: 0.8rem; }
     .dashboard-header h2 { font-size: 1.5rem; }
-    
-    /* Ajustes para filtro de alimentadores en móvil */
     .selection-mode-tabs { flex-direction: column; }
     .mode-tab { width: 100%; }
     .feeder-actions { flex-direction: column; }
@@ -1832,8 +1834,8 @@ body {
     .kpi-card { padding: 1.5rem; }
     .kpi-value { font-size: 2rem; }
     .card-body { padding: 1.5rem; }
-    .chart-wrapper { min-height: 240px; }
-    .chart-wrapper-small { height: 200px; }
+    .chart-wrapper { min-height: 200px; padding-bottom: 50%; }
+    .chart-wrapper-small { min-height: 180px; padding-bottom: 75%; }
     .month-grid { grid-template-columns: 1fr; }
     .toggle-buttons, .period-tabs { flex-direction: column; }
     .btn-outline.small { width: 100%; }
@@ -1842,22 +1844,15 @@ body {
     .modal-content { width: 95%; padding: 0.5rem; }
 }
 
-/* ---------------------------------------------
-   23. UTILIDADES Y CLASES AUXILIARES
-   --------------------------------------------- */
+/* Utilidades */
 .hidden-chart { display: none; }
 canvas { display: block; width: 100% !important; height: 100% !important; }
 button:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 .text-center { text-align: center; }
 .mt-2 { margin-top: 0.8rem; }
 .mb-2 { margin-bottom: 0.8rem; }
-.ml-2 { margin-left: 0.8rem; }
-.mr-2 { margin-right: 0.8rem; }
-.p-2 { padding: 0.8rem; }
 
-/* ---------------------------------------------
-   24. ESTILOS ADICIONALES PARA COMPARACIÓN Y TAGS
-   --------------------------------------------- */
+/* Comparación y tags */
 .comparison-tips, .comparison-info {
     margin-bottom: 1.5rem;
 }
@@ -1901,9 +1896,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 .tag.año { background: rgba(37,99,235,0.15); color: var(--primary); border: 1px solid rgba(37,99,235,0.3); }
 .tag.hint { background: #f1f5f9; color: var(--text-light); border: 1px solid #e2e8f0; }
 
-/* ---------------------------------------------
-   25. EXCEL UPLOAD
-   --------------------------------------------- */
+/* Excel upload */
 .excel-upload {
     margin-bottom: 1.5rem;
 }

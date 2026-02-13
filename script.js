@@ -1,8 +1,9 @@
-// script.js - VERSIÓN 4.8 - FILTRO INTELIGENTE DE ALIMENTADORES + TODAS LAS FUNCIONALIDADES
-console.log("🚀 Dashboard ANDE v4.8 iniciando...");
+// script.js - VERSIÓN 6.2 - HD + ANIMACIONES (CORREGIDO - Sin error this._fn)
+console.log("🚀 Dashboard ANDE v6.2 iniciando (HD + Animaciones CORREGIDAS)...");
 
 class ANDEDashboard {
     constructor() {
+        console.log("🔧 Constructor llamado");
         this.apiBaseUrl = window.location.hostname === 'localhost' 
             ? 'http://localhost:10000'
             : window.location.origin;
@@ -45,19 +46,28 @@ class ANDEDashboard {
         this.serverConnected = false;
         this.currentStationGroup = null;
         
-        // ---------- NUEVAS PROPIEDADES PARA FILTRO INTELIGENTE ----------
-        this.selectionMode = 'manual'; // manual, station, all
-        this.currentStationFilter = ''; // estación seleccionada para filtrar
+        // ---------- PROPIEDADES PARA FILTRO INTELIGENTE ----------
+        this.selectionMode = 'manual';
+        this.currentStationFilter = '';
         
         // ---------- DEBOUNCE ----------
         this.loadDataDebounced = this.debounce(this.loadData.bind(this), 500);
+        
+        // ---------- CONFIGURACIÓN DE ANIMACIONES ----------
+        this.animationConfig = {
+            duration: 800,
+            easing: 'easeInOutQuart',
+            delay: 50
+        };
     }
     
     // ========== DEBOUNCE ==========
     debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
+            console.log(`⏱️ Debounce: llamada a ${func.name} dentro de ${wait}ms`);
             const later = () => {
+                console.log(`⏱️ Ejecutando ${func.name} después del debounce`);
                 clearTimeout(timeout);
                 func(...args);
             };
@@ -74,8 +84,14 @@ class ANDEDashboard {
     
     safeAddEventListener(elementId, eventType, callback) {
         const el = document.getElementById(elementId);
-        if (el) { el.addEventListener(eventType, callback); return true; }
-        console.warn(`⚠️ Elemento '${elementId}' no encontrado`);
+        if (el) { 
+            console.log(`🔗 Agregando listener para ${elementId} (${eventType})`);
+            el.addEventListener(eventType, callback); 
+            return true; 
+        }
+        if (elementId !== 'filterPeriodo' && elementId !== 'monthModeGroup') {
+            console.warn(`⚠️ Elemento '${elementId}' no encontrado`);
+        }
         return false;
     }
     
@@ -98,7 +114,6 @@ class ANDEDashboard {
         setTimeout(() => notification.classList.remove('show'), 4000);
     }
     
-    // Pantalla de carga profesional
     showLoading(show, text = "Cargando datos...", progress = null) {
         const overlay = document.getElementById('loadingOverlay');
         const loadingText = document.getElementById('loadingText');
@@ -124,16 +139,15 @@ class ANDEDashboard {
         }
     }
     
-    // Overlay de error con botón reintentar
     showErrorInOverlay(message, retryCallback) {
         const overlay = document.getElementById('loadingOverlay');
         const loaderCard = document.getElementById('loaderCard');
         if (!overlay || !loaderCard) return;
         
         loaderCard.innerHTML = `
-            <i class="fas fa-exclamation-triangle" style="font-size: 3.8rem; color: #f59e0b; margin-bottom: 1.2rem; filter: drop-shadow(0 8px 16px rgba(245,158,11,0.3));"></i>
+            <i class="fas fa-exclamation-triangle" style="font-size: 3.8rem; color: #f59e0b; margin-bottom: 1.2rem;"></i>
             <p class="loading-text" style="color: white; margin-bottom: 0.5rem;">Oops, algo salió mal</p>
-            <p style="color: #cbd5e1; font-size: 1rem; margin-bottom: 1.8rem; max-width: 350px;">${message}</p>
+            <p style="color: #cbd5e1; font-size: 1rem; margin-bottom: 1.8rem;">${message}</p>
             <button id="retryButton" class="btn-retry">
                 <i class="fas fa-sync-alt"></i> Reintentar
             </button>
@@ -171,6 +185,7 @@ class ANDEDashboard {
     
     // ========== VERIFICACIÓN SERVIDOR ==========
     async verificarServidor() {
+        console.log("🔍 Verificando servidor...");
         try {
             const res = await fetch(`${this.apiBaseUrl}/api/health`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -179,6 +194,7 @@ class ANDEDashboard {
             return true;
         } catch (e) {
             this.serverConnected = false;
+            console.error("❌ Error de conexión:", e);
             this.showErrorInOverlay(
                 "No se pudo conectar al servidor. Verifica que esté ejecutándose en el puerto 10000.",
                 () => this.initialize()
@@ -188,15 +204,18 @@ class ANDEDashboard {
     }
     
     async verificarEstadoBD() {
+        console.log("🔍 Verificando base de datos...");
         try {
             const res = await fetch(`${this.apiBaseUrl}/api/verificar-datos`);
             const data = await res.json();
+            console.log("📊 Estado BD:", data);
             if (!data.tabla_existe || data.total_registros === 0) {
                 this.showNotification("Base de datos vacía. Sube un archivo Excel para comenzar.", "warning");
                 return true;
             }
             return true;
         } catch {
+            console.warn("⚠️ No se pudo verificar BD, se continuará con datos de ejemplo si es necesario.");
             return true;
         }
     }
@@ -209,7 +228,7 @@ class ANDEDashboard {
             if (!await this.verificarServidor()) return;
             this.showLoading(true, "Verificando base de datos...", 30);
             await this.verificarEstadoBD();
-            this.showLoading(true, "Inicializando gráficos...", 50);
+            this.showLoading(true, "Inicializando gráficos HD...", 50);
             this.initCharts();
             this.showLoading(true, "Configurando filtros...", 60);
             this.setupEventListeners();
@@ -226,7 +245,7 @@ class ANDEDashboard {
             this.updateTime();
             this.startLiveUpdates();
             this.showLoading(false);
-            this.showNotification("Dashboard cargado correctamente", "success");
+            this.showNotification("Dashboard cargado correctamente ✨", "success");
         } catch (error) {
             console.error("❌ Error inicializando:", error);
             this.showErrorInOverlay(
@@ -238,22 +257,56 @@ class ANDEDashboard {
         }
     }
     
-    // ========== INICIALIZACIÓN DE GRÁFICOS ==========
+    // ========== CONFIGURACIÓN GLOBAL DE ANIMACIONES ==========
+    getAnimationConfig() {
+        return {
+            duration: this.animationConfig.duration,
+            easing: this.animationConfig.easing,
+            delay: this.animationConfig.delay,
+            loop: false,
+            onProgress: null,
+            onComplete: null
+        };
+    }
+    
+    // ========== INICIALIZACIÓN DE GRÁFICOS CON HD Y ANIMACIONES ==========
     initCharts() {
+        console.log("📊 Inicializando gráficos HD con animaciones...");
+        
+        // Configuración global de Chart.js para ALTA CALIDAD
         Chart.defaults.font.family = "'Inter', 'Segoe UI', system-ui, sans-serif";
         Chart.defaults.font.size = 12;
-        Chart.defaults.color = '#e2e8f0';
-        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,23,42,0.98)';
+        Chart.defaults.color = '#334155';
+        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,23,42,0.95)';
         Chart.defaults.plugins.tooltip.titleColor = '#ffffff';
         Chart.defaults.plugins.tooltip.bodyColor = '#cbd5e1';
         Chart.defaults.plugins.tooltip.borderColor = '#60a5fa';
         Chart.defaults.plugins.tooltip.borderWidth = 2;
-        Chart.defaults.plugins.tooltip.padding = 12;
-        Chart.defaults.plugins.tooltip.cornerRadius = 8;
         Chart.defaults.responsive = true;
-        Chart.defaults.maintainAspectRatio = false;
-        Chart.defaults.devicePixelRatio = window.devicePixelRatio || 2;
-        Chart.defaults.animation = { duration: 800, easing: 'easeOutQuart' };
+        Chart.defaults.maintainAspectRatio = true;
+        
+        // ✨ ALTA DEFINICIÓN: Aumentar devicePixelRatio para gráficos más nítidos
+        Chart.defaults.devicePixelRatio = Math.max(window.devicePixelRatio || 2, 3);
+        
+        // ✨ ANIMACIONES SUAVES (Configuración corregida sin delay dinámico)
+        Chart.defaults.animation = {
+            duration: 800,
+            easing: 'easeInOutQuart'
+        };
+        
+        // Configuración de transiciones suaves
+        Chart.defaults.transitions = {
+            active: {
+                animation: {
+                    duration: 300
+                }
+            },
+            resize: {
+                animation: {
+                    duration: 500
+                }
+            }
+        };
         
         this.initMainChart();
         this.initRankingChart();
@@ -263,293 +316,731 @@ class ANDEDashboard {
     }
     
     initMainChart() {
-        const ctx = document.getElementById('mainChart')?.getContext('2d');
-        if (!ctx) return;
+        const canvas = document.getElementById('mainChart');
+        if (!canvas) {
+            console.error("❌ Canvas 'mainChart' no encontrado");
+            return;
+        }
+        console.log("📈 Inicializando mainChart HD");
+        const ctx = canvas.getContext('2d');
+        
+        // Limpiar canvas con fondo blanco nítido
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
         this.mainChart = new Chart(ctx, {
             type: 'line',
             data: { labels: [], datasets: [] },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
-                devicePixelRatio: window.devicePixelRatio || 2,
-                animation: { duration: 800, easing: 'easeOutQuart' },
+                maintainAspectRatio: true,
+                aspectRatio: 2,
+                devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                
+                // ✨ ANIMACIONES PERSONALIZADAS
+                animation: {
+                    duration: 800,
+                    easing: 'easeInOutQuart',
+                    onProgress: function(animation) {
+                        // Efecto de aparición progresiva
+                        const ctx = animation.chart.ctx;
+                        ctx.save();
+                        ctx.globalAlpha = animation.currentStep / animation.numSteps;
+                        ctx.restore();
+                    },
+                    onComplete: function() {
+                        console.log("✅ Animación del gráfico principal completada");
+                    }
+                },
+                
                 plugins: {
                     legend: { display: false },
                     tooltip: { 
-                        mode: 'index', intersect: false,
-                        callbacks: { label: (ctx) => `${ctx.dataset.label}: ${this.formatValue(ctx.parsed.y)}` }
+                        mode: 'index', 
+                        intersect: false,
+                        backgroundColor: 'rgba(15,23,42,0.98)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#cbd5e1',
+                        borderColor: '#60a5fa',
+                        borderWidth: 2,
+                        padding: 12,
+                        cornerRadius: 8,
+                        titleFont: {
+                            size: 13,
+                            weight: 'bold'
+                        },
+                        bodyFont: {
+                            size: 12
+                        },
+                        animation: {
+                            duration: 200
+                        }
                     }
                 },
                 scales: {
-                    y: {
-                        beginAtZero: false,
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        ticks: { color: '#94a3b8', font: { size: 11 }, callback: (v) => this.formatValue(v) }
-                    },
-                    x: {
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 45, minRotation: 30 }
-                    }
-                },
-                interaction: { mode: 'index', intersect: false }
-            }
-        });
-        this.showNoDataMessage(this.mainChart, 'mainChart');
-    }
-    
-    initRankingChart() {
-        const ctx = document.getElementById('rankingChart')?.getContext('2d');
-        if (!ctx) return;
-        this.rankingChart = new Chart(ctx, {
-            type: 'bar',
-            data: { labels: [], datasets: [{
-                label: 'Promedio', data: [], backgroundColor: [], borderColor: [], borderWidth: 1, borderRadius: 4
-            }] },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false,
-                devicePixelRatio: window.devicePixelRatio || 2,
-                animation: { duration: 600 },
-                plugins: { 
-                    legend: { display: false },
-                    tooltip: { callbacks: { label: (ctx) => `Promedio: ${this.formatValue(ctx.raw)}` } }
-                },
-                scales: {
-                    x: { 
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        ticks: { color: '#94a3b8', font: { size: 11 }, callback: (v) => this.formatValue(v) }
-                    },
                     y: { 
-                        grid: { display: false },
-                        ticks: { color: '#94a3b8', font: { size: 11, weight: '500' } }
+                        beginAtZero: false,
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            callback: (v) => this.formatValue(v),
+                            padding: 8
+                        }
+                    },
+                    x: { 
+                        grid: { 
+                            color: 'rgba(148,163,184,0.1)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            maxRotation: 45, 
+                            minRotation: 30,
+                            padding: 8
+                        }
+                    }
+                },
+                interaction: { 
+                    mode: 'index', 
+                    intersect: false,
+                    animateRotate: true,
+                    animateScale: true
+                },
+                elements: {
+                    line: { 
+                        borderWidth: 2.5, 
+                        tension: 0.2,
+                        borderCapStyle: 'round',
+                        borderJoinStyle: 'round'
+                    },
+                    point: { 
+                        radius: 0, 
+                        hoverRadius: 7, 
+                        borderWidth: 2,
+                        hoverBorderWidth: 3,
+                        hitRadius: 10
                     }
                 }
             }
         });
-        this.showNoDataMessage(this.rankingChart, 'rankingChart');
+        console.log("✅ Gráfico principal HD inicializado");
+    }
+    
+    initRankingChart() {
+        const canvas = document.getElementById('rankingChart');
+        if (!canvas) {
+            console.error("❌ Canvas 'rankingChart' no encontrado");
+            return;
+        }
+        console.log("📊 Inicializando rankingChart HD");
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        this.rankingChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: [], datasets: [{
+                label: 'Promedio', 
+                data: [], 
+                backgroundColor: [], 
+                borderColor: [], 
+                borderWidth: 1.5, 
+                borderRadius: 6,
+                borderSkipped: false
+            }] },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1.5,
+                devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                
+                // ✨ ANIMACIONES DE BARRAS (Corregido)
+                animation: {
+                    duration: 1000,
+                    easing: 'easeOutQuart',
+                    onComplete: function() {
+                        console.log("✅ Animación del ranking completada");
+                    }
+                },
+                
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: { 
+                        callbacks: { 
+                            label: (ctx) => `Promedio: ${this.formatValue(ctx.raw)}` 
+                        },
+                        backgroundColor: 'rgba(15,23,42,0.98)',
+                        padding: 10,
+                        cornerRadius: 6,
+                        animation: {
+                            duration: 150
+                        }
+                    }
+                },
+                scales: {
+                    x: { 
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            callback: (v) => this.formatValue(v),
+                            padding: 6
+                        }
+                    },
+                    y: { 
+                        grid: { display: false },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '600' },
+                            padding: 10
+                        }
+                    }
+                }
+            }
+        });
+        console.log("✅ Gráfico de ranking HD inicializado");
     }
     
     initScatterChart() {
-        const ctx = document.getElementById('scatterChart')?.getContext('2d');
-        if (!ctx) return;
+        const canvas = document.getElementById('scatterChart');
+        if (!canvas) {
+            console.error("❌ Canvas 'scatterChart' no encontrado");
+            return;
+        }
+        console.log("📉 Inicializando scatterChart HD");
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
         this.scatterChart = new Chart(ctx, {
             type: 'scatter',
             data: { datasets: [] },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
-                devicePixelRatio: window.devicePixelRatio || 2,
+                maintainAspectRatio: true,
+                aspectRatio: 2,
+                devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                
+                // ✨ ANIMACIONES DE DISPERSIÓN (Corregido)
+                animation: {
+                    duration: 1000,
+                    easing: 'easeInOutQuart'
+                },
+                
                 plugins: { 
-                    legend: { position: 'top', labels: { color: '#cbd5e1', font: { size: 12 } } },
+                    legend: { 
+                        position: 'top', 
+                        labels: { 
+                            color: '#334155', 
+                            font: { size: 12, weight: '500' },
+                            padding: 15,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        } 
+                    },
                     tooltip: { 
                         callbacks: { 
                             label: (ctx) => {
                                 const date = new Date(ctx.raw.x).toLocaleDateString('es-ES', { year: 'numeric', month: 'short' });
                                 return `${ctx.dataset.label}: ${date} → ${this.formatValue(ctx.raw.y)}`;
                             }
-                        }
+                        },
+                        backgroundColor: 'rgba(15,23,42,0.98)',
+                        padding: 12,
+                        cornerRadius: 8
                     }
                 },
                 scales: {
                     x: { 
                         type: 'time',
-                        time: { unit: 'month', tooltipFormat: 'MMM yyyy', displayFormats: { month: 'MMM yyyy' } },
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 45, minRotation: 30 }
+                        time: { unit: 'month', tooltipFormat: 'MMM yyyy' },
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            padding: 8
+                        }
                     },
                     y: { 
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        ticks: { color: '#94a3b8', font: { size: 11 }, callback: (v) => this.formatValue(v) }
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            callback: (v) => this.formatValue(v),
+                            padding: 8
+                        }
+                    }
+                },
+                elements: {
+                    point: { 
+                        radius: 5, 
+                        hoverRadius: 8, 
+                        borderWidth: 2,
+                        backgroundColor: 'rgba(255,255,255,0.9)',
+                        borderColor: '#ffffff',
+                        hoverBorderWidth: 3
                     }
                 }
             }
         });
-        this.showNoDataMessage(this.scatterChart, 'scatterChart');
+        console.log("✅ Gráfico de dispersión HD inicializado");
     }
     
     initPieCharts() {
-        const ctx1 = document.getElementById('pieChartFeeder')?.getContext('2d');
-        if (ctx1) {
-            this.pieChartByFeeder = new Chart(ctx1, {
+        console.log("🥧 Inicializando gráficos de pastel HD");
+        const canvas1 = document.getElementById('pieChartFeeder');
+        if (canvas1) {
+            const ctx = canvas1.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas1.width, canvas1.height);
+            
+            this.pieChartByFeeder = new Chart(ctx, {
                 type: 'doughnut',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: this.chartPalette, borderWidth: 2, borderColor: 'rgba(15,23,42,0.5)' }] },
+                data: { labels: [], datasets: [{ 
+                    data: [], 
+                    backgroundColor: this.chartPalette, 
+                    borderWidth: 3,
+                    borderColor: '#ffffff',
+                    hoverBorderWidth: 4,
+                    hoverBorderColor: '#ffffff'
+                }] },
                 options: {
-                    responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio || 2, cutout: '65%',
+                    responsive: true, 
+                    maintainAspectRatio: true,
+                    aspectRatio: 1.2,
+                    devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                    cutout: '65%',
+                    
+                    // ✨ ANIMACIONES ROTATIVAS (Corregido)
+                    animation: {
+                        animateRotate: true,
+                        animateScale: true,
+                        duration: 1200,
+                        easing: 'easeInOutQuart'
+                    },
+                    
                     plugins: {
-                        legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 11 }, padding: 15 } },
-                        tooltip: { callbacks: { label: (ctx) => {
-                            const total = ctx.dataset.data.reduce((a,b) => a + b, 0);
-                            const percent = ((ctx.raw / total) * 100).toFixed(1);
-                            return `${ctx.label}: ${this.formatValue(ctx.raw)} (${percent}%)`;
-                        }}}
+                        legend: { 
+                            position: 'bottom', 
+                            labels: { 
+                                color: '#334155', 
+                                font: { size: 11, weight: '500' }, 
+                                padding: 15,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            } 
+                        },
+                        tooltip: { 
+                            callbacks: { 
+                                label: (ctx) => {
+                                    const total = ctx.dataset.data.reduce((a,b) => a + b, 0);
+                                    const percent = ((ctx.raw / total) * 100).toFixed(1);
+                                    return `${ctx.label}: ${this.formatValue(ctx.raw)} (${percent}%)`;
+                                }
+                            },
+                            backgroundColor: 'rgba(15,23,42,0.98)',
+                            padding: 12,
+                            cornerRadius: 8
+                        }
                     }
                 }
             });
-            this.showNoDataMessage(this.pieChartByFeeder, 'pieChartFeeder');
         }
-        const ctx2 = document.getElementById('pieChartType')?.getContext('2d');
-        if (ctx2) {
-            this.pieChartByType = new Chart(ctx2, {
+        
+        const canvas2 = document.getElementById('pieChartType');
+        if (canvas2) {
+            const ctx = canvas2.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas2.width, canvas2.height);
+            
+            this.pieChartByType = new Chart(ctx, {
                 type: 'doughnut',
-                data: { labels: [], datasets: [{ data: [], backgroundColor: this.chartPalette.slice(5), borderWidth: 2, borderColor: 'rgba(15,23,42,0.5)' }] },
+                data: { labels: [], datasets: [{ 
+                    data: [], 
+                    backgroundColor: this.chartPalette.slice(5), 
+                    borderWidth: 3,
+                    borderColor: '#ffffff',
+                    hoverBorderWidth: 4,
+                    hoverBorderColor: '#ffffff'
+                }] },
                 options: {
-                    responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio || 2, cutout: '65%',
+                    responsive: true, 
+                    maintainAspectRatio: true,
+                    aspectRatio: 1.2,
+                    devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                    cutout: '65%',
+                    
+                    // ✨ ANIMACIONES ROTATIVAS (Corregido)
+                    animation: {
+                        animateRotate: true,
+                        animateScale: true,
+                        duration: 1200,
+                        easing: 'easeInOutQuart'
+                    },
+                    
                     plugins: {
-                        legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 11 }, padding: 15 } },
-                        tooltip: { callbacks: { label: (ctx) => {
-                            const total = ctx.dataset.data.reduce((a,b) => a + b, 0);
-                            const percent = ((ctx.raw / total) * 100).toFixed(1);
-                            return `${ctx.label}: ${this.formatValue(ctx.raw)} (${percent}%)`;
-                        }}}
+                        legend: { 
+                            position: 'bottom', 
+                            labels: { 
+                                color: '#334155', 
+                                font: { size: 11, weight: '500' }, 
+                                padding: 15,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            } 
+                        },
+                        tooltip: { 
+                            callbacks: { 
+                                label: (ctx) => {
+                                    const total = ctx.dataset.data.reduce((a,b) => a + b, 0);
+                                    const percent = ((ctx.raw / total) * 100).toFixed(1);
+                                    return `${ctx.label}: ${this.formatValue(ctx.raw)} (${percent}%)`;
+                                }
+                            },
+                            backgroundColor: 'rgba(15,23,42,0.98)',
+                            padding: 12,
+                            cornerRadius: 8
+                        }
                     }
                 }
             });
-            this.showNoDataMessage(this.pieChartByType, 'pieChartType');
         }
+        console.log("✅ Gráficos de pastel HD inicializados");
     }
     
     initStationSummaryChart() {
-        const ctx = document.getElementById('stationSummaryChart')?.getContext('2d');
-        if (!ctx) return;
+        const canvas = document.getElementById('stationSummaryChart');
+        if (!canvas) return;
+        console.log("🏭 Inicializando stationSummaryChart HD");
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
         this.stationSummaryChart = new Chart(ctx, {
             type: 'bar',
             data: { labels: [], datasets: [{
-                label: 'Promedio', data: [], backgroundColor: this.chartPalette, borderWidth: 1, borderRadius: 4
+                label: 'Promedio', 
+                data: [], 
+                backgroundColor: this.chartPalette, 
+                borderWidth: 1.5,
+                borderRadius: 6,
+                borderColor: '#ffffff',
+                borderSkipped: false
             }] },
             options: {
                 indexAxis: 'y',
                 responsive: true,
-                maintainAspectRatio: false,
-                devicePixelRatio: window.devicePixelRatio || 2,
+                maintainAspectRatio: true,
+                aspectRatio: 1.8,
+                devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
+                
+                // ✨ ANIMACIONES DE RESUMEN (Corregido)
+                animation: {
+                    duration: 1000,
+                    easing: 'easeOutQuart'
+                },
+                
                 plugins: { 
                     legend: { display: false },
-                    title: { display: true, text: 'Resumen de alimentadores en la estación', color: '#f1f5f9', font: { size: 14, weight: 'bold' }, padding: { bottom: 20 } },
-                    tooltip: { callbacks: { label: (ctx) => `Promedio: ${this.formatValue(ctx.raw)}` } }
+                    title: { 
+                        display: true, 
+                        text: 'Resumen de alimentadores en la estación', 
+                        color: '#1e293b', 
+                        font: { size: 14, weight: 'bold' },
+                        padding: { top: 10, bottom: 20 }
+                    },
+                    tooltip: { 
+                        callbacks: { 
+                            label: (ctx) => `Promedio: ${this.formatValue(ctx.raw)}` 
+                        },
+                        backgroundColor: 'rgba(15,23,42,0.98)',
+                        padding: 10,
+                        cornerRadius: 6
+                    }
                 },
                 scales: {
                     x: { 
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        ticks: { color: '#94a3b8', font: { size: 11 }, callback: (v) => this.formatValue(v) }
+                        grid: { 
+                            color: 'rgba(148,163,184,0.15)',
+                            lineWidth: 1
+                        },
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '500' },
+                            callback: (v) => this.formatValue(v),
+                            padding: 6
+                        }
                     },
                     y: { 
                         grid: { display: false },
-                        ticks: { color: '#94a3b8', font: { size: 11, weight: '500' } }
+                        ticks: { 
+                            color: '#334155', 
+                            font: { size: 11, weight: '600' },
+                            padding: 10
+                        }
                     }
                 }
             }
         });
-        this.showNoDataMessage(this.stationSummaryChart, 'stationSummaryChart');
-    }
-    
-    showNoDataMessage(chart, canvasId) {
-        if (!chart) return;
-        const canvas = document.getElementById(canvasId);
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width, height = canvas.height;
-        ctx.save();
-        ctx.clearRect(0, 0, width, height);
-        ctx.font = '14px "Inter", sans-serif';
-        ctx.fillStyle = '#94a3b8';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('📊 No hay datos para mostrar', width/2, height/2);
-        ctx.restore();
+        console.log("✅ Gráfico de resumen de estación HD inicializado");
     }
     
     // ========== EVENT LISTENERS PRINCIPALES ==========
     setupEventListeners() {
-        this.safeAddEventListener('applyFilters', 'click', () => this.loadData());
-        this.safeAddEventListener('resetFilters', 'click', () => this.resetFilters());
-        this.safeAddEventListener('clearAll', 'click', () => this.clearAllFilters());
-        this.safeAddEventListener('globalModeUnique', 'click', () => this.setGlobalMode('unique'));
-        this.safeAddEventListener('globalModeMultiple', 'click', () => this.setGlobalMode('multiple'));
-        this.safeAddEventListener('filterTipoMedicion', 'change', () => this.onFilterChange());
-        this.safeAddEventListener('filterYear', 'change', () => this.onFilterChange());
-        this.safeAddEventListener('filterPeriodo', 'change', () => this.onPeriodoChange());
-        
-        document.querySelectorAll('.month-btn').forEach(btn => btn.addEventListener('click', (e) => this.toggleMonthSelection(e)));
-        this.safeAddEventListener('selectAllMonths', 'click', () => this.selectAllMonths());
-        this.safeAddEventListener('deselectAllMonths', 'click', () => this.deselectAllMonths());
-        
-        this.safeAddEventListener('groupBy', 'change', () => this.onGroupByChange());
-        this.safeAddEventListener('chartType', 'change', () => this.onChartTypeChange());
-        this.safeAddEventListener('togglePoints', 'click', () => this.toggleChartPoints());
-        this.safeAddEventListener('zoomIn', 'click', () => this.zoomChart('in'));
-        this.safeAddEventListener('zoomOut', 'click', () => this.zoomChart('out'));
-        this.safeAddEventListener('resetZoom', 'click', () => this.resetChartZoom());
-        this.safeAddEventListener('expandChartBtn', 'click', () => this.expandChart());
-        this.safeAddEventListener('rankingSort', 'change', () => this.updateRankingChart());
-        
-        this.safeAddEventListener('tableSearch', 'input', (e) => this.filterTable(e.target.value));
-        this.safeAddEventListener('rowsPerPage', 'change', () => this.updateTable());
-        this.safeAddEventListener('firstPage', 'click', () => this.goToPage(1));
-        this.safeAddEventListener('prevPage', 'click', () => this.goToPage(this.pagination.currentPage - 1));
-        this.safeAddEventListener('nextPage', 'click', () => this.goToPage(this.pagination.currentPage + 1));
-        this.safeAddEventListener('lastPage', 'click', () => this.goToPage(this.pagination.totalPages));
-        document.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', () => this.sortTable(th.dataset.sort)));
-        
-        this.safeAddEventListener('uploadExcelBtn', 'click', () => this.uploadExcel());
-        this.safeAddEventListener('sidebarToggle', 'click', () => this.toggleSidebar());
-        this.safeAddEventListener('sidebarClose', 'click', () => this.toggleSidebar());
-        
-        window.addEventListener('resize', () => {
-            clearTimeout(this.resizeTimer);
-            this.resizeTimer = setTimeout(() => {
-                if (this.mainChart) this.mainChart.resize();
-                if (this.rankingChart) this.rankingChart.resize();
-                if (this.scatterChart) this.scatterChart.resize();
-                if (this.pieChartByFeeder) this.pieChartByFeeder.resize();
-                if (this.pieChartByType) this.pieChartByType.resize();
-                if (this.stationSummaryChart) this.stationSummaryChart.resize();
-            }, 250);
+        console.log("🔗 Configurando event listeners...");
+        this.safeAddEventListener('applyFilters', 'click', () => {
+            console.log("🖱️ Botón Aplicar filtros clickeado");
+            this.loadData();
+        });
+        this.safeAddEventListener('resetFilters', 'click', () => {
+            console.log("🖱️ Botón Restablecer clickeado");
+            this.resetFilters();
+        });
+        this.safeAddEventListener('clearAll', 'click', () => {
+            console.log("🖱️ Botón Limpiar todo clickeado");
+            this.clearAllFilters();
+        });
+        this.safeAddEventListener('globalModeUnique', 'click', () => {
+            console.log("🖱️ Modo único seleccionado");
+            this.setGlobalMode('unique');
+        });
+        this.safeAddEventListener('globalModeMultiple', 'click', () => {
+            console.log("🖱️ Modo múltiple seleccionado");
+            this.setGlobalMode('multiple');
+        });
+        this.safeAddEventListener('filterTipoMedicion', 'change', () => {
+            console.log("🔄 Selector de tipo de medición cambiado");
+            this.onFilterChange();
+        });
+        this.safeAddEventListener('filterYear', 'change', () => {
+            console.log("🔄 Selector de año cambiado");
+            this.onFilterChange();
         });
         
-        // NOTA: Los event listeners del filtro de alimentadores se configuran en initFeederFilter()
+        document.querySelectorAll('.period-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                console.log("🖱️ Pestaña de período clickeada:", e.currentTarget.dataset.period);
+                this.onPeriodTabClick(e);
+            });
+        });
+        
+        document.querySelectorAll('.month-btn').forEach(btn => btn.addEventListener('click', (e) => {
+            console.log("🖱️ Botón de mes clickeado:", e.currentTarget.dataset.month);
+            this.toggleMonthSelection(e);
+        }));
+        this.safeAddEventListener('selectAllMonths', 'click', () => {
+            console.log("🖱️ Seleccionar todos los meses");
+            this.selectAllMonths();
+        });
+        this.safeAddEventListener('deselectAllMonths', 'click', () => {
+            console.log("🖱️ Deseleccionar todos los meses");
+            this.deselectAllMonths();
+        });
+        
+        this.safeAddEventListener('groupBy', 'change', () => {
+            console.log("🔄 Selector de agrupación cambiado");
+            this.onGroupByChange();
+        });
+        this.safeAddEventListener('chartType', 'change', () => {
+            console.log("🔄 Selector de tipo de gráfico cambiado");
+            this.onChartTypeChange();
+        });
+        this.safeAddEventListener('togglePoints', 'click', () => {
+            console.log("🖱️ Botón toggle puntos clickeado");
+            this.toggleChartPoints();
+        });
+        this.safeAddEventListener('zoomIn', 'click', () => {
+            console.log("🖱️ Zoom in");
+            this.zoomChart('in');
+        });
+        this.safeAddEventListener('zoomOut', 'click', () => {
+            console.log("🖱️ Zoom out");
+            this.zoomChart('out');
+        });
+        this.safeAddEventListener('resetZoom', 'click', () => {
+            console.log("🖱️ Reset zoom");
+            this.resetChartZoom();
+        });
+        this.safeAddEventListener('expandChartBtn', 'click', () => {
+            console.log("🖱️ Expandir gráficos");
+            this.expandChart();
+        });
+        
+        // Ranking controls
+        this.safeAddEventListener('rankingGroup', 'change', () => {
+            console.log("🔄 Selector de agrupación de ranking cambiado");
+            this.updateRankingChart();
+        });
+        this.safeAddEventListener('rankingSort', 'change', () => {
+            console.log("🔄 Selector de orden de ranking cambiado");
+            this.updateRankingChart();
+        });
+        
+        this.safeAddEventListener('tableSearch', 'input', (e) => {
+            console.log("🔍 Búsqueda en tabla:", e.target.value);
+            this.filterTable(e.target.value);
+        });
+        this.safeAddEventListener('rowsPerPage', 'change', () => {
+            console.log("🔄 Filas por página cambiado");
+            this.updateTable();
+        });
+        this.safeAddEventListener('firstPage', 'click', () => {
+            console.log("🖱️ Primera página");
+            this.goToPage(1);
+        });
+        this.safeAddEventListener('prevPage', 'click', () => {
+            console.log("🖱️ Página anterior");
+            this.goToPage(this.pagination.currentPage - 1);
+        });
+        this.safeAddEventListener('nextPage', 'click', () => {
+            console.log("🖱️ Página siguiente");
+            this.goToPage(this.pagination.currentPage + 1);
+        });
+        this.safeAddEventListener('lastPage', 'click', () => {
+            console.log("🖱️ Última página");
+            this.goToPage(this.pagination.totalPages);
+        });
+        document.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', () => {
+            console.log("🖱️ Ordenar por:", th.dataset.sort);
+            this.sortTable(th.dataset.sort);
+        }));
+        
+        this.safeAddEventListener('uploadExcelBtn', 'click', () => {
+            console.log("🖱️ Subir Excel");
+            this.uploadExcel();
+        });
+        this.safeAddEventListener('sidebarToggle', 'click', () => {
+            console.log("🖱️ Toggle sidebar");
+            this.toggleSidebar();
+        });
+        this.safeAddEventListener('sidebarClose', 'click', () => {
+            console.log("🖱️ Cerrar sidebar");
+            this.toggleSidebar();
+        });
+        
+        window.addEventListener('resize', () => {
+            console.log("🪟 Ventana redimensionada");
+            clearTimeout(this.resizeTimer);
+            this.resizeTimer = setTimeout(() => {
+                this.resizeAllCharts();
+            }, 250);
+        });
     }
     
-    // ========== FILTROS (incluye debounce) ==========
-    onFilterChange() {
-        // Actualizar estación actual para el resumen por estación (si se selecciona "Todos de estación")
-        // Pero ahora la selección de estación se maneja por separado, así que no hacemos nada especial aquí.
+    resizeAllCharts() {
+        console.log("📏 Redimensionando todos los gráficos HD");
+        requestAnimationFrame(() => {
+            if (this.mainChart) this.mainChart.resize();
+            if (this.rankingChart) this.rankingChart.resize();
+            if (this.scatterChart) this.scatterChart.resize();
+            if (this.pieChartByFeeder) this.pieChartByFeeder.resize();
+            if (this.pieChartByType) this.pieChartByType.resize();
+            if (this.stationSummaryChart) this.stationSummaryChart.resize();
+        });
+    }
+    
+    // ========== PESTAÑAS DE PERÍODO ==========
+    onPeriodTabClick(e) {
+        const tab = e.currentTarget;
+        const periodo = tab.dataset.period;
+        console.log("📆 Período seleccionado:", periodo);
+        
+        document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        this.filters.periodo = periodo;
+        
+        const monthGroup = document.getElementById('monthSelectorGroup');
+        if (monthGroup) monthGroup.style.display = periodo === 'select_months' ? 'block' : 'none';
+        
+        if (periodo !== 'select_months') {
+            this.calculateMonthsForPeriod(periodo);
+        }
+        
         if (this.globalMode === 'unique') this.loadDataDebounced();
+    }
+    
+    calculateMonthsForPeriod(periodo) {
+        console.log("📅 Calculando meses para período:", periodo);
+        const now = new Date();
+        const cm = now.getMonth() + 1;
+        this.selectedMonths.clear();
+        
+        if (periodo === 'last3') {
+            for (let i = 0; i < 3; i++) this.selectedMonths.add(((cm - i - 1 + 12) % 12) + 1);
+        } else if (periodo === 'last6') {
+            for (let i = 0; i < 6; i++) this.selectedMonths.add(((cm - i - 1 + 12) % 12) + 1);
+        } else if (periodo === 'last12' || periodo === 'currentYear' || periodo === 'lastYear') {
+            for (let i = 1; i <= 12; i++) this.selectedMonths.add(i);
+        }
+        
+        console.log("📅 Meses seleccionados:", Array.from(this.selectedMonths));
+        this.updateMonthButtons();
+        this.updateMonthSelect();
+    }
+    
+    // ========== FILTROS ==========
+    onFilterChange() {
+        console.log("🔄 Filtro cambiado, globalMode =", this.globalMode);
+        if (this.globalMode === 'unique') {
+            console.log("🔄 Modo único, cargando datos con debounce");
+            this.loadDataDebounced();
+        } else {
+            console.log("🔄 Modo múltiple, esperando click en Aplicar");
+        }
     }
     
     // ========== CARGA DE METADATOS ==========
     async loadTiposMedicion() {
+        console.log("📥 Cargando tipos de medición...");
         try {
             const res = await fetch(`${this.apiBaseUrl}/api/tipos-medicion`);
             const tipos = await res.json();
             const select = document.getElementById('filterTipoMedicion');
-            if (select) select.innerHTML = '<option value="all">Todos los tipos</option>' + tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+            if (select) {
+                select.innerHTML = '<option value="all">Todos los tipos</option>' + 
+                    tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+            }
+            console.log(`✅ Tipos de medición cargados: ${tipos.length}`);
         } catch (e) { console.error("Error cargando tipos:", e); }
     }
     
     async loadSeccionesDisponibles() {
+        console.log("📥 Cargando secciones...");
         try {
             const res = await fetch(`${this.apiBaseUrl}/api/secciones`);
             const secciones = await res.json();
             this.allSecciones = secciones;
             
-            // Extraer estaciones únicas (primeras 3 letras)
             const estacionesSet = new Set(secciones.map(s => s.substring(0,3)).filter(s => s.length === 3));
             this.estaciones = Array.from(estacionesSet).sort();
     
-            // Poblar selector de estación
             const estSel = document.getElementById('filterEstacion');
             if (estSel) {
                 estSel.innerHTML = '<option value="">Todas las estaciones</option>' + 
                     this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
             }
     
-            // Poblar selector de alimentadores (inicialmente con todos)
             const feedSel = document.getElementById('filterTransformador');
             if (feedSel) {
                 feedSel.innerHTML = secciones.map(s => `<option value="${s}">${s}</option>`).join('');
             }
     
-            // Inicializar el sistema de filtro inteligente
             this.initFeederFilter();
             
             console.log(`✅ Secciones cargadas: ${secciones.length} secciones, ${this.estaciones.length} estaciones`);
@@ -559,21 +1050,26 @@ class ANDEDashboard {
     }
     
     async loadYearsAvailable() {
+        console.log("📥 Cargando años...");
         try {
             const res = await fetch(`${this.apiBaseUrl}/api/anios`);
             const years = await res.json();
             const select = document.getElementById('filterYear');
-            if (select) select.innerHTML = '<option value="all">Todos los años</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+            if (select) {
+                select.innerHTML = '<option value="all">Todos los años</option>' + 
+                    years.map(y => `<option value="${y}">${y}</option>`).join('');
+            }
+            console.log(`✅ Años cargados: ${years.length}`);
         } catch (e) { console.error("Error cargando años:", e); }
     }
     
-    // ========== NUEVO: FILTRO INTELIGENTE DE ALIMENTADORES ==========
-    
+    // ========== FILTRO INTELIGENTE DE ALIMENTADORES ==========
     initFeederFilter() {
+        console.log("🔧 Inicializando filtro inteligente de alimentadores");
         this.setupFeederModeTabs();
         this.setupFeederEventListeners();
         this.updateFeederCount();
-        this.setFeederMode('manual'); // modo por defecto
+        this.setFeederMode('manual');
     }
     
     setupFeederModeTabs() {
@@ -581,6 +1077,7 @@ class ANDEDashboard {
         tabs.forEach(tab => {
             tab.addEventListener('click', (e) => {
                 const mode = e.currentTarget.dataset.mode;
+                console.log("🖱️ Modo de alimentadores cambiado a:", mode);
                 this.setFeederMode(mode);
             });
         });
@@ -588,119 +1085,86 @@ class ANDEDashboard {
     
     setFeederMode(mode) {
         this.selectionMode = mode;
-        
-        // Actualizar UI de pestañas
         const tabs = document.querySelectorAll('.mode-tab');
-        tabs.forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.mode === mode);
-        });
+        tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
     
-        // Mostrar/ocultar selector de estación según modo
         const stationSelectorContainer = document.getElementById('stationSelectorContainer');
-        if (mode === 'station' || mode === 'manual') {
-            stationSelectorContainer.style.display = 'block';
-        } else {
-            stationSelectorContainer.style.display = 'none';
+        if (stationSelectorContainer) {
+            stationSelectorContainer.style.display = (mode === 'station' || mode === 'manual') ? 'block' : 'none';
         }
     
-        // Si el modo es 'all', seleccionar todos los alimentadores
-        if (mode === 'all') {
-            this.selectAllFeeders();
-        }
-    
-        // Si el modo es 'station' y hay una estación seleccionada, seleccionar todos de esa estación
-        if (mode === 'station' && this.currentStationFilter) {
-            this.selectStationFeeders(this.currentStationFilter);
-        }
-    
-        // Actualizar hint informativo
+        if (mode === 'all') this.selectAllFeeders();
+        if (mode === 'station' && this.currentStationFilter) this.selectStationFeeders(this.currentStationFilter);
+        
         this.updateFeederModeHint();
     }
     
     updateFeederModeHint() {
         const hint = document.getElementById('estacionHint');
         if (!hint) return;
-        
-        switch(this.selectionMode) {
-            case 'manual':
-                hint.innerHTML = '<i class="fas fa-info-circle"></i> Filtra los alimentadores por estación y selecciona manualmente con Ctrl+Click.';
-                break;
-            case 'station':
-                hint.innerHTML = '<i class="fas fa-info-circle"></i> Al seleccionar una estación, se marcarán automáticamente todos sus alimentadores.';
-                break;
-            case 'all':
-                hint.innerHTML = '<i class="fas fa-info-circle"></i> Modo "Todos los alimentadores" – se muestran y seleccionan todos.';
-                break;
-        }
+        const texts = {
+            manual: 'Filtra los alimentadores por estación y selecciona manualmente con Ctrl+Click.',
+            station: 'Al seleccionar una estación, se marcarán automáticamente todos sus alimentadores.',
+            all: 'Modo "Todos los alimentadores" – se muestran y seleccionan todos.'
+        };
+        hint.innerHTML = `<i class="fas fa-info-circle"></i> ${texts[this.selectionMode] || texts.manual}`;
     }
     
     setupFeederEventListeners() {
-        // Selector de estación: al cambiar, filtrar opciones del select múltiple
         const estacionSelect = document.getElementById('filterEstacion');
         if (estacionSelect) {
             estacionSelect.addEventListener('change', (e) => {
                 const estacion = e.target.value;
+                console.log("🔄 Estación seleccionada:", estacion);
                 this.currentStationFilter = estacion;
                 this.filterFeedersByStation(estacion);
-                
-                // Si el modo es 'station', seleccionar todos de esa estación automáticamente
-                if (this.selectionMode === 'station' && estacion) {
-                    this.selectStationFeeders(estacion);
-                }
+                if (this.selectionMode === 'station' && estacion) this.selectStationFeeders(estacion);
             });
         }
     
-        // Botón "Todos"
         const selectAllBtn = document.getElementById('selectAllFeedersBtn');
-        if (selectAllBtn) {
-            selectAllBtn.addEventListener('click', () => this.selectAllFeeders());
-        }
+        if (selectAllBtn) selectAllBtn.addEventListener('click', () => {
+            console.log("🖱️ Botón 'Todos' clickeado");
+            this.selectAllFeeders();
+        });
     
-        // Botón "Todos de esta estación"
         const selectStationBtn = document.getElementById('selectStationFeedersBtn');
         if (selectStationBtn) {
             selectStationBtn.addEventListener('click', () => {
+                console.log("🖱️ Botón 'Todos de esta estación' clickeado");
                 const estacion = document.getElementById('filterEstacion')?.value;
-                if (estacion) {
-                    this.selectStationFeeders(estacion);
-                } else {
-                    this.showNotification('Selecciona una estación primero', 'warning');
-                }
+                if (estacion) this.selectStationFeeders(estacion);
+                else this.showNotification('Selecciona una estación primero', 'warning');
             });
         }
     
-        // Botón "Limpiar"
         const clearBtn = document.getElementById('clearFeedersBtn');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => this.clearFeeders());
-        }
+        if (clearBtn) clearBtn.addEventListener('click', () => {
+            console.log("🖱️ Botón 'Limpiar' clickeado");
+            this.clearFeeders();
+        });
     
-        // Detectar cambios en el select múltiple para actualizar contador
         const feederSelect = document.getElementById('filterTransformador');
         if (feederSelect) {
-            feederSelect.addEventListener('change', () => this.updateFeederCount());
+            feederSelect.addEventListener('change', () => {
+                console.log("🔄 Selección de alimentadores cambiada");
+                this.updateFeederCount();
+                if (this.globalMode === 'unique') this.loadDataDebounced();
+            });
         }
     }
     
     filterFeedersByStation(estacion) {
+        console.log("🔍 Filtrando alimentadores por estación:", estacion);
         const feederSelect = document.getElementById('filterTransformador');
         if (!feederSelect) return;
     
-        // Guardar selección actual para restaurarla después del filtro
         const selectedValues = Array.from(feederSelect.selectedOptions).map(opt => opt.value);
-    
-        // Limpiar opciones actuales
         feederSelect.innerHTML = '';
     
-        // Obtener todos los alimentadores
         let allFeeders = [...this.allSecciones];
+        if (estacion) allFeeders = allFeeders.filter(f => f.startsWith(estacion));
     
-        // Filtrar si hay estación seleccionada
-        if (estacion) {
-            allFeeders = allFeeders.filter(f => f.startsWith(estacion));
-        }
-    
-        // Agregar opciones al select
         allFeeders.forEach(feeder => {
             const option = document.createElement('option');
             option.value = feeder;
@@ -708,21 +1172,19 @@ class ANDEDashboard {
             feederSelect.appendChild(option);
         });
     
-        // Restaurar selección solo para los que aún existen
         selectedValues.forEach(val => {
             const option = Array.from(feederSelect.options).find(opt => opt.value === val);
             if (option) option.selected = true;
         });
     
-        // Actualizar contador
         this.updateFeederCount();
     }
     
     selectAllFeeders() {
+        console.log("✅ Seleccionando todos los alimentadores");
         const feederSelect = document.getElementById('filterTransformador');
         if (!feederSelect) return;
         
-        // Asegurar que todas las opciones estén visibles (quitar filtro de estación)
         if (document.getElementById('filterEstacion').value !== '') {
             document.getElementById('filterEstacion').value = '';
             this.filterFeedersByStation('');
@@ -731,57 +1193,58 @@ class ANDEDashboard {
         Array.from(feederSelect.options).forEach(opt => opt.selected = true);
         this.updateFeederCount();
         this.showNotification('Todos los alimentadores seleccionados', 'success');
+        if (this.globalMode === 'unique') this.loadDataDebounced();
     }
     
     selectStationFeeders(estacion) {
+        console.log("✅ Seleccionando todos los alimentadores de la estación:", estacion);
         const feederSelect = document.getElementById('filterTransformador');
         if (!feederSelect) return;
     
-        // Primero, aseguramos que el filtro por estación esté aplicado
         if (document.getElementById('filterEstacion').value !== estacion) {
             document.getElementById('filterEstacion').value = estacion;
             this.filterFeedersByStation(estacion);
         }
     
-        // Seleccionar todas las opciones visibles
         Array.from(feederSelect.options).forEach(opt => opt.selected = true);
         this.updateFeederCount();
         this.showNotification(`Todos los alimentadores de ${estacion} seleccionados`, 'success');
+        if (this.globalMode === 'unique') this.loadDataDebounced();
     }
     
     clearFeeders() {
+        console.log("🧹 Limpiando selección de alimentadores");
         const feederSelect = document.getElementById('filterTransformador');
         if (!feederSelect) return;
-        
         Array.from(feederSelect.options).forEach(opt => opt.selected = false);
         this.updateFeederCount();
         this.showNotification('Selección de alimentadores limpiada', 'info');
+        if (this.globalMode === 'unique') this.loadDataDebounced();
     }
     
     updateFeederCount() {
         const feederSelect = document.getElementById('filterTransformador');
         const countSpan = document.getElementById('feederCount');
         if (!feederSelect || !countSpan) return;
-        
         const count = feederSelect.selectedOptions.length;
         countSpan.textContent = count;
-        
-        // Actualizar también el hint de alimentadores seleccionados
-        const hint = document.getElementById('feederCountHint');
-        if (hint) {
-            hint.innerHTML = `<i class="fas fa-info-circle"></i> <span id="feederCount">${count}</span> alimentadores seleccionados`;
-        }
+        console.log("🔢 Alimentadores seleccionados:", count);
     }
     
     // ========== CONFIGURACIÓN DE VALORES POR DEFECTO ==========
     setDefaultFilterValues() {
+        console.log("⚙️ Configurando valores por defecto");
         this.setGlobalMode('unique');
         this.selectedMonths = new Set([1,2,3,4,5,6,7,8,9,10,11,12]);
         this.updateMonthButtons();
         this.updateMonthSelect();
-        const periodo = document.getElementById('filterPeriodo');
-        if (periodo) periodo.value = 'select_months';
+        
+        const periodTabs = document.querySelectorAll('.period-tab');
+        periodTabs.forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.period === 'select_months');
+        });
         this.filters.periodo = 'select_months';
+        
         setTimeout(() => {
             const setSelect = (id, defaultValue) => {
                 const el = document.getElementById(id);
@@ -793,20 +1256,14 @@ class ANDEDashboard {
             setSelect('filterYear', '2024');
             setSelect('filterTipoMedicion', 'ACCID.DEP');
             
-            // Para alimentadores, seleccionar ACY1 por defecto
             const feedSel = document.getElementById('filterTransformador');
             if (feedSel) {
-                // Limpiar filtro de estación
                 const estSel = document.getElementById('filterEstacion');
                 if (estSel) estSel.value = '';
                 this.filterFeedersByStation('');
-                // Seleccionar ACY1 si existe
                 const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
-                if (option) {
-                    option.selected = true;
-                } else if (feedSel.options.length > 0) {
-                    feedSel.options[0].selected = true;
-                }
+                if (option) option.selected = true;
+                else if (feedSel.options.length > 0) feedSel.options[0].selected = true;
                 this.updateFeederCount();
             }
             
@@ -818,11 +1275,13 @@ class ANDEDashboard {
                 estacion: '',
                 periodo: 'select_months'
             };
+            console.log("⚙️ Filtros por defecto establecidos:", this.filters);
         }, 500);
     }
     
     // ========== MANEJO DE FILTROS GLOBALES ==========
     setGlobalMode(mode) {
+        console.log("🌐 Modo global cambiado a:", mode);
         this.globalMode = mode;
         const unique = document.getElementById('globalModeUnique');
         const multiple = document.getElementById('globalModeMultiple');
@@ -831,26 +1290,26 @@ class ANDEDashboard {
             unique.classList.toggle('active', mode === 'unique');
             multiple.classList.toggle('active', mode === 'multiple');
         }
-        if (hint) hint.textContent = mode === 'unique' ? 'Único: un valor por filtro' : 'Múltiple: selecciona varios valores con Ctrl+Click';
-        const guide = document.getElementById('monthModeGroup');
-        if (guide) guide.style.display = mode === 'multiple' ? 'block' : 'none';
+        if (hint) hint.textContent = mode === 'unique' 
+            ? 'Único: un valor por filtro' 
+            : 'Múltiple: selecciona varios valores con Ctrl+Click';
     }
     
     resetFilters() {
+        console.log("🔄 Restableciendo filtros");
         this.filters = { ...this.defaultFilters };
         this.selectedMonths = new Set([1,2,3,4,5,6,7,8,9,10,11,12]);
         this.currentStationGroup = null;
         this.updateMonthButtons();
         this.updateMonthSelect();
         
-        // Resetear filtro de alimentadores
         this.setFeederMode('manual');
         this.currentStationFilter = '';
         const estSel = document.getElementById('filterEstacion');
         if (estSel) estSel.value = '';
         this.filterFeedersByStation('');
         this.clearFeeders();
-        // Seleccionar ACY1 por defecto
+        
         const feedSel = document.getElementById('filterTransformador');
         if (feedSel) {
             const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
@@ -861,20 +1320,26 @@ class ANDEDashboard {
         const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
         setVal('filterYear', '2024');
         setVal('filterTipoMedicion', 'ACCID.DEP');
-        setVal('filterPeriodo', 'select_months');
+        
+        document.querySelectorAll('.period-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.period === 'select_months');
+        });
+        this.filters.periodo = 'select_months';
+        const monthGroup = document.getElementById('monthSelectorGroup');
+        if (monthGroup) monthGroup.style.display = 'block';
         
         this.showNotification("Filtros restablecidos", "success");
         setTimeout(() => this.loadData(), 500);
     }
     
     clearAllFilters() {
+        console.log("🧹 Limpiando todos los filtros");
         document.querySelectorAll('.multi-select').forEach(select => 
             Array.from(select.options).forEach(opt => opt.selected = false));
         this.selectedMonths.clear();
         this.updateMonthButtons();
         this.updateMonthSelect();
         
-        // Resetear filtro de alimentadores
         this.setFeederMode('manual');
         this.currentStationFilter = '';
         const estSel = document.getElementById('filterEstacion');
@@ -892,28 +1357,10 @@ class ANDEDashboard {
         this.showNotification("Filtros limpiados", "info");
     }
     
-    onPeriodoChange() {
-        const periodo = document.getElementById('filterPeriodo')?.value;
-        this.filters.periodo = periodo;
-        const monthGroup = document.getElementById('monthSelectorGroup');
-        if (monthGroup) monthGroup.style.display = periodo === 'select_months' ? 'block' : 'none';
-        if (periodo !== 'select_months') {
-            const now = new Date();
-            const cm = now.getMonth() + 1;
-            this.selectedMonths.clear();
-            if (periodo === 'last3') for (let i=0;i<3;i++) this.selectedMonths.add(((cm - i -1 +12)%12)+1);
-            else if (periodo === 'last6') for (let i=0;i<6;i++) this.selectedMonths.add(((cm - i -1 +12)%12)+1);
-            else if (periodo === 'last12' || periodo === 'currentYear' || periodo === 'lastYear') 
-                for (let i=1;i<=12;i++) this.selectedMonths.add(i);
-            this.updateMonthButtons();
-            this.updateMonthSelect();
-            this.loadDataDebounced();
-        }
-    }
-    
     // ========== MESES ==========
     toggleMonthSelection(e) {
         const month = parseInt(e.currentTarget.dataset.month);
+        console.log("🖱️ Mes clickeado:", month);
         this.selectedMonths.has(month) ? this.selectedMonths.delete(month) : this.selectedMonths.add(month);
         this.updateMonthButtons(); this.updateMonthSelect();
         this.filters.month = Array.from(this.selectedMonths);
@@ -938,6 +1385,7 @@ class ANDEDashboard {
     }
     
     selectAllMonths() { 
+        console.log("✅ Seleccionar todos los meses");
         for (let i=1;i<=12;i++) this.selectedMonths.add(i); 
         this.updateMonthButtons(); this.updateMonthSelect(); 
         this.showNotification("Todos los meses seleccionados","success"); 
@@ -945,6 +1393,7 @@ class ANDEDashboard {
     }
     
     deselectAllMonths() { 
+        console.log("❌ Deseleccionar todos los meses");
         this.selectedMonths.clear(); 
         this.updateMonthButtons(); this.updateMonthSelect(); 
         this.showNotification("Todos los meses deseleccionados","info"); 
@@ -953,43 +1402,48 @@ class ANDEDashboard {
     
     // ========== CARGA DE DATOS ==========
     async loadData() {
+        console.log("📥 Iniciando carga de datos...");
         this.showLoading(true, "Cargando datos desde el servidor...", null);
         try {
             const params = new URLSearchParams();
             
-            // Alimentadores seleccionados (sección)
             const selectedFeed = this.getSelectedValues('filterTransformador');
-            let seccionVal = 'ACY1';
-            if (selectedFeed.length > 0) {
-                seccionVal = selectedFeed.join(',');
-            }
+            let seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'ACY1';
             params.append('seccion', seccionVal);
+            console.log("🔌 Alimentadores:", selectedFeed);
             
-            // Año
             const yearSel = document.getElementById('filterYear');
             const years = this.getSelectedValues('filterYear');
-            params.append('anio', years.length ? years.join(',') : (yearSel?.value || '2024'));
+            const anioVal = years.length ? years.join(',') : (yearSel?.value || '2024');
+            params.append('anio', anioVal);
+            console.log("📅 Años:", years);
             
-            // Mes
-            if (this.selectedMonths.size && this.filters.periodo === 'select_months')
+            if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
                 params.append('mes', Array.from(this.selectedMonths).join(','));
-            else if (this.filters.periodo && this.filters.periodo !== 'select_months')
+                console.log("📆 Meses seleccionados:", Array.from(this.selectedMonths));
+            } else if (this.filters.periodo && this.filters.periodo !== 'select_months') {
                 params.append('periodo', this.filters.periodo);
-            else params.append('mes', 'all');
+                console.log("📆 Período:", this.filters.periodo);
+            } else {
+                params.append('mes', 'all');
+                console.log("📆 Meses: todos");
+            }
             
-            // Tipo de medición
             const tipoSel = document.getElementById('filterTipoMedicion');
             const tipos = this.getSelectedValues('filterTipoMedicion');
-            params.append('tipo_medicion', tipos.length ? tipos.join(',') : (tipoSel?.value || 'ACCID.DEP'));
-            
-            // Estación (solo para filtrar, no para la API como sección)
-            // No se envía porque ya filtramos por alimentadores específicos
+            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'ACCID.DEP');
+            params.append('tipo_medicion', tipoVal);
+            console.log("📊 Tipos:", tipos);
             
             const url = `${this.apiBaseUrl}/api/datos?${params}`;
-            console.log("📥 URL:", url);
+            console.log("🌐 URL:", url);
+            
             const res = await fetch(url);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            this.data = await res.json();
+            const data = await res.json();
+            console.log(`✅ Datos recibidos: ${data.length} registros`);
+            
+            this.data = data;
             this.filteredData = [...this.data];
             
             this.showLoading(true, "Procesando datos...", 70);
@@ -1002,17 +1456,21 @@ class ANDEDashboard {
                     this.generateSampleData(); 
                 }
             } else {
+                console.log("📈 Actualizando UI con nuevos datos (con animaciones HD)...");
                 this.updateStats();
                 this.updateKPIs();
                 this.updateSpecialKPIs();
+                
+                // Actualizar gráficos con animaciones
                 this.updateCharts();
                 this.updateScatterChart();
                 this.updatePieCharts();
                 this.updateStationSummary();
+                
                 this.pagination.currentPage = 1;
                 this.updateTable();
                 this.updateComparisonTags();
-                this.showNotification(`${this.data.length} registros cargados`, "success");
+                this.showNotification(`${this.data.length} registros cargados ✨`, "success");
             }
         } catch (error) {
             console.error("❌ Error cargando datos:", error);
@@ -1028,6 +1486,7 @@ class ANDEDashboard {
     
     // ========== KPIS ESPECIALES ==========
     updateSpecialKPIs() {
+        console.log("📊 Actualizando KPIs especiales");
         const specialSection = document.getElementById('specialKpiSection');
         if (!specialSection) return;
         
@@ -1046,8 +1505,11 @@ class ANDEDashboard {
         const uniqueFeeders = [...new Set(feeders)];
         const stations = new Set(uniqueFeeders.map(f => f.substring(0,3)));
         
-        document.getElementById('stationCount').textContent = stations.size;
-        document.getElementById('stationNames').textContent = Array.from(stations).slice(0,3).join(', ') + (stations.size > 3 ? '...' : '');
+        const stationCountEl = document.getElementById('stationCount');
+        if (stationCountEl) stationCountEl.textContent = stations.size;
+        
+        const stationNamesEl = document.getElementById('stationNames');
+        if (stationNamesEl) stationNamesEl.textContent = Array.from(stations).slice(0,3).join(', ') + (stations.size > 3 ? '...' : '');
         
         const stationData = {};
         this.data.forEach(d => {
@@ -1061,8 +1523,11 @@ class ANDEDashboard {
             const avg = data.sum / data.count;
             if (avg < bestAvg) { bestAvg = avg; bestStation = st; }
         });
-        document.getElementById('bestStationName').textContent = bestStation || '--';
-        document.getElementById('bestStationValue').textContent = this.safeToFixed(bestAvg);
+        
+        const bestStationNameEl = document.getElementById('bestStationName');
+        if (bestStationNameEl) bestStationNameEl.textContent = bestStation || '--';
+        const bestStationValueEl = document.getElementById('bestStationValue');
+        if (bestStationValueEl) bestStationValueEl.textContent = this.safeToFixed(bestAvg);
         
         const feederData = {};
         this.data.forEach(d => {
@@ -1075,31 +1540,49 @@ class ANDEDashboard {
             const avg = data.sum / data.count;
             if (avg < bestFeederAvg) { bestFeederAvg = avg; bestFeeder = fd; }
         });
-        document.getElementById('topFeederName').textContent = bestFeeder || '--';
-        document.getElementById('topFeederValue').textContent = this.safeToFixed(bestFeederAvg);
+        
+        const topFeederNameEl = document.getElementById('topFeederName');
+        if (topFeederNameEl) topFeederNameEl.textContent = bestFeeder || '--';
+        const topFeederValueEl = document.getElementById('topFeederValue');
+        if (topFeederValueEl) topFeederValueEl.textContent = this.safeToFixed(bestFeederAvg);
         
         const values = this.data.map(d => d.frecuencia).filter(v => !isNaN(v));
         if (values.length > 1) {
             const mean = values.reduce((a,b)=>a+b,0)/values.length;
             const variance = values.reduce((a,b)=>a+Math.pow(b-mean,2),0)/values.length;
             const cv = (Math.sqrt(variance)/mean)*100;
-            document.getElementById('globalCV').textContent = cv.toFixed(2) + '%';
+            const globalCVEl = document.getElementById('globalCV');
+            if (globalCVEl) globalCVEl.textContent = cv.toFixed(2) + '%';
             const badge = document.getElementById('globalCVBadge');
-            badge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
-            badge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
+            if (badge) {
+                badge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
+                badge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
+            }
         }
     }
     
     // ========== LIMPIAR GRÁFICOS ==========
     clearChartsAndTable() {
-        if (this.mainChart) { this.mainChart.data.labels = []; this.mainChart.data.datasets = []; this.mainChart.update(); this.showNoDataMessage(this.mainChart, 'mainChart'); }
-        if (this.rankingChart) { this.rankingChart.data.labels = []; this.rankingChart.data.datasets[0].data = []; this.rankingChart.update(); this.showNoDataMessage(this.rankingChart, 'rankingChart'); }
-        if (this.scatterChart) { this.scatterChart.data.datasets = []; this.scatterChart.update(); this.showNoDataMessage(this.scatterChart, 'scatterChart'); }
-        if (this.pieChartByFeeder) { this.pieChartByFeeder.data.labels = []; this.pieChartByFeeder.data.datasets[0].data = []; this.pieChartByFeeder.update(); this.showNoDataMessage(this.pieChartByFeeder, 'pieChartFeeder'); }
-        if (this.pieChartByType) { this.pieChartByType.data.labels = []; this.pieChartByType.data.datasets[0].data = []; this.pieChartByType.update(); this.showNoDataMessage(this.pieChartByType, 'pieChartType'); }
-        if (this.stationSummaryChart) { this.stationSummaryChart.data.labels = []; this.stationSummaryChart.data.datasets[0].data = []; this.stationSummaryChart.update(); this.showNoDataMessage(this.stationSummaryChart, 'stationSummaryChart'); }
+        console.log("🧹 Limpiando gráficos y tabla");
+        
+        // Limpiar con animación suave de salida
+        const clearWithAnimation = (chart) => {
+            if (!chart) return;
+            chart.data.labels = [];
+            chart.data.datasets = [];
+            chart.update('none'); // Sin animación al limpiar
+        };
+        
+        clearWithAnimation(this.mainChart);
+        clearWithAnimation(this.rankingChart);
+        clearWithAnimation(this.scatterChart);
+        clearWithAnimation(this.pieChartByFeeder);
+        clearWithAnimation(this.pieChartByType);
+        clearWithAnimation(this.stationSummaryChart);
+        
         const tbody = document.getElementById('dataTable');
         if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="no-data"><i class="fas fa-database"></i> No hay datos para mostrar</td></tr>`;
+        
         ['rangeValue','rangeInfo','variabilityValue','variabilityBadge','worstSeries','worstValue'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -1109,14 +1592,19 @@ class ANDEDashboard {
                 else if (id === 'worstSeries') el.textContent = '--';
             }
         });
-        ['dataCount','loadedSeries','totalPoints','seriesCount','activeSeries'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = '0'; });
-        document.getElementById('specialKpiSection').style.display = 'none';
+        ['dataCount','loadedSeries','totalPoints','seriesCount','activeSeries'].forEach(id => { 
+            const el = document.getElementById(id); 
+            if(el) el.textContent = '0'; 
+        });
+        const specialSection = document.getElementById('specialKpiSection');
+        if (specialSection) specialSection.style.display = 'none';
     }
     
     getSelectedValues(selectId) {
         const sel = document.getElementById(selectId);
         if (!sel) return [];
-        return sel.multiple ? Array.from(sel.selectedOptions).map(o=>o.value).filter(v=>v) : (sel.value ? [sel.value] : []);
+        const values = sel.multiple ? Array.from(sel.selectedOptions).map(o=>o.value).filter(v=>v) : (sel.value ? [sel.value] : []);
+        return values;
     }
     
     // ========== GENERAR DATOS DE EJEMPLO ==========
@@ -1151,13 +1639,18 @@ class ANDEDashboard {
             });
         });
         this.filteredData = [...this.data];
-        this.updateStats(); this.updateKPIs(); this.updateSpecialKPIs(); this.updateCharts(); this.updateScatterChart();
-        this.updatePieCharts(); this.updateStationSummary(); this.updateTable();
-        console.log(`✅ Datos de ejemplo: ${this.data.length} registros`);
+        console.log(`✅ Datos de ejemplo generados: ${this.data.length} registros`);
+        this.updateStats(); this.updateKPIs(); this.updateSpecialKPIs(); 
+        this.updateCharts(); 
+        this.updateScatterChart();
+        this.updatePieCharts(); 
+        this.updateStationSummary(); 
+        this.updateTable();
     }
     
     // ========== ACTUALIZACIÓN UI ==========
     updateStats() {
+        console.log("📊 Actualizando estadísticas");
         const ids = ['dataCount','loadedSeries','totalPoints','seriesCount','activeSeries'];
         ids.forEach(id => {
             const el = document.getElementById(id);
@@ -1180,6 +1673,7 @@ class ANDEDashboard {
         if (rangeVal) rangeVal.textContent = range.toFixed(4);
         const rangeInfo = document.getElementById('rangeInfo');
         if (rangeInfo) rangeInfo.textContent = `${this.safeToFixed(min)}-${this.safeToFixed(max)}`;
+        
         if (values.length > 1) {
             const mean = values.reduce((a,b)=>a+b,0)/values.length;
             const variance = values.reduce((a,b)=>a+Math.pow(b-mean,2),0)/values.length;
@@ -1192,6 +1686,7 @@ class ANDEDashboard {
                 varBadge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
             }
         }
+        
         const series = {};
         this.data.forEach(d => {
             if (!series[d.combinationKey]) series[d.combinationKey] = { label: d.combinationLabel, vals: [] };
@@ -1222,6 +1717,7 @@ class ANDEDashboard {
         años.filter(a=>a!=='all').forEach(a => cont.appendChild(this.createTag('Año: '+a, 'año')));
         if (!cont.children.length) cont.appendChild(this.createTag('Selecciona filtros para comparar', 'hint'));
     }
+    
     createTag(text, cls) {
         const span = document.createElement('span');
         span.className = `tag ${cls}`;
@@ -1229,18 +1725,31 @@ class ANDEDashboard {
         return span;
     }
     
-    // ========== GRÁFICOS ==========
+    // ========== GRÁFICOS (ACTUALIZACIÓN CON ANIMACIONES) ==========
     updateCharts() {
-        if (!this.data.length) { this.clearChartsAndTable(); return; }
+        console.log("📊 Actualizando gráficos HD con animaciones...");
+        if (!this.data.length) { 
+            console.log("📉 No hay datos, limpiando gráficos");
+            this.clearChartsAndTable(); 
+            return; 
+        }
+        console.log(`📈 Datos disponibles: ${this.data.length} registros`);
         this.updateMainChart();
         this.updateRankingChart();
     }
     
     updateMainChart() {
-        if (!this.mainChart) return;
+        console.log("📈 Actualizando gráfico principal HD...");
+        if (!this.mainChart) {
+            console.warn("mainChart no inicializado");
+            return;
+        }
+        
         const grouped = this.groupDataForChart();
+        console.log("📊 Grupos para gráfico principal:", Object.keys(grouped));
         const datasets = [];
         const labelsSet = new Set();
+        
         Object.entries(grouped).forEach(([key, pts], idx) => {
             pts.sort((a,b)=> a.year!==b.year ? a.year-b.year : a.month-b.month);
             pts.forEach(p => labelsSet.add(`${p.year}-${String(p.month).padStart(2,'0')}`));
@@ -1253,32 +1762,43 @@ class ANDEDashboard {
                 tension: 0.2,
                 fill: false,
                 pointRadius: 0,
-                pointHoverRadius: 6,
-                pointHoverBorderWidth: 2,
-                pointHoverBackgroundColor: '#fff'
+                pointHoverRadius: 7,
+                pointHoverBorderWidth: 3,
+                pointHoverBackgroundColor: '#ffffff',
+                borderCapStyle: 'round',
+                borderJoinStyle: 'round'
             });
         });
+        
         const labels = Array.from(labelsSet).sort();
+        console.log("📅 Labels del gráfico:", labels);
         datasets.forEach(ds => {
             const pts = grouped[ds.label];
-            labels.forEach(lbl => {
+            ds.data = labels.map(lbl => {
                 const [y,m] = lbl.split('-').map(Number);
                 const p = pts.find(p => p.year===y && p.month===m);
-                ds.data.push(p ? p.frecuencia : null);
+                return p ? p.frecuencia : null;
             });
         });
+        
         this.mainChart.data.labels = labels;
         this.mainChart.data.datasets = datasets;
+        
         const chartType = document.getElementById('chartType')?.value || 'line';
-        this.mainChart.config.type = chartType;
-        if (chartType === 'bar') {
-            this.mainChart.data.datasets.forEach(ds => { ds.fill = false; ds.borderWidth = 1; ds.borderRadius = 4; });
-        } else if (chartType === 'scatter') {
-            this.mainChart.data.datasets.forEach(ds => { ds.showLine = false; ds.pointRadius = 5; ds.pointHoverRadius = 8; });
-        } else {
-            this.mainChart.data.datasets.forEach(ds => { ds.showLine = true; ds.pointRadius = 0; });
+        if (this.mainChart.config.type !== chartType) {
+            this.mainChart.config.type = chartType;
+            if (chartType === 'bar') {
+                this.mainChart.data.datasets.forEach(ds => { ds.fill = false; ds.borderWidth = 1.5; });
+            } else if (chartType === 'scatter') {
+                this.mainChart.data.datasets.forEach(ds => { ds.showLine = false; ds.pointRadius = 5; });
+            } else {
+                this.mainChart.data.datasets.forEach(ds => { ds.showLine = true; ds.pointRadius = 0; });
+            }
         }
-        this.mainChart.update();
+        
+        // ✨ Actualizar con animación suave
+        this.mainChart.update('active');
+        console.log("✅ Gráfico principal HD actualizado con animaciones");
         this.updateChartLegend();
     }
     
@@ -1302,7 +1822,10 @@ class ANDEDashboard {
     updateChartLegend() {
         const leg = document.getElementById('mainChartLegend');
         if (!leg) return;
-        if (!this.mainChart?.data.datasets?.length) { leg.innerHTML = '<div class="legend-empty">Sin datos</div>'; return; }
+        if (!this.mainChart?.data.datasets?.length) { 
+            leg.innerHTML = '<div class="legend-empty">Sin datos</div>'; 
+            return; 
+        }
         let html = '<div class="legend-title">Series:</div>';
         this.mainChart.data.datasets.forEach((ds,i) => {
             const hidden = this.mainChart.getDatasetMeta(i).hidden === true;
@@ -1318,8 +1841,8 @@ class ANDEDashboard {
                 if (e.target.closest('.legend-action')) {
                     const idx = parseInt(el.dataset.index);
                     const meta = this.mainChart.getDatasetMeta(idx);
-                    meta.hidden = meta.hidden === null ? true : null;
-                    this.mainChart.update();
+                    meta.hidden = !meta.hidden;
+                    this.mainChart.update('active'); // Con animación
                     this.updateChartLegend();
                 }
             });
@@ -1327,107 +1850,163 @@ class ANDEDashboard {
     }
     
     updateRankingChart() {
-        if (!this.rankingChart || !this.data.length) { if (this.rankingChart) this.showNoDataMessage(this.rankingChart, 'rankingChart'); return; }
-        const series = {};
-        this.data.forEach(d => {
-            const key = d.combinationLabel;
-            if (!series[key]) series[key] = [];
-            series[key].push(d.frecuencia);
-        });
+        console.log("📊 Actualizando ranking HD...");
+        if (!this.rankingChart) {
+            console.warn("rankingChart no inicializado");
+            return;
+        }
+        if (!this.data.length) {
+            this.rankingChart.data.labels = [];
+            this.rankingChart.data.datasets[0].data = [];
+            this.rankingChart.update('none');
+            return;
+        }
+        
+        const rankingGroup = document.getElementById('rankingGroup')?.value || 'alimentador';
+        const sortBy = document.getElementById('rankingSort')?.value || 'avg';
+        console.log(`📊 Ranking group: ${rankingGroup}, sort: ${sortBy}`);
+        
+        let series = {};
+        
+        if (rankingGroup === 'alimentador') {
+            this.data.forEach(d => {
+                const key = d.combinationLabel;
+                if (!series[key]) series[key] = [];
+                series[key].push(d.frecuencia);
+            });
+        } else {
+            this.data.forEach(d => {
+                const station = d.transformador.substring(0, 3);
+                if (!series[station]) series[station] = [];
+                series[station].push(d.frecuencia);
+            });
+        }
+        
         let ranking = Object.entries(series).map(([lbl, vals]) => {
             const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
             const min = Math.min(...vals);
             const max = Math.max(...vals);
             const last = vals[vals.length-1];
-            return { label: lbl, avg, range: max-min, last, values: vals };
+            return { label: lbl, avg, range: max-min, last };
         });
-        const sortBy = document.getElementById('rankingSort')?.value || 'avg';
+        
         ranking.sort((a,b) => {
             if (sortBy === 'stability') return a.range - b.range;
             if (sortBy === 'trend') return b.last - a.last;
             return b.avg - a.avg;
         });
+        
         const top = ranking.slice(0, 10);
+        console.log("🏆 Top 10 ranking:", top);
         this.rankingChart.data.labels = top.map(t => t.label);
         this.rankingChart.data.datasets[0].data = top.map(t => t.avg);
         this.rankingChart.data.datasets[0].backgroundColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
         this.rankingChart.data.datasets[0].borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
-        this.rankingChart.update();
+        
+        // ✨ Actualizar con animación
+        this.rankingChart.update('active');
+        console.log("✅ Ranking HD actualizado con animaciones");
     }
     
     updateScatterChart() {
-        if (!this.scatterChart || !this.data.length) { if (this.scatterChart) this.showNoDataMessage(this.scatterChart, 'scatterChart'); return; }
+        console.log("📉 Actualizando gráfico de dispersión HD...");
+        if (!this.scatterChart) {
+            console.warn("scatterChart no inicializado");
+            return;
+        }
+        if (!this.data.length) {
+            this.scatterChart.data.datasets = [];
+            this.scatterChart.update('none');
+            return;
+        }
+        
         const feeders = [...new Set(this.data.map(d=>d.transformador))];
+        console.log("🔌 Alimentadores en dispersión:", feeders);
         const datasets = feeders.map((f, i) => ({
             label: f,
             data: this.data.filter(d=>d.transformador===f).map(d=>({ x: new Date(d.fecha), y: d.frecuencia })),
-            backgroundColor: this.chartPalette[i%this.chartPalette.length]+'80',
+            backgroundColor: this.chartPalette[i%this.chartPalette.length] + '80',
             borderColor: this.chartPalette[i%this.chartPalette.length],
-            borderWidth: 1.5,
+            borderWidth: 2,
             pointRadius: 5,
             pointHoverRadius: 8,
-            pointHoverBorderWidth: 2,
-            pointHoverBackgroundColor: '#fff'
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointHoverBorderWidth: 3
         }));
         this.scatterChart.data.datasets = datasets;
-        this.scatterChart.update();
+        
+        // ✨ Actualizar con animación
+        this.scatterChart.update('active');
+        console.log("✅ Dispersión HD actualizada con animaciones");
     }
     
     updatePieCharts() {
+        console.log("🥧 Actualizando gráficos de pastel HD...");
         if (!this.data.length) {
-            if (this.pieChartByFeeder) this.showNoDataMessage(this.pieChartByFeeder, 'pieChartFeeder');
-            if (this.pieChartByType) this.showNoDataMessage(this.pieChartByType, 'pieChartType');
+            if (this.pieChartByFeeder) {
+                this.pieChartByFeeder.data.labels = [];
+                this.pieChartByFeeder.data.datasets[0].data = [];
+                this.pieChartByFeeder.update('none');
+            }
+            if (this.pieChartByType) {
+                this.pieChartByType.data.labels = [];
+                this.pieChartByType.data.datasets[0].data = [];
+                this.pieChartByType.update('none');
+            }
             return;
         }
+        
         const feederData = {};
         this.data.forEach(d => feederData[d.transformador] = (feederData[d.transformador] || 0) + d.frecuencia);
         const feederLabels = Object.keys(feederData);
         const feederValues = Object.values(feederData);
+        console.log("🥧 Datos pastel alimentadores:", feederLabels);
         if (this.pieChartByFeeder) {
             this.pieChartByFeeder.data.labels = feederLabels;
             this.pieChartByFeeder.data.datasets[0].data = feederValues;
             this.pieChartByFeeder.data.datasets[0].backgroundColor = feederLabels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
-            this.pieChartByFeeder.update();
+            this.pieChartByFeeder.update('active'); // ✨ Con animación
         }
+        
         const typeData = {};
         this.data.forEach(d => typeData[d.tipo] = (typeData[d.tipo] || 0) + d.frecuencia);
         const typeLabels = Object.keys(typeData);
         const typeValues = Object.values(typeData);
+        console.log("🥧 Datos pastel tipo:", typeLabels);
         if (this.pieChartByType) {
             this.pieChartByType.data.labels = typeLabels;
             this.pieChartByType.data.datasets[0].data = typeValues;
             this.pieChartByType.data.datasets[0].backgroundColor = typeLabels.map((_,i) => this.chartPalette[(i+5)%this.chartPalette.length]);
-            this.pieChartByType.update();
+            this.pieChartByType.update('active'); // ✨ Con animación
         }
     }
     
     updateStationSummary() {
+        console.log("🏭 Actualizando resumen de estación HD...");
         if (!this.stationSummaryChart) return;
-        // Determinar el grupo de estación actual: si se seleccionó "Todos de estación" en el modo station,
-        // pero también podemos detectar si todos los alimentadores seleccionados pertenecen a la misma estación.
+        
         const selectedFeeders = this.getSelectedValues('filterTransformador');
         if (selectedFeeders.length === 0) {
-            const container = document.getElementById('stationSummaryContainer');
-            if (container) container.style.display = 'none';
+            document.getElementById('stationSummaryContainer').style.display = 'none';
             return;
         }
-        // Verificar si todos los seleccionados comparten el mismo prefijo de estación
         const prefixes = new Set(selectedFeeders.map(f => f.substring(0,3)));
         if (prefixes.size !== 1) {
-            const container = document.getElementById('stationSummaryContainer');
-            if (container) container.style.display = 'none';
+            document.getElementById('stationSummaryContainer').style.display = 'none';
             return;
         }
         const estacion = Array.from(prefixes)[0];
         this.currentStationGroup = estacion;
         
         const container = document.getElementById('stationSummaryContainer');
-        if (container) container.style.display = 'block';
+        container.style.display = 'block';
         const stationName = document.getElementById('stationName');
         if (stationName) stationName.textContent = this.currentStationGroup;
         
         const stationData = this.data.filter(d => d.transformador.startsWith(this.currentStationGroup));
-        if (!stationData.length) { this.showNoDataMessage(this.stationSummaryChart, 'stationSummaryChart'); return; }
+        if (!stationData.length) return;
+        
         const feederAvg = {};
         stationData.forEach(d => {
             if (!feederAvg[d.transformador]) feederAvg[d.transformador] = { sum: 0, count: 0 };
@@ -1436,46 +2015,65 @@ class ANDEDashboard {
         });
         const labels = Object.keys(feederAvg);
         const avgs = labels.map(l => feederAvg[l].sum / feederAvg[l].count);
+        console.log(`🏭 Resumen de ${estacion}:`, labels, avgs);
         this.stationSummaryChart.data.labels = labels;
         this.stationSummaryChart.data.datasets[0].data = avgs;
         this.stationSummaryChart.data.datasets[0].backgroundColor = labels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
-        this.stationSummaryChart.update();
+        
+        // ✨ Actualizar con animación
+        this.stationSummaryChart.update('active');
+        console.log("✅ Resumen de estación HD actualizado con animaciones");
     }
     
     // ========== CONTROLES DE GRÁFICOS ==========
-    onChartTypeChange() { this.updateMainChart(); }
+    onChartTypeChange() { 
+        console.log("🔄 Tipo de gráfico cambiado a:", document.getElementById('chartType')?.value);
+        this.updateMainChart(); 
+    }
+    
     toggleChartPoints() {
         if (!this.mainChart) return;
         const show = this.mainChart.data.datasets[0]?.pointRadius === 0;
-        this.mainChart.data.datasets.forEach(ds => { ds.pointRadius = show ? 5 : 0; ds.pointHoverRadius = show ? 8 : 6; });
-        this.mainChart.update();
+        console.log("🔄 Toggle puntos:", show ? "mostrar" : "ocultar");
+        this.mainChart.data.datasets.forEach(ds => { 
+            ds.pointRadius = show ? 4 : 0; 
+            ds.pointHoverRadius = show ? 7 : 6; 
+        });
+        this.mainChart.update('active'); // Con animación
     }
+    
     zoomChart(dir) {
         if (!this.mainChart) return;
         const scale = dir === 'in' ? 0.8 : 1.2;
+        console.log("🔍 Zoom:", dir);
         if (this.mainChart.options.scales.x.min && this.mainChart.options.scales.x.max) {
             const range = this.mainChart.options.scales.x.max - this.mainChart.options.scales.x.min;
             const center = (this.mainChart.options.scales.x.min + this.mainChart.options.scales.x.max) / 2;
             this.mainChart.options.scales.x.min = center - (range * scale) / 2;
             this.mainChart.options.scales.x.max = center + (range * scale) / 2;
+            this.mainChart.update('active');
         }
-        this.mainChart.update();
     }
+    
     resetChartZoom() {
+        console.log("🔄 Reset zoom");
         if (!this.mainChart) return;
         this.mainChart.options.scales.x.min = undefined;
         this.mainChart.options.scales.x.max = undefined;
         this.mainChart.options.scales.y.min = undefined;
         this.mainChart.options.scales.y.max = undefined;
-        this.mainChart.update();
+        this.mainChart.update('active'); // Con animación
     }
+    
     onGroupByChange() {
         this.groupBy = document.getElementById('groupBy')?.value || 'alimentador';
+        console.log("🔄 Agrupación cambiada a:", this.groupBy);
         this.updateCharts();
     }
     
     // ========== EXPANDIR GRÁFICOS ==========
     expandChart() {
+        console.log("🖥️ Expandiendo gráficos a nueva ventana");
         const chartData = {
             mainChart: {
                 labels: this.mainChart?.data.labels || [],
@@ -1528,6 +2126,7 @@ class ANDEDashboard {
     
     // ========== TABLA ==========
     updateTable() {
+        console.log("📋 Actualizando tabla...");
         const tbody = document.getElementById('dataTable');
         if (!tbody) return;
         if (!this.filteredData.length) {
@@ -1576,6 +2175,7 @@ class ANDEDashboard {
     
     goToPage(p) {
         if (p < 1 || p > this.pagination.totalPages) return;
+        console.log("📄 Ir a página:", p);
         this.pagination.currentPage = p;
         this.updateTable();
         document.querySelector('.table-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1584,6 +2184,7 @@ class ANDEDashboard {
     sortTable(col) {
         if (this.sortConfig.column === col) this.sortConfig.direction = this.sortConfig.direction === 'asc' ? 'desc' : 'asc';
         else { this.sortConfig.column = col; this.sortConfig.direction = 'asc'; }
+        console.log("🔽 Ordenando tabla por:", col, this.sortConfig.direction);
         this.filteredData.sort((a,b) => {
             let av = a[col], bv = b[col];
             if (col === 'fecha') { av = new Date(av); bv = new Date(bv); }
@@ -1604,6 +2205,7 @@ class ANDEDashboard {
     }
     
     filterTable(term) {
+        console.log("🔍 Filtrando tabla por:", term);
         if (!term?.trim()) this.filteredData = [...this.data];
         else {
             const t = term.toLowerCase().trim();
@@ -1617,6 +2219,7 @@ class ANDEDashboard {
     getStatusText(v) { return v == null || isNaN(v) ? 'DESCONOCIDO' : v < 0.5 ? 'NORMAL' : v < 1.0 ? 'ALERTA' : 'CRÍTICO'; }
     
     viewDetails(d) {
+        console.log("🔍 Ver detalles de:", d);
         const modal = document.getElementById('modalBody');
         if (!modal) return;
         modal.innerHTML = `
@@ -1635,6 +2238,7 @@ class ANDEDashboard {
     async uploadExcel() {
         const file = document.getElementById('excelFileInput')?.files[0];
         if (!file) { this.showNotification("Selecciona un archivo Excel", "warning"); return; }
+        console.log("📤 Subiendo archivo:", file.name);
         const formData = new FormData();
         formData.append('archivo', file);
         this.showLoading(true, "Subiendo Excel...", null);
@@ -1644,11 +2248,15 @@ class ANDEDashboard {
             if (res.ok) {
                 this.showNotification(`✅ ${result.insertadas} filas insertadas, ${result.errores} errores`, "success");
                 setTimeout(async () => {
-                    await this.loadTiposMedicion(); await this.loadSeccionesDisponibles();
-                    await this.loadYearsAvailable(); await this.loadData(); await this.loadCargas();
+                    await this.loadTiposMedicion();
+                    await this.loadSeccionesDisponibles();
+                    await this.loadYearsAvailable();
+                    await this.loadData();
+                    await this.loadCargas();
                 }, 1000);
             } else throw new Error(result.error);
         } catch (e) {
+            console.error("❌ Error subiendo Excel:", e);
             this.showNotification(`Error: ${e.message}`, "error");
         } finally {
             this.showLoading(false);
@@ -1657,6 +2265,7 @@ class ANDEDashboard {
     }
     
     async loadCargas() {
+        console.log("📥 Cargando historial de cargas...");
         try {
             const res = await fetch(`${this.apiBaseUrl}/api/cargas`);
             const cargas = await res.json();
@@ -1666,6 +2275,7 @@ class ANDEDashboard {
     }
     
     renderCargas(cargas) {
+        console.log("📋 Renderizando historial de cargas, total:", cargas.length);
         const cont = document.getElementById('cargasContainer');
         if (!cont) return;
         if (!cargas.length) {
@@ -1687,6 +2297,7 @@ class ANDEDashboard {
         });
         html += `</tbody></table></div>`;
         cont.innerHTML = html;
+        
         const total = document.getElementById('totalCargas');
         if (total) total.textContent = cargas.length;
         const completadas = document.getElementById('cargasCompletadas');
@@ -1697,6 +2308,7 @@ class ANDEDashboard {
     
     async eliminarCarga(id) {
         if (!confirm("¿Eliminar esta carga y sus datos?")) return;
+        console.log("🗑️ Eliminando carga ID:", id);
         try {
             const res = await fetch(`${this.apiBaseUrl}/api/cargas/${id}`, { method: 'DELETE' });
             const result = await res.json();
@@ -1705,6 +2317,7 @@ class ANDEDashboard {
                 setTimeout(async () => { await this.loadCargas(); await this.loadData(); }, 1000);
             } else throw new Error(result.error);
         } catch (e) {
+            console.error("❌ Error eliminando carga:", e);
             this.showNotification(`Error al eliminar: ${e.message}`, "error");
         }
     }
@@ -1741,7 +2354,7 @@ class ANDEDashboard {
     }
     
     startLiveUpdates() {
-        setInterval(() => { if (this.serverConnected) { this.loadData(); this.loadCargas(); } }, 300000);
+        setInterval(() => { if (this.serverConnected) { console.log("🔄 Actualización automática"); this.loadData(); this.loadCargas(); } }, 300000);
     }
     
     formatValue(v) {
@@ -1785,7 +2398,7 @@ function initializeDashboard() {
 }
 
 function checkRequiredElements() {
-    const required = ['globalModeUnique','globalModeMultiple','filterPeriodo','filterEstacion','applyFilters','filterTipoMedicion','filterTransformador','filterYear','mainChart'];
+    const required = ['globalModeUnique','globalModeMultiple','filterEstacion','applyFilters','filterTipoMedicion','filterTransformador','filterYear','mainChart'];
     return required.filter(id => !document.getElementById(id));
 }
 
