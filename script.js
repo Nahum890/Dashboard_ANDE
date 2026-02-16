@@ -861,6 +861,15 @@ class ANDEDashboard {
             this.updateRankingChart();
         });
         
+        this.safeAddEventListener('expandRankingBtn', 'click', () => {
+            console.log("🖱️ Ver ranking completo");
+            this.expandRankingChart();
+        });
+        this.safeAddEventListener('stationSummarySelect', 'change', (e) => {
+            this.stationSummarySelection = e.target.value || '__ALL__';
+            this.updateStationSummary();
+        });
+        
         this.safeAddEventListener('tableSearch', 'input', (e) => {
             console.log("🔍 Búsqueda en tabla:", e.target.value);
             this.filterTable(e.target.value);
@@ -1046,6 +1055,7 @@ class ANDEDashboard {
         this.setupFeederEventListeners();
         this.updateFeederCount();
         this.setFeederMode('manual');
+        this.renderStationSelectors();
     }
     
     setupFeederModeTabs() {
@@ -1058,7 +1068,56 @@ class ANDEDashboard {
             });
         });
     }
-    
+
+    renderStationSelectors() {
+        const container = document.getElementById('stationSelectorsDynamic');
+        const countInput = document.getElementById('stationCountInput');
+        if (!container || !countInput) return;
+
+        const count = Math.max(1, Math.min(20, parseInt(countInput.value) || 1));
+        countInput.value = String(count);
+
+        const prev = this.selectedStations.length ? [...this.selectedStations] : [''];
+        container.innerHTML = '';
+
+        for (let i = 0; i < count; i++) {
+            const wrap = document.createElement('div');
+            wrap.style.marginBottom = '0.5rem';
+            wrap.innerHTML = `
+                <label class="form-label" style="font-size:0.82rem; margin-bottom:0.35rem; display:block;">
+                    <i class="fas fa-building"></i> Estación ${i + 1}
+                </label>
+                <select class="form-select station-dynamic-select" data-index="${i}">
+                    <option value="">${i === 0 ? 'Todas las estaciones' : 'Selecciona estación'}</option>
+                    ${this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('')}
+                </select>
+            `;
+            container.appendChild(wrap);
+        }
+
+        container.querySelectorAll('.station-dynamic-select').forEach((sel, i) => {
+            if (prev[i]) sel.value = prev[i];
+            sel.addEventListener('change', () => {
+                this.selectedStations = this.getSelectedStations();
+                if (this.selectionMode === 'manual') {
+                    const first = this.selectedStations[0] || '';
+                    this.currentStationFilter = first;
+                    this.filterFeedersByStation(first);
+                } else if (this.selectionMode === 'station_multi') {
+                    this.selectStationsFeeders();
+                }
+            });
+        });
+
+        this.selectedStations = this.getSelectedStations();
+    }
+
+    getSelectedStations() {
+        return Array.from(document.querySelectorAll('.station-dynamic-select'))
+            .map(sel => sel.value)
+            .filter(Boolean);
+    }
+
     setFeederMode(mode) {
         this.selectionMode = mode;
         const tabs = document.querySelectorAll('.mode-tab');
@@ -1093,7 +1152,7 @@ class ANDEDashboard {
         };
         hint.innerHTML = `<i class="fas fa-info-circle"></i> ${texts[this.selectionMode] || texts.manual}`;
     }
-    
+
     setupFeederEventListeners() {
         const estacionSelect = document.getElementById('filterEstacion');
         if (estacionSelect) {
@@ -1142,62 +1201,72 @@ class ANDEDashboard {
             });
         }
     }
-    
+
     filterFeedersByStation(estacion) {
         console.log("🔍 Filtrando alimentadores por estación:", estacion);
         const feederSelect = document.getElementById('filterTransformador');
         if (!feederSelect) return;
-    
+
         const selectedValues = Array.from(feederSelect.selectedOptions).map(opt => opt.value);
         feederSelect.innerHTML = '';
-    
+
         let allFeeders = [...this.allSecciones];
         if (estacion) allFeeders = allFeeders.filter(f => f.startsWith(estacion));
-    
+
         allFeeders.forEach(feeder => {
             const option = document.createElement('option');
             option.value = feeder;
             option.textContent = feeder;
             feederSelect.appendChild(option);
         });
-    
+
         selectedValues.forEach(val => {
             const option = Array.from(feederSelect.options).find(opt => opt.value === val);
             if (option) option.selected = true;
         });
-    
+
         this.updateFeederCount();
     }
-    
+
     selectAllFeeders() {
         console.log("✅ Seleccionando todos los alimentadores");
         const feederSelect = document.getElementById('filterTransformador');
         if (!feederSelect) return;
-        
-        if (document.getElementById('filterEstacion').value !== '') {
-            document.getElementById('filterEstacion').value = '';
-            this.filterFeedersByStation('');
-        }
-        
+
+        this.filterFeedersByStation('');
         Array.from(feederSelect.options).forEach(opt => opt.selected = true);
         this.updateFeederCount();
         this.showNotification('Todos los alimentadores seleccionados', 'success');
         if (this.globalMode === 'unique') this.loadDataDebounced();
     }
-    
-    selectStationFeeders(estacion) {
-        console.log("✅ Seleccionando todos los alimentadores de la estación:", estacion);
+
+    selectStationsFeeders() {
+        const stations = this.getSelectedStations();
+        this.selectedStations = stations;
         const feederSelect = document.getElementById('filterTransformador');
         if (!feederSelect) return;
-    
-        if (document.getElementById('filterEstacion').value !== estacion) {
-            document.getElementById('filterEstacion').value = estacion;
-            this.filterFeedersByStation(estacion);
+
+        if (!stations.length) {
+            this.filterFeedersByStation('');
+            Array.from(feederSelect.options).forEach(opt => opt.selected = false);
+            this.updateFeederCount();
+            this.showNotification('Selecciona al menos una estación', 'warning');
+            return;
         }
-    
-        Array.from(feederSelect.options).forEach(opt => opt.selected = true);
+
+        const feeders = this.allSecciones.filter(feeder => stations.some(st => feeder.startsWith(st)));
+        feederSelect.innerHTML = '';
+
+        feeders.forEach(feeder => {
+            const option = document.createElement('option');
+            option.value = feeder;
+            option.textContent = feeder;
+            option.selected = true;
+            feederSelect.appendChild(option);
+        });
+
         this.updateFeederCount();
-        this.showNotification(`Todos los alimentadores de ${estacion} seleccionados`, 'success');
+        this.showNotification(`Estaciones seleccionadas: ${stations.join(', ')}`, 'success');
         if (this.globalMode === 'unique') this.loadDataDebounced();
     }
 
@@ -1331,6 +1400,7 @@ class ANDEDashboard {
         this.updateMonthSelect();
         
         this.setFeederMode('manual');
+        this.renderStationSelectors();
         this.currentStationFilter = '';
         this.currentStationCompare = '';
         const estSel = document.getElementById('filterEstacion');
@@ -1371,6 +1441,7 @@ class ANDEDashboard {
         this.updateMonthSelect();
         
         this.setFeederMode('manual');
+        this.renderStationSelectors();
         this.currentStationFilter = '';
         this.currentStationCompare = '';
         const estSel = document.getElementById('filterEstacion');
@@ -1929,13 +2000,14 @@ class ANDEDashboard {
             return b.avg - a.avg;
         });
         
+        this.rankingItems = ranking;
         const top = ranking.slice(0, 10);
         console.log("🏆 Top 10 ranking:", top);
         this.rankingChart.data.labels = top.map(t => t.label);
         this.rankingChart.data.datasets[0].data = top.map(t => t.avg);
         this.rankingChart.data.datasets[0].backgroundColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
         this.rankingChart.data.datasets[0].borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
-        
+
         // ✨ Actualizar con animación
         this.rankingChart.update();
         console.log("✅ Ranking HD actualizado con animaciones");
@@ -2026,49 +2098,117 @@ class ANDEDashboard {
         }
     }
     
+    getCompleteSelectedStations() {
+        const selectedFeeders = this.getSelectedValues('filterTransformador');
+        if (!selectedFeeders.length) return [];
+
+        const stationToFeeders = {};
+        this.allSecciones.forEach(f => {
+            const st = f.substring(0, 3);
+            if (!stationToFeeders[st]) stationToFeeders[st] = [];
+            stationToFeeders[st].push(f);
+        });
+
+        return Object.entries(stationToFeeders)
+            .filter(([, feeders]) => feeders.every(f => selectedFeeders.includes(f)))
+            .map(([station]) => station)
+            .sort();
+    }
+
+    getStationSummaryBundle(stations) {
+        const validStations = (stations || []).filter(Boolean);
+        const byStation = {};
+
+        validStations.forEach(station => {
+            const stationData = this.data.filter(d => d.transformador?.startsWith(station));
+            const feederAvg = {};
+            stationData.forEach(d => {
+                if (!feederAvg[d.transformador]) feederAvg[d.transformador] = { sum: 0, count: 0 };
+                feederAvg[d.transformador].sum += d.frecuencia;
+                feederAvg[d.transformador].count += 1;
+            });
+            const labels = Object.keys(feederAvg);
+            byStation[station] = {
+                labels,
+                data: labels.map(l => feederAvg[l].sum / feederAvg[l].count),
+                colors: labels.map((_, i) => this.chartPalette[i % this.chartPalette.length])
+            };
+        });
+
+        const allLabels = validStations;
+        const allData = validStations.map(st => {
+            const vals = byStation[st]?.data || [];
+            return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+        });
+
+        return {
+            stations: validStations,
+            byStation,
+            allStations: {
+                labels: allLabels,
+                data: allData,
+                colors: allLabels.map((_, i) => this.chartPalette[i % this.chartPalette.length])
+            }
+        };
+    }
+
     updateStationSummary() {
         console.log("🏭 Actualizando resumen de estación HD...");
         if (!this.stationSummaryChart) return;
-        
-        const selectedFeeders = this.getSelectedValues('filterTransformador');
-        if (selectedFeeders.length === 0) {
-            document.getElementById('stationSummaryContainer').style.display = 'none';
-            return;
-        }
-        const prefixes = new Set(selectedFeeders.map(f => f.substring(0,3)));
-        if (prefixes.size !== 1) {
-            document.getElementById('stationSummaryContainer').style.display = 'none';
-            return;
-        }
-        const estacion = Array.from(prefixes)[0];
-        this.currentStationGroup = estacion;
-        
+
         const container = document.getElementById('stationSummaryContainer');
-        container.style.display = 'block';
         const stationName = document.getElementById('stationName');
+        const selector = document.getElementById('stationSummarySelect');
+        if (!container || !selector) return;
+
+        const completeStations = this.getCompleteSelectedStations();
+        if (!completeStations.length) {
+            container.style.display = 'none';
+            return;
+        }
+
+        const bundle = this.getStationSummaryBundle(completeStations);
+        container.style.display = 'block';
+
+        const previous = this.stationSummarySelection;
+        selector.innerHTML = '<option value="__ALL__">Resumen global de estaciones seleccionadas</option>' +
+            bundle.stations.map(st => `<option value="${st}">${st}</option>`).join('');
+
+        if (previous && (previous === '__ALL__' || bundle.stations.includes(previous))) {
+            selector.value = previous;
+        } else {
+            selector.value = bundle.stations.length === 1 ? bundle.stations[0] : '__ALL__';
+        }
+        this.stationSummarySelection = selector.value;
+
+        let labels = [];
+        let data = [];
+        let colors = [];
+
+        if (this.stationSummarySelection === '__ALL__') {
+            labels = bundle.allStations.labels;
+            data = bundle.allStations.data;
+            colors = bundle.allStations.colors;
+            this.currentStationGroup = 'Múltiples estaciones';
+        } else {
+            const current = bundle.byStation[this.stationSummarySelection] || { labels: [], data: [], colors: [] };
+            labels = current.labels;
+            data = current.data;
+            colors = current.colors;
+            this.currentStationGroup = this.stationSummarySelection;
+        }
+
         if (stationName) stationName.textContent = this.currentStationGroup;
-        
-        const stationData = this.data.filter(d => d.transformador.startsWith(this.currentStationGroup));
-        if (!stationData.length) return;
-        
-        const feederAvg = {};
-        stationData.forEach(d => {
-            if (!feederAvg[d.transformador]) feederAvg[d.transformador] = { sum: 0, count: 0 };
-            feederAvg[d.transformador].sum += d.frecuencia;
-            feederAvg[d.transformador].count += 1;
-        });
-        const labels = Object.keys(feederAvg);
-        const avgs = labels.map(l => feederAvg[l].sum / feederAvg[l].count);
-        console.log(`🏭 Resumen de ${estacion}:`, labels, avgs);
         this.stationSummaryChart.data.labels = labels;
-        this.stationSummaryChart.data.datasets[0].data = avgs;
-        this.stationSummaryChart.data.datasets[0].backgroundColor = labels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
-        
-        // ✨ Actualizar con animación
-        this.stationSummaryChart.update();
-        console.log("✅ Resumen de estación HD actualizado con animaciones");
+        this.stationSummaryChart.data.datasets[0].data = data;
+        this.stationSummaryChart.data.datasets[0].backgroundColor = colors;
+        this.stationSummaryChart.update('active');
+
+        this.expandedStationSummaryBundle = bundle;
+        console.log("✅ Resumen de estación HD actualizado con selección específica");
     }
-    
+
+    // ========== CONTROLES DE GRÁFICOS ==========
     // ========== CONTROLES DE GRÁFICOS ==========
     onChartTypeChange() { 
         console.log("🔄 Tipo de gráfico cambiado a:", document.getElementById('chartType')?.value);
@@ -2115,6 +2255,27 @@ class ANDEDashboard {
         this.updateCharts();
     }
     
+    expandRankingChart() {
+        console.log("🖥️ Abriendo ranking completo en nueva pestaña");
+        const rankingAll = this.rankingItems?.length ? this.rankingItems : [];
+        const chartData = {
+            rankingOnly: true,
+            rankingChart: {
+                labels: rankingAll.map(r => r.label),
+                data: rankingAll.map(r => r.avg),
+                colors: rankingAll.map((_,i) => this.chartPalette[i % this.chartPalette.length] + '80')
+            },
+            palette: this.chartPalette,
+            rankingMeta: {
+                totalItems: rankingAll.length,
+                sort: document.getElementById('rankingSort')?.value || 'avg',
+                group: document.getElementById('rankingGroup')?.value || 'alimentador'
+            }
+        };
+        localStorage.setItem('ande_chart_data', JSON.stringify(chartData));
+        window.open('chart.html?view=ranking', '_blank', 'width=1500,height=980');
+    }
+
     // ========== EXPANDIR GRÁFICOS ==========
     expandChart() {
         console.log("🖥️ Expandiendo gráficos a nueva ventana");
@@ -2132,6 +2293,11 @@ class ANDEDashboard {
                 labels: this.rankingChart?.data.labels || [],
                 data: this.rankingChart?.data.datasets[0]?.data || [],
                 colors: this.rankingChart?.data.datasets[0]?.backgroundColor || []
+            },
+            rankingChartAll: {
+                labels: (this.rankingItems || []).map(r => r.label),
+                data: (this.rankingItems || []).map(r => r.avg),
+                colors: (this.rankingItems || []).map((_, i) => this.chartPalette[i % this.chartPalette.length] + '80')
             },
             scatterChart: {
                 labels: this.scatterChart?.data.labels || [],
@@ -2160,6 +2326,8 @@ class ANDEDashboard {
                 colors: this.stationSummaryChart?.data.datasets[0]?.backgroundColor || [],
                 stationName: this.currentStationGroup || ''
             },
+            stationSummaryBundle: this.expandedStationSummaryBundle || this.getStationSummaryBundle(this.getCompleteSelectedStations()),
+            stationSummarySelection: this.stationSummarySelection || '__ALL__',
             seriesCount: this.mainChart?.data.datasets?.length || 0,
             dataPoints: this.data.length,
             periodRange: this.getPeriodRange(),
@@ -2450,7 +2618,7 @@ function initializeDashboard() {
 }
 
 function checkRequiredElements() {
-    const required = ['globalModeUnique','globalModeMultiple','filterEstacion','applyFilters','filterTipoMedicion','filterTransformador','filterYear','mainChart'];
+    const required = ['globalModeUnique','globalModeMultiple','stationCountInput','applyFilters','filterTipoMedicion','filterTransformador','filterYear','mainChart'];
     return required.filter(id => !document.getElementById(id));
 }
 
