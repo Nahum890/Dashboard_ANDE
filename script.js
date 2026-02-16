@@ -289,19 +289,11 @@ class ANDEDashboard {
         // ✨ ALTA DEFINICIÓN: Aumentar devicePixelRatio para gráficos más nítidos
         Chart.defaults.devicePixelRatio = Math.max(window.devicePixelRatio || 2, 3);
         
-        // ✨ ANIMACIONES SUAVES (Configuración corregida sin delay dinámico)
-        Chart.defaults.animation = {
-            duration: 800,
-            easing: 'easeInOutQuart'
-        };
+        Chart.defaults.animation.duration = 800;
+        Chart.defaults.animation.easing = 'easeInOutQuart';
         
         // Configuración de transiciones suaves
         Chart.defaults.transitions = {
-            active: {
-                animation: {
-                    duration: 300
-                }
-            },
             resize: {
                 animation: {
                     duration: 500
@@ -338,20 +330,9 @@ class ANDEDashboard {
                 aspectRatio: 2,
                 devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
                 
-                // ✨ ANIMACIONES PERSONALIZADAS
                 animation: {
                     duration: 800,
-                    easing: 'easeInOutQuart',
-                    onProgress: function(animation) {
-                        // Efecto de aparición progresiva
-                        const ctx = animation.chart.ctx;
-                        ctx.save();
-                        ctx.globalAlpha = animation.currentStep / animation.numSteps;
-                        ctx.restore();
-                    },
-                    onComplete: function() {
-                        console.log("✅ Animación del gráfico principal completada");
-                    }
+                    easing: 'easeInOutQuart'
                 },
                 
                 plugins: {
@@ -461,13 +442,9 @@ class ANDEDashboard {
                 aspectRatio: 1.5,
                 devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
                 
-                // ✨ ANIMACIONES DE BARRAS (Corregido)
                 animation: {
                     duration: 1000,
-                    easing: 'easeOutQuart',
-                    onComplete: function() {
-                        console.log("✅ Animación del ranking completada");
-                    }
+                    easing: 'easeOutQuart'
                 },
                 
                 plugins: { 
@@ -548,11 +525,10 @@ class ANDEDashboard {
                             pointStyle: 'circle'
                         } 
                     },
-                    tooltip: { 
-                        callbacks: { 
+                    tooltip: {
+                        callbacks: {
                             label: (ctx) => {
-                                const date = new Date(ctx.raw.x).toLocaleDateString('es-ES', { year: 'numeric', month: 'short' });
-                                return `${ctx.dataset.label}: ${date} → ${this.formatValue(ctx.raw.y)}`;
+                                return `${ctx.dataset.label}: ${this.formatValue(ctx.parsed.y)}`;
                             }
                         },
                         backgroundColor: 'rgba(15,23,42,0.98)',
@@ -561,15 +537,14 @@ class ANDEDashboard {
                     }
                 },
                 scales: {
-                    x: { 
-                        type: 'time',
-                        time: { unit: 'month', tooltipFormat: 'MMM yyyy' },
-                        grid: { 
+                    x: {
+                        type: 'category',
+                        grid: {
                             color: 'rgba(148,163,184,0.15)',
                             lineWidth: 1
                         },
-                        ticks: { 
-                            color: '#334155', 
+                        ticks: {
+                            color: '#334155',
                             font: { size: 11, weight: '500' },
                             padding: 8
                         }
@@ -627,10 +602,7 @@ class ANDEDashboard {
                     devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
                     cutout: '65%',
                     
-                    // ✨ ANIMACIONES ROTATIVAS (Corregido)
                     animation: {
-                        animateRotate: true,
-                        animateScale: true,
                         duration: 1200,
                         easing: 'easeInOutQuart'
                     },
@@ -686,10 +658,7 @@ class ANDEDashboard {
                     devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
                     cutout: '65%',
                     
-                    // ✨ ANIMACIONES ROTATIVAS (Corregido)
                     animation: {
-                        animateRotate: true,
-                        animateScale: true,
                         duration: 1200,
                         easing: 'easeInOutQuart'
                     },
@@ -1932,7 +1901,7 @@ class ANDEDashboard {
         }
         
         // ✨ Actualizar con animación suave
-        this.mainChart.update('active');
+        this.mainChart.update();
         console.log("✅ Gráfico principal HD actualizado con animaciones");
         this.updateChartLegend();
     }
@@ -1977,7 +1946,7 @@ class ANDEDashboard {
                     const idx = parseInt(el.dataset.index);
                     const meta = this.mainChart.getDatasetMeta(idx);
                     meta.hidden = !meta.hidden;
-                    this.mainChart.update('active'); // Con animación
+                    this.mainChart.update(); // Con animación
                     this.updateChartLegend();
                 }
             });
@@ -2040,7 +2009,7 @@ class ANDEDashboard {
         this.rankingChart.data.datasets[0].borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
 
         // ✨ Actualizar con animación
-        this.rankingChart.update('active');
+        this.rankingChart.update();
         console.log("✅ Ranking HD actualizado con animaciones");
     }
     
@@ -2058,9 +2027,19 @@ class ANDEDashboard {
         
         const feeders = [...new Set(this.data.map(d=>d.transformador))];
         console.log("🔌 Alimentadores en dispersión:", feeders);
+
+        // Construir labels ordenados (YYYY-MM)
+        const labelsSet = new Set();
+        this.data.forEach(d => labelsSet.add(`${d.year}-${String(d.month).padStart(2,'0')}`));
+        const labels = Array.from(labelsSet).sort();
+
         const datasets = feeders.map((f, i) => ({
             label: f,
-            data: this.data.filter(d=>d.transformador===f).map(d=>({ x: new Date(d.fecha), y: d.frecuencia })),
+            data: labels.map(lbl => {
+                const [y, m] = lbl.split('-').map(Number);
+                const pt = this.data.find(d => d.transformador === f && d.year === y && d.month === m);
+                return pt ? pt.frecuencia : null;
+            }),
             backgroundColor: this.chartPalette[i%this.chartPalette.length] + '80',
             borderColor: this.chartPalette[i%this.chartPalette.length],
             borderWidth: 2,
@@ -2070,10 +2049,11 @@ class ANDEDashboard {
             pointBorderWidth: 2,
             pointHoverBorderWidth: 3
         }));
+        this.scatterChart.data.labels = labels;
         this.scatterChart.data.datasets = datasets;
         
         // ✨ Actualizar con animación
-        this.scatterChart.update('active');
+        this.scatterChart.update();
         console.log("✅ Dispersión HD actualizada con animaciones");
     }
     
@@ -2102,7 +2082,7 @@ class ANDEDashboard {
             this.pieChartByFeeder.data.labels = feederLabels;
             this.pieChartByFeeder.data.datasets[0].data = feederValues;
             this.pieChartByFeeder.data.datasets[0].backgroundColor = feederLabels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
-            this.pieChartByFeeder.update('active'); // ✨ Con animación
+            this.pieChartByFeeder.update(); // ✨ Con animación
         }
         
         const typeData = {};
@@ -2114,7 +2094,7 @@ class ANDEDashboard {
             this.pieChartByType.data.labels = typeLabels;
             this.pieChartByType.data.datasets[0].data = typeValues;
             this.pieChartByType.data.datasets[0].backgroundColor = typeLabels.map((_,i) => this.chartPalette[(i+5)%this.chartPalette.length]);
-            this.pieChartByType.update('active'); // ✨ Con animación
+            this.pieChartByType.update(); // ✨ Con animación
         }
     }
     
@@ -2220,12 +2200,12 @@ class ANDEDashboard {
 
         if (stationName) stationName.textContent = this.currentStationGroup;
         this.stationSummaryChart.data.labels = labels;
-        this.stationSummaryChart.data.datasets[0].data = data;
-        this.stationSummaryChart.data.datasets[0].backgroundColor = colors;
-        this.stationSummaryChart.update('active');
-
-        this.expandedStationSummaryBundle = bundle;
-        console.log("✅ Resumen de estación HD actualizado con selección específica");
+        this.stationSummaryChart.data.datasets[0].data = avgs;
+        this.stationSummaryChart.data.datasets[0].backgroundColor = labels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        
+        // ✨ Actualizar con animación
+        this.stationSummaryChart.update();
+        console.log("✅ Resumen de estación HD actualizado con animaciones");
     }
 
     // ========== CONTROLES DE GRÁFICOS ==========
@@ -2243,7 +2223,7 @@ class ANDEDashboard {
             ds.pointRadius = show ? 4 : 0; 
             ds.pointHoverRadius = show ? 7 : 6; 
         });
-        this.mainChart.update('active'); // Con animación
+        this.mainChart.update(); // Con animación
     }
     
     zoomChart(dir) {
@@ -2255,7 +2235,7 @@ class ANDEDashboard {
             const center = (this.mainChart.options.scales.x.min + this.mainChart.options.scales.x.max) / 2;
             this.mainChart.options.scales.x.min = center - (range * scale) / 2;
             this.mainChart.options.scales.x.max = center + (range * scale) / 2;
-            this.mainChart.update('active');
+            this.mainChart.update();
         }
     }
     
@@ -2266,7 +2246,7 @@ class ANDEDashboard {
         this.mainChart.options.scales.x.max = undefined;
         this.mainChart.options.scales.y.min = undefined;
         this.mainChart.options.scales.y.max = undefined;
-        this.mainChart.update('active'); // Con animación
+        this.mainChart.update(); // Con animación
     }
     
     onGroupByChange() {
@@ -2320,7 +2300,15 @@ class ANDEDashboard {
                 colors: (this.rankingItems || []).map((_, i) => this.chartPalette[i % this.chartPalette.length] + '80')
             },
             scatterChart: {
-                datasets: this.scatterChart?.data.datasets || []
+                labels: this.scatterChart?.data.labels || [],
+                datasets: (this.scatterChart?.data.datasets || []).map(ds => ({
+                    label: ds.label,
+                    data: ds.data,
+                    backgroundColor: ds.backgroundColor,
+                    borderColor: ds.borderColor,
+                    borderWidth: ds.borderWidth,
+                    pointRadius: ds.pointRadius
+                }))
             },
             pieFeeder: {
                 labels: this.pieChartByFeeder?.data.labels || [],
