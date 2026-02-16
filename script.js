@@ -2200,12 +2200,12 @@ class ANDEDashboard {
 
         if (stationName) stationName.textContent = this.currentStationGroup;
         this.stationSummaryChart.data.labels = labels;
-        this.stationSummaryChart.data.datasets[0].data = data;
-        this.stationSummaryChart.data.datasets[0].backgroundColor = colors;
-        this.stationSummaryChart.update('active');
-
-        this.expandedStationSummaryBundle = bundle;
-        console.log("✅ Resumen de estación HD actualizado con selección específica");
+        this.stationSummaryChart.data.datasets[0].data = avgs;
+        this.stationSummaryChart.data.datasets[0].backgroundColor = labels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        
+        // ✨ Actualizar con animación
+        this.stationSummaryChart.update();
+        console.log("✅ Resumen de estación HD actualizado con animaciones");
     }
 
     // ========== CONTROLES DE GRÁFICOS ==========
