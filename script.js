@@ -28,7 +28,7 @@ class ANDEDashboard {
         this.estaciones = [];
         
         this.defaultFilters = {
-            tipoMedicion: ['ACCID.DEP'],
+            tipoMedicion: ['TOTAL FEP'],
             transformador: ['ACY1'],
             year: ['2024'],
             month: [1,2,3,4,5,6,7,8,9,10,11,12],
@@ -49,6 +49,7 @@ class ANDEDashboard {
         // ---------- PROPIEDADES PARA FILTRO INTELIGENTE ----------
         this.selectionMode = 'manual';
         this.currentStationFilter = '';
+        this.currentStationCompare = '';
         
         // ---------- DEBOUNCE ----------
         this.loadDataDebounced = this.debounce(this.loadData.bind(this), 500);
@@ -1004,6 +1005,12 @@ class ANDEDashboard {
                 estSel.innerHTML = '<option value="">Todas las estaciones</option>' + 
                     this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
             }
+
+            const estCompareSel = document.getElementById('filterEstacionCompare');
+            if (estCompareSel) {
+                estCompareSel.innerHTML = '<option value="">Selecciona estación 2</option>' +
+                    this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
+            }
     
             const feedSel = document.getElementById('filterTransformador');
             if (feedSel) {
@@ -1056,24 +1063,32 @@ class ANDEDashboard {
         this.selectionMode = mode;
         const tabs = document.querySelectorAll('.mode-tab');
         tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
-    
+
         const stationSelectorContainer = document.getElementById('stationSelectorContainer');
+        const compareStationContainer = document.getElementById('compareStationContainer');
+
         if (stationSelectorContainer) {
-            stationSelectorContainer.style.display = (mode === 'station' || mode === 'manual') ? 'block' : 'none';
+            stationSelectorContainer.style.display = (mode === 'station' || mode === 'manual' || mode === 'compare_stations') ? 'block' : 'none';
         }
-    
+
+        if (compareStationContainer) {
+            compareStationContainer.style.display = mode === 'compare_stations' ? 'block' : 'none';
+        }
+
         if (mode === 'all') this.selectAllFeeders();
         if (mode === 'station' && this.currentStationFilter) this.selectStationFeeders(this.currentStationFilter);
-        
+        if (mode === 'compare_stations') this.selectComparisonStationsFeeders();
+
         this.updateFeederModeHint();
     }
-    
+
     updateFeederModeHint() {
         const hint = document.getElementById('estacionHint');
         if (!hint) return;
         const texts = {
             manual: 'Filtra los alimentadores por estación y selecciona manualmente con Ctrl+Click.',
             station: 'Al seleccionar una estación, se marcarán automáticamente todos sus alimentadores.',
+            compare_stations: 'Selecciona 2 estaciones para comparar sus alimentadores en conjunto.',
             all: 'Modo "Todos los alimentadores" – se muestran y seleccionan todos.'
         };
         hint.innerHTML = `<i class="fas fa-info-circle"></i> ${texts[this.selectionMode] || texts.manual}`;
@@ -1084,35 +1099,40 @@ class ANDEDashboard {
         if (estacionSelect) {
             estacionSelect.addEventListener('change', (e) => {
                 const estacion = e.target.value;
-                console.log("🔄 Estación seleccionada:", estacion);
+                console.log("🔄 Estación 1 seleccionada:", estacion);
                 this.currentStationFilter = estacion;
-                this.filterFeedersByStation(estacion);
-                if (this.selectionMode === 'station' && estacion) this.selectStationFeeders(estacion);
+
+                if (this.selectionMode === 'compare_stations') {
+                    this.selectComparisonStationsFeeders();
+                } else {
+                    this.filterFeedersByStation(estacion);
+                    if (this.selectionMode === 'station' && estacion) this.selectStationFeeders(estacion);
+                }
             });
         }
-    
+
+        const estacionCompareSelect = document.getElementById('filterEstacionCompare');
+        if (estacionCompareSelect) {
+            estacionCompareSelect.addEventListener('change', (e) => {
+                const estacion = e.target.value;
+                console.log("🔄 Estación 2 seleccionada:", estacion);
+                this.currentStationCompare = estacion;
+                if (this.selectionMode === 'compare_stations') this.selectComparisonStationsFeeders();
+            });
+        }
+
         const selectAllBtn = document.getElementById('selectAllFeedersBtn');
         if (selectAllBtn) selectAllBtn.addEventListener('click', () => {
             console.log("🖱️ Botón 'Todos' clickeado");
             this.selectAllFeeders();
         });
-    
-        const selectStationBtn = document.getElementById('selectStationFeedersBtn');
-        if (selectStationBtn) {
-            selectStationBtn.addEventListener('click', () => {
-                console.log("🖱️ Botón 'Todos de esta estación' clickeado");
-                const estacion = document.getElementById('filterEstacion')?.value;
-                if (estacion) this.selectStationFeeders(estacion);
-                else this.showNotification('Selecciona una estación primero', 'warning');
-            });
-        }
-    
+
         const clearBtn = document.getElementById('clearFeedersBtn');
         if (clearBtn) clearBtn.addEventListener('click', () => {
             console.log("🖱️ Botón 'Limpiar' clickeado");
             this.clearFeeders();
         });
-    
+
         const feederSelect = document.getElementById('filterTransformador');
         if (feederSelect) {
             feederSelect.addEventListener('change', () => {
@@ -1180,6 +1200,42 @@ class ANDEDashboard {
         this.showNotification(`Todos los alimentadores de ${estacion} seleccionados`, 'success');
         if (this.globalMode === 'unique') this.loadDataDebounced();
     }
+
+    selectComparisonStationsFeeders() {
+        const stationOne = document.getElementById('filterEstacion')?.value || '';
+        const stationTwo = document.getElementById('filterEstacionCompare')?.value || '';
+
+        this.currentStationFilter = stationOne;
+        this.currentStationCompare = stationTwo;
+
+        const selectedStations = [stationOne, stationTwo].filter(Boolean);
+        const feederSelect = document.getElementById('filterTransformador');
+        if (!feederSelect) return;
+
+        if (selectedStations.length === 0) {
+            this.filterFeedersByStation('');
+            Array.from(feederSelect.options).forEach(opt => opt.selected = false);
+            this.updateFeederCount();
+            this.showNotification('Selecciona al menos una estación para comparar', 'warning');
+            return;
+        }
+
+        const feeders = this.allSecciones.filter(feeder => selectedStations.some(st => feeder.startsWith(st)));
+        feederSelect.innerHTML = '';
+
+        feeders.forEach(feeder => {
+            const option = document.createElement('option');
+            option.value = feeder;
+            option.textContent = feeder;
+            option.selected = true;
+            feederSelect.appendChild(option);
+        });
+
+        this.updateFeederCount();
+        const stationLabel = selectedStations.join(' vs ');
+        this.showNotification(`Comparando estaciones: ${stationLabel}`, 'success');
+        if (this.globalMode === 'unique') this.loadDataDebounced();
+    }
     
     clearFeeders() {
         console.log("🧹 Limpiando selección de alimentadores");
@@ -1223,12 +1279,14 @@ class ANDEDashboard {
                 }
             };
             setSelect('filterYear', '2024');
-            setSelect('filterTipoMedicion', 'ACCID.DEP');
+            setSelect('filterTipoMedicion', 'TOTAL FEP');
             
             const feedSel = document.getElementById('filterTransformador');
             if (feedSel) {
                 const estSel = document.getElementById('filterEstacion');
                 if (estSel) estSel.value = '';
+                const estCompareSel = document.getElementById('filterEstacionCompare');
+                if (estCompareSel) estCompareSel.value = '';
                 this.filterFeedersByStation('');
                 const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
                 if (option) option.selected = true;
@@ -1238,7 +1296,7 @@ class ANDEDashboard {
             
             this.filters = {
                 year: [document.getElementById('filterYear')?.value || '2024'],
-                tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'ACCID.DEP'],
+                tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'TOTAL FEP'],
                 transformador: this.getSelectedValues('filterTransformador'),
                 month: Array.from(this.selectedMonths),
                 estacion: '',
@@ -1274,8 +1332,11 @@ class ANDEDashboard {
         
         this.setFeederMode('manual');
         this.currentStationFilter = '';
+        this.currentStationCompare = '';
         const estSel = document.getElementById('filterEstacion');
         if (estSel) estSel.value = '';
+        const estCompareSel = document.getElementById('filterEstacionCompare');
+        if (estCompareSel) estCompareSel.value = '';
         this.filterFeedersByStation('');
         this.clearFeeders();
         
@@ -1288,7 +1349,7 @@ class ANDEDashboard {
         
         const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
         setVal('filterYear', '2024');
-        setVal('filterTipoMedicion', 'ACCID.DEP');
+        setVal('filterTipoMedicion', 'TOTAL FEP');
         
         document.querySelectorAll('.period-tab').forEach(tab => {
             tab.classList.toggle('active', tab.dataset.period === 'select_months');
@@ -1311,8 +1372,11 @@ class ANDEDashboard {
         
         this.setFeederMode('manual');
         this.currentStationFilter = '';
+        this.currentStationCompare = '';
         const estSel = document.getElementById('filterEstacion');
         if (estSel) estSel.value = '';
+        const estCompareSel = document.getElementById('filterEstacionCompare');
+        if (estCompareSel) estCompareSel.value = '';
         this.filterFeedersByStation('');
         this.clearFeeders();
         
@@ -1400,7 +1464,7 @@ class ANDEDashboard {
             
             const tipoSel = document.getElementById('filterTipoMedicion');
             const tipos = this.getSelectedValues('filterTipoMedicion');
-            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'ACCID.DEP');
+            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'TOTAL FEP');
             params.append('tipo_medicion', tipoVal);
             console.log("📊 Tipos:", tipos);
             
@@ -1581,7 +1645,7 @@ class ANDEDashboard {
         console.log("⚠️ Generando datos de ejemplo...");
         const secciones = this.filters.transformador?.length ? this.filters.transformador : ['ACY1','ACY2','ACY3'];
         const años = this.filters.year?.map(y=>parseInt(y)).filter(y=>!isNaN(y)).length ? this.filters.year.map(y=>parseInt(y)) : [2023,2024];
-        const tipos = this.filters.tipoMedicion?.length ? this.filters.tipoMedicion : ['ACCID.DEP','TOTAL FEP'];
+        const tipos = this.filters.tipoMedicion?.length ? this.filters.tipoMedicion : ['TOTAL FEP'];
         const meses = Array.from(this.selectedMonths).length ? Array.from(this.selectedMonths) : [1,2,3,4,5,6,7,8,9,10,11,12];
         this.data = [];
         secciones.forEach((sec, i) => {

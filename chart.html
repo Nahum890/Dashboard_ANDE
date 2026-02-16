@@ -807,10 +807,14 @@
                 const typeSelect = document.getElementById('chartTypeSelect');
                 if (typeSelect) {
                     typeSelect.addEventListener('change', function(e) {
-                        mainChart.config.type = e.target.value;
-                        if (e.target.value === 'area') {
+                        const selectedType = e.target.value;
+                        const resolvedChartType = selectedType === 'area' ? 'line' : selectedType;
+
+                        mainChart.config.type = resolvedChartType;
+
+                        if (selectedType === 'area') {
                             mainChart.data.datasets.forEach(ds => { ds.fill = true; ds.backgroundColor = ds.borderColor + '30'; });
-                        } else if (e.target.value === 'bar') {
+                        } else if (selectedType === 'bar') {
                             mainChart.data.datasets.forEach(ds => { ds.fill = false; ds.borderWidth = 1; ds.borderRadius = 4; });
                         } else {
                             mainChart.data.datasets.forEach(ds => { ds.fill = false; ds.borderWidth = 2.5; });
