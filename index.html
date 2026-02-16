@@ -88,8 +88,11 @@
                         <button type="button" class="mode-tab active" data-mode="manual">
                             <i class="fas fa-mouse-pointer"></i> Manual
                         </button>
-                        <button type="button" class="mode-tab" data-mode="station">
-                            <i class="fas fa-building"></i> Todos de estación
+                        <button type="button" class="mode-tab" data-mode="station_multi">
+                            <i class="fas fa-building"></i> Estaciones completas
+                        </button>
+                        <button type="button" class="mode-tab" data-mode="compare_stations">
+                            <i class="fas fa-code-compare"></i> Comparar 2 estaciones
                         </button>
                         <button type="button" class="mode-tab" data-mode="all">
                             <i class="fas fa-layer-group"></i> Todos
@@ -98,22 +101,29 @@
 
                     <div id="stationSelectorContainer" style="margin-top: 0.8rem;">
                         <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
-                            <i class="fas fa-building"></i> Estación
+                            <i class="fas fa-building"></i> Estación 1
                         </label>
                         <select id="filterEstacion" class="form-select">
                             <option value="">Todas las estaciones</option>
                         </select>
-                        <small class="form-hint" id="estacionHint">
-                            <i class="fas fa-info-circle"></i> Filtra los alimentadores por estación
-                        </small>
                     </div>
+
+                    <div id="compareStationContainer" style="margin-top: 0.6rem; display: none;">
+                        <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
+                            <i class="fas fa-building"></i> Estación 2
+                        </label>
+                        <select id="filterEstacionCompare" class="form-select">
+                            <option value="">Selecciona estación 2</option>
+                        </select>
+                    </div>
+
+                    <small class="form-hint" id="estacionHint">
+                        <i class="fas fa-info-circle"></i> Filtra los alimentadores por estación
+                    </small>
 
                     <div class="feeder-actions" id="feederActions">
                         <button type="button" class="btn-outline small" id="selectAllFeedersBtn">
                             <i class="fas fa-check-double"></i> Todos
-                        </button>
-                        <button type="button" class="btn-outline small" id="selectStationFeedersBtn">
-                            <i class="fas fa-building"></i> Todos de esta estación
                         </button>
                         <button type="button" class="btn-outline small" id="clearFeedersBtn">
                             <i class="fas fa-times"></i> Limpiar
@@ -469,6 +479,9 @@
                         <div class="chart-note">
                             <i class="fas fa-info-circle"></i> Ranking según agrupación y métrica seleccionadas
                         </div>
+                        <button class="btn-outline small" id="expandRankingBtn" type="button">
+                            <i class="fas fa-up-right-from-square"></i> Ver ranking completo
+                        </button>
                     </div>
                 </div>
             </div>
@@ -500,7 +513,10 @@
             <!-- RESUMEN POR ESTACIÓN -->
             <div id="stationSummaryContainer" class="card" style="margin-top: 1.5rem; display: none;">
                 <div class="card-header">
-                    <h3><i class="fas fa-layer-group"></i> Resumen de la estación <span id="stationName"></span></h3>
+                    <h3><i class="fas fa-layer-group"></i> Resumen de estación <span id="stationName"></span></h3>
+                    <select id="stationSummarySelect" class="ranking-select" style="max-width: 280px;">
+                        <option value="">Selecciona estación</option>
+                    </select>
                 </div>
                 <div class="card-body">
                     <div class="chart-wrapper" style="height: 300px;">
