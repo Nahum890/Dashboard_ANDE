@@ -1216,7 +1216,6 @@ class ANDEDashboard {
                     this.selectComparisonStationsFeeders();
                 } else {
                     this.filterFeedersByStation(estacion);
-                    if (this.selectionMode === 'station' && estacion) this.selectStationFeeders(estacion);
                 }
             });
         }
