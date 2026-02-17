@@ -1027,12 +1027,13 @@
             updateProgress(90, 'Cargando resumen de estación...');
             const stationCard = document.getElementById('stationSummaryCard');
             const stationNameSpan = document.getElementById('stationNameSpan');
-            const stationSummarySelect = document.getElementById('stationSummarySelectExpanded');
+            const stationSummarySelect = document.getElementById('stationSummarySelectExpanded') || document.getElementById('stationSelectExpanded');
             const summaryBundle = rawData.stationSummaryBundle;
-            if (stationCtx && summaryBundle && summaryBundle.stations?.length) {
+            const stations = Array.isArray(summaryBundle?.stations) ? summaryBundle.stations : [];
+            if (stationCtx && stationSummarySelect && stations.length) {
                 stationCard.classList.remove('hidden-chart');
                 stationSummarySelect.innerHTML = '<option value="__ALL__">Resumen global de estaciones seleccionadas</option>' +
-                    summaryBundle.stations.map(st => `<option value="${st}">${st}</option>`).join('');
+                    stations.map(st => `<option value="${st}">${st}</option>`).join('');
 
                 const renderSummary = (value) => {
                     const selected = value || '__ALL__';
@@ -1089,10 +1090,14 @@
             }
 
             // ---- ACTUALIZAR PANEL DE INFORMACIÓN ----
-            document.getElementById('seriesCountDisplay').textContent = rawData.seriesCount || '0';
-            document.getElementById('dataPointsDisplay').textContent = (rawData.dataPoints || 0).toLocaleString();
-            document.getElementById('periodRangeDisplay').textContent = rawData.periodRange || 'N/A';
-            document.getElementById('lastUpdateDisplay').textContent = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            const seriesCountDisplay = document.getElementById('seriesCountDisplay');
+            const dataPointsDisplay = document.getElementById('dataPointsDisplay');
+            const periodRangeDisplay = document.getElementById('periodRangeDisplay');
+            const lastUpdateDisplay = document.getElementById('lastUpdateDisplay');
+            if (seriesCountDisplay) seriesCountDisplay.textContent = rawData.seriesCount || '0';
+            if (dataPointsDisplay) dataPointsDisplay.textContent = (rawData.dataPoints || 0).toLocaleString();
+            if (periodRangeDisplay) periodRangeDisplay.textContent = rawData.periodRange || 'N/A';
+            if (lastUpdateDisplay) lastUpdateDisplay.textContent = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
             const params = new URLSearchParams(window.location.search);
             if (rawData.rankingOnly || params.get('view') === 'ranking') {
