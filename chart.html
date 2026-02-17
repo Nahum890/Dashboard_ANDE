@@ -6,7 +6,7 @@
     <title>Dashboard ANDE · Vista Completa</title>
     <!-- Chart.js y adaptador de fechas -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <!-- Adapter de date-fns removido: se usa escala category en vez de time -->
     <!-- Font Awesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
@@ -590,9 +590,7 @@
                 <div id="stationSummaryCard" class="chart-card col-span-12 hidden-chart">
                     <div class="card-header">
                         <h3><i class="fas fa-layer-group"></i> Resumen estación <span id="stationNameSpan"></span></h3>
-                        <select id="stationSummarySelectExpanded" class="control-select" style="max-width: 280px;">
-                            <option value="__all__">Todas las estaciones (promedio)</option>
-                        </select>
+                        <select id="stationSummarySelectExpanded" class="control-select" style="max-width: 320px;"></select>
                     </div>
                     <div class="chart-wrapper chart-wrapper-large">
                         <canvas id="stationSummaryExpanded"></canvas>
@@ -876,9 +874,10 @@
             updateProgress(50, 'Procesando ranking...');
             let rankingChart = null;
             if (rankCtx && rawData.rankingChart) {
-                const rankLabels = rawData.rankingChart.labels || [];
-                const rankData = rawData.rankingChart.data || [];
-                const rankColors = rawData.rankingChart.colors || rankLabels.map((_, i) => palette[i % palette.length]);
+                const rankingSource = (rawData.rankingChartAll && rawData.rankingChartAll.labels?.length) ? rawData.rankingChartAll : rawData.rankingChart;
+                const rankLabels = rankingSource?.labels || [];
+                const rankData = rankingSource?.data || [];
+                const rankColors = rankingSource?.colors || rankLabels.map((_, i) => palette[i % palette.length]);
                 rankingChart = new Chart(rankCtx, {
                     type: 'bar',
                     data: {
@@ -920,10 +919,13 @@
 
             // ---- DISPERSIÓN ----
             updateProgress(65, 'Renderizando dispersión...');
-            if (scatterCtx && rawData.scatterChart && rawData.scatterChart.datasets) {
+            if (scatterCtx && rawData.scatterChart) {
+                // Convertir datos scatter {x: Date, y: value} a formato category
+                const scatterDatasets = rawData.scatterChart.datasets || [];
+                const scatterLabels = rawData.scatterChart.labels || [];
                 new Chart(scatterCtx, {
                     type: 'scatter',
-                    data: { datasets: rawData.scatterChart.datasets },
+                    data: { labels: scatterLabels, datasets: scatterDatasets },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
@@ -931,18 +933,13 @@
                             legend: { position: 'top', labels: { color: '#cbd5e1' } },
                             tooltip: {
                                 callbacks: {
-                                    label: (ctx) => {
-                                        const d = new Date(ctx.raw.x);
-                                        const fecha = d.toLocaleDateString('es-ES', { year: 'numeric', month: 'short' });
-                                        return `${ctx.dataset.label}: ${fecha} → ${formatNumber(ctx.raw.y)}`;
-                                    }
+                                    label: (ctx) => `${ctx.dataset.label}: ${formatNumber(ctx.parsed.y)}`
                                 }
                             }
                         },
                         scales: {
                             x: {
-                                type: 'time',
-                                time: { unit: 'month', tooltipFormat: 'MMM yyyy', displayFormats: { month: 'MMM yyyy' } },
+                                type: 'category',
                                 grid: { color: 'rgba(148,163,184,0.15)' },
                                 ticks: { color: '#94a3b8' }
                             },
@@ -1030,44 +1027,81 @@
             updateProgress(90, 'Cargando resumen de estación...');
             const stationCard = document.getElementById('stationSummaryCard');
             const stationNameSpan = document.getElementById('stationNameSpan');
-            const stationSelectExpanded = document.getElementById('stationSummarySelectExpanded');
-            let stationSummaryChartExpanded = null;
-
-            const summaryByStation = rawData.stationSummaryByStation || {};
-            const stationKeys = Object.keys(summaryByStation || {});
-
-            const renderStationSummaryExpanded = (selectedStation) => {
-                const availableStations = Object.keys(summaryByStation || {});
-                if (!stationCtx) return;
-                if (stationSummaryChartExpanded) {
-                    stationSummaryChartExpanded.destroy();
-                    stationSummaryChartExpanded = null;
-                }
-
-                let labels = [];
-                let values = [];
-                let titleText = '(promedio por estación)';
-
-                if (selectedStation && selectedStation !== '__all__' && summaryByStation[selectedStation]) {
-                    labels = summaryByStation[selectedStation].labels || [];
-                    values = summaryByStation[selectedStation].data || [];
-                    titleText = selectedStation;
-                } else {
-                    labels = availableStations;
-                    values = availableStations.map(st => {
-                        const arr = summaryByStation[st]?.data || [];
-                        return arr.reduce((a,b) => a + b, 0) / (arr.length || 1);
-                    });
-                }
-
-                if (!labels.length) {
-                    stationCard.classList.add('hidden-chart');
-                    return;
-                }
-
+            const stationSummarySelect = document.getElementById('stationSummarySelectExpanded');
+            const summaryBundle = rawData.stationSummaryBundle;
+            if (stationCtx && summaryBundle && summaryBundle.stations?.length) {
                 stationCard.classList.remove('hidden-chart');
-                if (stationNameSpan) stationNameSpan.textContent = titleText;
+                stationSummarySelect.innerHTML = '<option value="__ALL__">Resumen global de estaciones seleccionadas</option>' +
+                    summaryBundle.stations.map(st => `<option value="${st}">${st}</option>`).join('');
 
+                const renderSummary = (value) => {
+                    const selected = value || '__ALL__';
+                    const payload = selected === '__ALL__' ? summaryBundle.allStations : (summaryBundle.byStation?.[selected] || { labels: [], data: [], colors: [] });
+                    if (stationNameSpan) stationNameSpan.textContent = selected === '__ALL__' ? 'Múltiples estaciones' : selected;
+                    if (window.stationSummaryExpandedChart) window.stationSummaryExpandedChart.destroy();
+                    window.stationSummaryExpandedChart = new Chart(stationCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: payload.labels,
+                            datasets: [{
+                                label: 'Promedio',
+                                data: payload.data,
+                                backgroundColor: payload.colors || palette,
+                                borderWidth: 1,
+                                borderRadius: 4
+                            }]
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: { callbacks: { label: (ctx) => `Promedio: ${formatNumber(ctx.raw)}` } }
+                            },
+                            scales: {
+                                x: { grid: { color: 'rgba(148,163,184,0.15)' }, ticks: { color: '#94a3b8', callback: formatNumber } },
+                                y: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 11 } } }
+                            }
+                        }
+                    });
+                };
+
+                const initial = rawData.stationSummarySelection || '__ALL__';
+                if (initial && Array.from(stationSummarySelect.options).some(o => o.value === initial)) {
+                    stationSummarySelect.value = initial;
+                } else {
+                    stationSummarySelect.value = '__ALL__';
+                }
+                stationSummarySelect.addEventListener('change', (e) => renderSummary(e.target.value));
+                renderSummary(stationSummarySelect.value);
+            } else if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+                stationCard.classList.remove('hidden-chart');
+                if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
+                if (stationSummarySelect) stationSummarySelect.style.display = 'none';
+                new Chart(stationCtx, {
+                    type: 'bar',
+                    data: { labels: rawData.stationSummary.labels, datasets: [{ label: 'Promedio', data: rawData.stationSummary.data, backgroundColor: rawData.stationSummary.colors || palette, borderWidth: 1, borderRadius: 4 }] },
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Promedio: ${formatNumber(ctx.raw)}` } } } }
+                });
+            };
+
+            if (stationCtx && stations.length) {
+                stationCard.classList.remove('hidden-chart');
+                if (stationSelectExpanded) {
+                    const selectedDefault = rawData.stationSummarySelected || '__all__';
+                    stationSelectExpanded.innerHTML = '<option value="__all__">Todas las estaciones (promedio)</option>' +
+                        stations.map(st => `<option value="${st}">${st}</option>`).join('');
+                    stationSelectExpanded.value = stations.includes(selectedDefault) ? selectedDefault : '__all__';
+                    stationSelectExpanded.addEventListener('change', (e) => renderStationSummaryExpanded(e.target.value));
+                    renderStationSummaryExpanded(stationSelectExpanded.value);
+                } else {
+                    renderStationSummaryExpanded(rawData.stationSummarySelected || '__all__');
+                }
+            } else if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+                // fallback con formato antiguo
+                stationCard.classList.remove('hidden-chart');
+                if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
                 stationSummaryChartExpanded = new Chart(stationCtx, {
                     type: 'bar',
                     data: {
@@ -1080,19 +1114,7 @@
                             borderRadius: 4
                         }]
                     },
-                    options: {
-                        indexAxis: 'y',
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { callbacks: { label: (ctx) => `Promedio: ${formatNumber(ctx.raw)}` } }
-                        },
-                        scales: {
-                            x: { grid: { color: 'rgba(148,163,184,0.15)' }, ticks: { color: '#94a3b8', callback: formatNumber } },
-                            y: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 11 } } }
-                        }
-                    }
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
                 });
             };
 
@@ -1135,6 +1157,21 @@
             document.getElementById('dataPointsDisplay').textContent = (rawData.dataPoints || 0).toLocaleString();
             document.getElementById('periodRangeDisplay').textContent = rawData.periodRange || 'N/A';
             document.getElementById('lastUpdateDisplay').textContent = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+            const params = new URLSearchParams(window.location.search);
+            if (rawData.rankingOnly || params.get('view') === 'ranking') {
+                document.querySelectorAll('.dashboard-grid .chart-card').forEach(card => {
+                    const hasRanking = card.querySelector('#rankingChartExpanded');
+                    if (!hasRanking) card.classList.add('hidden-chart');
+                });
+                const rankingCard = document.getElementById('rankingChartExpanded')?.closest('.chart-card');
+                if (rankingCard) {
+                    rankingCard.classList.remove('col-span-4');
+                    rankingCard.classList.add('col-span-12');
+                    const wrap = rankingCard.querySelector('.chart-wrapper');
+                    if (wrap) wrap.style.height = '75vh';
+                }
+            }
 
             // ---- FINALIZAR Y MOSTRAR ----
             updateProgress(100, '¡Visualización completa!');
