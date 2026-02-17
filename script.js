@@ -990,6 +990,9 @@ class ANDEDashboard {
     onFilterChange() {
         console.log("🔄 Filtro cambiado, globalMode =", this.globalMode);
         if (this.globalMode === 'unique') {
+            this.enforceSingleSelect('filterTransformador');
+            this.enforceSingleSelect('filterTipoMedicion');
+            this.enforceSingleSelect('filterYear');
             console.log("🔄 Modo único, cargando datos con debounce");
             this.loadDataDebounced();
         } else {
@@ -1071,6 +1074,7 @@ class ANDEDashboard {
         this.updateFeederCount();
         this.setFeederMode('compare_stations');
         this.renderStationSelectors();
+        this.updateComparisonUiByGlobalMode();
     }
     
     setupFeederModeTabs() {
@@ -1148,6 +1152,7 @@ class ANDEDashboard {
     }
 
     setFeederMode(mode) {
+        if (this.globalMode === 'unique' && mode !== 'manual') mode = 'manual';
         this.selectionMode = mode;
         const tabs = document.querySelectorAll('.mode-tab');
         tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
@@ -1435,6 +1440,52 @@ class ANDEDashboard {
     }
     
     // ========== MANEJO DE FILTROS GLOBALES ==========
+    enforceSingleSelect(selectId) {
+        const sel = document.getElementById(selectId);
+        if (!sel || !sel.multiple) return;
+        const selected = Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
+        if (selected.length <= 1) return;
+        const keep = selected[0];
+        Array.from(sel.options).forEach(opt => {
+            opt.selected = opt.value === keep;
+        });
+    }
+
+    updateComparisonUiByGlobalMode() {
+        const tabs = document.querySelector('.selection-mode-tabs');
+        const openMultiBtn = document.getElementById('openStationMultiBtn');
+        const compareContainer = document.getElementById('compareStationContainer');
+        const stationMultiContainer = document.getElementById('stationMultiContainer');
+        const stationSelectorContainer = document.getElementById('stationSelectorContainer');
+        const estCompareSel = document.getElementById('filterEstacionCompare');
+
+        if (this.globalMode === 'unique') {
+            if (tabs) tabs.style.display = 'none';
+            if (openMultiBtn) openMultiBtn.style.display = 'none';
+            if (compareContainer) compareContainer.style.display = 'none';
+            if (stationMultiContainer) stationMultiContainer.style.display = 'none';
+            if (stationSelectorContainer) stationSelectorContainer.style.display = 'block';
+            if (estCompareSel) estCompareSel.value = '';
+
+            this.selectionMode = 'manual';
+            this.currentStationCompare = '';
+            this.enforceSingleSelect('filterTransformador');
+            this.enforceSingleSelect('filterTipoMedicion');
+            this.enforceSingleSelect('filterYear');
+            this.updateFeederModeHint();
+            return;
+        }
+
+        if (tabs) tabs.style.display = '';
+        if (openMultiBtn) openMultiBtn.style.display = '';
+
+        if (this.selectionMode === 'manual') {
+            this.setFeederMode('compare_stations');
+        } else {
+            this.setFeederMode(this.selectionMode);
+        }
+    }
+
     setGlobalMode(mode) {
         console.log("🌐 Modo global cambiado a:", mode);
         this.globalMode = mode;
@@ -1446,8 +1497,10 @@ class ANDEDashboard {
             multiple.classList.toggle('active', mode === 'multiple');
         }
         if (hint) hint.textContent = mode === 'unique' 
-            ? 'Único: un valor por filtro' 
-            : 'Múltiple: selecciona varios valores con Ctrl+Click';
+            ? 'Único: una sola comparación activa por filtro' 
+            : 'Múltiple: habilita comparaciones múltiples y selección avanzada';
+
+        this.updateComparisonUiByGlobalMode();
     }
     
     resetFilters() {
@@ -1458,8 +1511,9 @@ class ANDEDashboard {
         this.updateMonthButtons();
         this.updateMonthSelect();
         
-        this.setFeederMode('manual');
+        this.setFeederMode(this.globalMode === 'multiple' ? 'compare_stations' : 'manual');
         this.renderStationSelectors();
+        this.updateComparisonUiByGlobalMode();
         this.currentStationFilter = '';
         this.currentStationCompare = '';
         this.selectedStations = [];
@@ -1500,8 +1554,9 @@ class ANDEDashboard {
         this.updateMonthButtons();
         this.updateMonthSelect();
         
-        this.setFeederMode('manual');
+        this.setFeederMode(this.globalMode === 'multiple' ? 'compare_stations' : 'manual');
         this.renderStationSelectors();
+        this.updateComparisonUiByGlobalMode();
         this.currentStationFilter = '';
         this.currentStationCompare = '';
         this.selectedStations = [];
