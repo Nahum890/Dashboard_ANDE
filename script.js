@@ -50,6 +50,7 @@ class ANDEDashboard {
         this.selectionMode = 'manual';
         this.currentStationFilter = '';
         this.currentStationCompare = '';
+        this.selectedStations = [];
         
         // ---------- DEBOUNCE ----------
         this.loadDataDebounced = this.debounce(this.loadData.bind(this), 500);
@@ -1020,6 +1021,8 @@ class ANDEDashboard {
                 estCompareSel.innerHTML = '<option value="">Selecciona estación 2</option>' +
                     this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
             }
+
+            this.syncStaticStationSelectors();
     
             const feedSel = document.getElementById('filterTransformador');
             if (feedSel) {
@@ -1067,6 +1070,20 @@ class ANDEDashboard {
                 this.setFeederMode(mode);
             });
         });
+    }
+
+    syncStaticStationSelectors() {
+        const estSel = document.getElementById('filterEstacion');
+        if (estSel) {
+            estSel.innerHTML = '<option value="">Todas las estaciones</option>' +
+                this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
+        }
+
+        const estCompareSel = document.getElementById('filterEstacionCompare');
+        if (estCompareSel) {
+            estCompareSel.innerHTML = '<option value="">Selecciona estación 2</option>' +
+                this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
+        }
     }
 
     renderStationSelectors() {
@@ -1125,13 +1142,18 @@ class ANDEDashboard {
 
         const stationSelectorContainer = document.getElementById('stationSelectorContainer');
         const compareStationContainer = document.getElementById('compareStationContainer');
+        const stationMultiContainer = document.getElementById('stationMultiContainer');
 
         if (stationSelectorContainer) {
-            stationSelectorContainer.style.display = (mode === 'station' || mode === 'manual' || mode === 'compare_stations') ? 'block' : 'none';
+            stationSelectorContainer.style.display = (mode === 'manual' || mode === 'compare_stations') ? 'block' : 'none';
         }
 
         if (compareStationContainer) {
             compareStationContainer.style.display = mode === 'compare_stations' ? 'block' : 'none';
+        }
+
+        if (stationMultiContainer) {
+            stationMultiContainer.style.display = mode === 'station_multi' ? 'block' : 'none';
         }
 
         if (mode === 'all') this.selectAllFeeders();
@@ -1147,6 +1169,7 @@ class ANDEDashboard {
         const texts = {
             manual: 'Filtra los alimentadores por estación y selecciona manualmente con Ctrl+Click.',
             station: 'Al seleccionar una estación, se marcarán automáticamente todos sus alimentadores.',
+            station_multi: 'Define cuántas estaciones comparar y elige cada una para seleccionar sus alimentadores automáticamente.',
             compare_stations: 'Selecciona 2 estaciones para comparar sus alimentadores en conjunto.',
             all: 'Modo "Todos los alimentadores" – se muestran y seleccionan todos.'
         };
@@ -1178,6 +1201,35 @@ class ANDEDashboard {
                 this.currentStationCompare = estacion;
                 if (this.selectionMode === 'compare_stations') this.selectComparisonStationsFeeders();
             });
+        }
+
+        const stationCountInput = document.getElementById('stationCountInput');
+        const applyStationCount = () => {
+            this.renderStationSelectors();
+            if (this.selectionMode === 'station_multi') {
+                this.selectStationsFeeders();
+                this.showNotification('Cantidad de estaciones aplicada', 'success');
+            }
+        };
+
+        if (stationCountInput) {
+            stationCountInput.addEventListener('change', applyStationCount);
+            stationCountInput.addEventListener('input', () => {
+                const val = parseInt(stationCountInput.value, 10);
+                if (Number.isNaN(val)) return;
+                stationCountInput.value = String(Math.max(1, Math.min(20, val)));
+            });
+            stationCountInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyStationCount();
+                }
+            });
+        }
+
+        const applyStationCountBtn = document.getElementById('applyStationCountBtn');
+        if (applyStationCountBtn) {
+            applyStationCountBtn.addEventListener('click', applyStationCount);
         }
 
         const selectAllBtn = document.getElementById('selectAllFeedersBtn');
@@ -1403,6 +1455,7 @@ class ANDEDashboard {
         this.renderStationSelectors();
         this.currentStationFilter = '';
         this.currentStationCompare = '';
+        this.selectedStations = [];
         const estSel = document.getElementById('filterEstacion');
         if (estSel) estSel.value = '';
         const estCompareSel = document.getElementById('filterEstacionCompare');
@@ -1444,6 +1497,7 @@ class ANDEDashboard {
         this.renderStationSelectors();
         this.currentStationFilter = '';
         this.currentStationCompare = '';
+        this.selectedStations = [];
         const estSel = document.getElementById('filterEstacion');
         if (estSel) estSel.value = '';
         const estCompareSel = document.getElementById('filterEstacionCompare');
@@ -2200,8 +2254,8 @@ class ANDEDashboard {
 
         if (stationName) stationName.textContent = this.currentStationGroup;
         this.stationSummaryChart.data.labels = labels;
-        this.stationSummaryChart.data.datasets[0].data = avgs;
-        this.stationSummaryChart.data.datasets[0].backgroundColor = labels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        this.stationSummaryChart.data.datasets[0].data = data;
+        this.stationSummaryChart.data.datasets[0].backgroundColor = colors;
         
         // ✨ Actualizar con animación
         this.stationSummaryChart.update();
