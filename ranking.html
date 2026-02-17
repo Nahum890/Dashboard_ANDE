@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ranking completo · ANDE</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    body{margin:0;background:#0f172a;color:#e2e8f0;font-family:Inter,Segoe UI,sans-serif}
+    .wrap{padding:16px}
+    h1{margin:0 0 6px;font-size:1.2rem}
+    p{margin:0 0 14px;color:#94a3b8}
+    .panel{background:#111827;border:1px solid #334155;border-radius:12px;padding:12px}
+    #rankingCanvas{width:100%;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 id="title">Ranking completo</h1>
+    <p id="subtitle">--</p>
+    <div class="panel"><canvas id="rankingCanvas"></canvas></div>
+  </div>
+  <script>
+    const raw = localStorage.getItem('ande_ranking_full_data');
+    const data = raw ? JSON.parse(raw) : {labels:[],data:[],palette:[]};
+    document.getElementById('title').textContent = data.title || 'Ranking completo';
+    document.getElementById('subtitle').textContent = data.subtitle || `Total de elementos: ${data.labels.length}`;
+    const canvas = document.getElementById('rankingCanvas');
+    canvas.height = Math.max(600, data.labels.length * 28);
+    new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: data.labels,
+        datasets: [{
+          label: 'Promedio',
+          data: data.data,
+          backgroundColor: data.labels.map((_,i)=>(data.palette?.[i % (data.palette?.length || 1)] || '#60a5fa') + '99'),
+          borderColor: data.labels.map((_,i)=>data.palette?.[i % (data.palette?.length || 1)] || '#60a5fa'),
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(148,163,184,0.2)' } },
+          y: { ticks: { color: '#cbd5e1' }, grid: { display: false } }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
