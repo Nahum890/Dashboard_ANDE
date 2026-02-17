@@ -590,6 +590,9 @@
                 <div id="stationSummaryCard" class="chart-card col-span-12 hidden-chart">
                     <div class="card-header">
                         <h3><i class="fas fa-layer-group"></i> Resumen estación <span id="stationNameSpan"></span></h3>
+                        <select id="stationSummarySelectExpanded" class="control-select" style="max-width: 280px;">
+                            <option value="__all__">Todas las estaciones (promedio)</option>
+                        </select>
                     </div>
                     <div class="chart-wrapper chart-wrapper-large">
                         <canvas id="stationSummaryExpanded"></canvas>
@@ -807,10 +810,14 @@
                 const typeSelect = document.getElementById('chartTypeSelect');
                 if (typeSelect) {
                     typeSelect.addEventListener('change', function(e) {
-                        mainChart.config.type = e.target.value;
-                        if (e.target.value === 'area') {
+                        const selectedType = e.target.value;
+                        const resolvedChartType = selectedType === 'area' ? 'line' : selectedType;
+
+                        mainChart.config.type = resolvedChartType;
+
+                        if (selectedType === 'area') {
                             mainChart.data.datasets.forEach(ds => { ds.fill = true; ds.backgroundColor = ds.borderColor + '30'; });
-                        } else if (e.target.value === 'bar') {
+                        } else if (selectedType === 'bar') {
                             mainChart.data.datasets.forEach(ds => { ds.fill = false; ds.borderWidth = 1; ds.borderRadius = 4; });
                         } else {
                             mainChart.data.datasets.forEach(ds => { ds.fill = false; ds.borderWidth = 2.5; });
@@ -1023,17 +1030,52 @@
             updateProgress(90, 'Cargando resumen de estación...');
             const stationCard = document.getElementById('stationSummaryCard');
             const stationNameSpan = document.getElementById('stationNameSpan');
-            if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+            const stationSelectExpanded = document.getElementById('stationSummarySelectExpanded');
+            let stationSummaryChartExpanded = null;
+
+            const summaryByStation = rawData.stationSummaryByStation || {};
+            const stationKeys = Object.keys(summaryByStation || {});
+
+            const renderStationSummaryExpanded = (selectedStation) => {
+                const availableStations = Object.keys(summaryByStation || {});
+                if (!stationCtx) return;
+                if (stationSummaryChartExpanded) {
+                    stationSummaryChartExpanded.destroy();
+                    stationSummaryChartExpanded = null;
+                }
+
+                let labels = [];
+                let values = [];
+                let titleText = '(promedio por estación)';
+
+                if (selectedStation && selectedStation !== '__all__' && summaryByStation[selectedStation]) {
+                    labels = summaryByStation[selectedStation].labels || [];
+                    values = summaryByStation[selectedStation].data || [];
+                    titleText = selectedStation;
+                } else {
+                    labels = availableStations;
+                    values = availableStations.map(st => {
+                        const arr = summaryByStation[st]?.data || [];
+                        return arr.reduce((a,b) => a + b, 0) / (arr.length || 1);
+                    });
+                }
+
+                if (!labels.length) {
+                    stationCard.classList.add('hidden-chart');
+                    return;
+                }
+
                 stationCard.classList.remove('hidden-chart');
-                if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
-                new Chart(stationCtx, {
+                if (stationNameSpan) stationNameSpan.textContent = titleText;
+
+                stationSummaryChartExpanded = new Chart(stationCtx, {
                     type: 'bar',
                     data: {
-                        labels: rawData.stationSummary.labels,
+                        labels,
                         datasets: [{
                             label: 'Promedio',
-                            data: rawData.stationSummary.data,
-                            backgroundColor: rawData.stationSummary.colors || palette,
+                            data: values,
+                            backgroundColor: labels.map((_, i) => (palette[i % palette.length]) + '80'),
                             borderWidth: 1,
                             borderRadius: 4
                         }]
@@ -1047,16 +1089,42 @@
                             tooltip: { callbacks: { label: (ctx) => `Promedio: ${formatNumber(ctx.raw)}` } }
                         },
                         scales: {
-                            x: {
-                                grid: { color: 'rgba(148,163,184,0.15)' },
-                                ticks: { color: '#94a3b8', callback: formatNumber }
-                            },
-                            y: {
-                                grid: { display: false },
-                                ticks: { color: '#94a3b8', font: { size: 11 } }
-                            }
+                            x: { grid: { color: 'rgba(148,163,184,0.15)' }, ticks: { color: '#94a3b8', callback: formatNumber } },
+                            y: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 11 } } }
                         }
                     }
+                });
+            };
+
+            if (stationCtx && stationKeys.length) {
+                stationCard.classList.remove('hidden-chart');
+                if (stationSelectExpanded) {
+                    const selectedDefault = rawData.stationSummarySelected || '__all__';
+                    stationSelectExpanded.innerHTML = '<option value="__all__">Todas las estaciones (promedio)</option>' +
+                        stationKeys.map(st => `<option value="${st}">${st}</option>`).join('');
+                    stationSelectExpanded.value = stationKeys.includes(selectedDefault) ? selectedDefault : '__all__';
+                    stationSelectExpanded.addEventListener('change', (e) => renderStationSummaryExpanded(e.target.value));
+                    renderStationSummaryExpanded(stationSelectExpanded.value);
+                } else {
+                    renderStationSummaryExpanded(rawData.stationSummarySelected || '__all__');
+                }
+            } else if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+                // fallback con formato antiguo
+                stationCard.classList.remove('hidden-chart');
+                if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
+                stationSummaryChartExpanded = new Chart(stationCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: rawData.stationSummary.labels,
+                        datasets: [{
+                            label: 'Promedio',
+                            data: rawData.stationSummary.data,
+                            backgroundColor: rawData.stationSummary.colors || palette,
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
                 });
             } else {
                 stationCard.classList.add('hidden-chart');
