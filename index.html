@@ -141,9 +141,6 @@
                             <i class="fas fa-circle-info"></i> Define cuántas estaciones deseas comparar y luego selecciónalas.
                         </small>
                         <div id="stationSelectorsDynamic"></div>
-                        <button type="button" class="btn-primary" id="applyStationMultiBtn" style="margin-top:0.75rem; width:100%;">
-                            <i class="fas fa-check"></i> Aplicar estaciones seleccionadas
-                        </button>
                     </div>
 
                     <small class="form-hint" id="estacionHint">
@@ -497,12 +494,25 @@
                                 <option value="stability">Ordenar por: Estabilidad</option>
                                 <option value="trend">Ordenar por: Tendencia</option>
                             </select>
+                            <select id="rankingViewMode" class="ranking-select">
+                                <option value="top10">Vista gráfico: Top 10</option>
+                                <option value="all">Vista gráfico: Todos</option>
+                            </select>
+                            <select id="rankingDisplayMode" class="ranking-select">
+                                <option value="chart">Mostrar: Gráfico</option>
+                                <option value="list">Mostrar: Lista</option>
+                                <option value="both">Mostrar: Ambos</option>
+                            </select>
+                            <button id="openFullRankingBtn" class="btn-outline small" type="button">
+                                <i class="fas fa-up-right-from-square"></i> Ranking completo
+                            </button>
                         </div>
                     </div>
                     <div class="card-body">
-                        <div class="chart-wrapper">
+                        <div class="chart-wrapper" id="rankingChartWrapper">
                             <canvas id="rankingChart"></canvas>
                         </div>
+                        <div id="rankingListWrapper" style="display:none; margin-top:0.75rem; max-height:320px; overflow:auto; border:1px solid rgba(148,163,184,0.2); border-radius:8px; padding:0.5rem;"></div>
                     </div>
                     <div class="chart-footer">
                         <div class="chart-note">

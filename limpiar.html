@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Limpieza de Base de Datos</title>
+    <style>
+        body { font-family: sans-serif; padding: 2rem; background: #f0f2f5; }
+        .card { background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 600px; margin: 0 auto; }
+        button { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1rem; margin-top: 1rem;}
+        button:hover { background: #dc2626; }
+        pre { background: #1e293b; color: #a5b4fc; padding: 1rem; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🛠️ Herramienta de Limpieza</h2>
+        <p>Esta herramienta eliminará filas duplicadas dejando solo la carga más reciente y eliminará espacios en blanco en los nombres de los alimentadores.</p>
+        
+        <h3>1. Diagnóstico de duplicados:</h3>
+        <button onclick="verDuplicados()" style="background:#3b82f6">Ver Duplicados</button>
+        <pre id="resultadoDiag">Esperando análisis...</pre>
+
+        <h3>2. Ejecutar Limpieza:</h3>
+        <button onclick="limpiar()">🗑️ ELIMINAR DUPLICADOS Y CORREGIR NOMBRES</button>
+        <pre id="resultadoLimp">Esperando acción...</pre>
+    </div>
+
+    <script>
+        const API = 'http://localhost:10000/api/admin';
+
+        async function verDuplicados() {
+            document.getElementById('resultadoDiag').textContent = "Consultando...";
+            const res = await fetch(`${API}/ver-duplicados`);
+            const data = await res.json();
+            document.getElementById('resultadoDiag').textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function limpiar() {
+            if(!confirm("¿Estás seguro? Esto borrará los datos redundantes.")) return;
+            
+            document.getElementById('resultadoLimp').textContent = "Procesando...";
+            const res = await fetch(`${API}/eliminar-duplicados`, { method: 'POST' });
+            const data = await res.json();
+            document.getElementById('resultadoLimp').textContent = JSON.stringify(data, null, 2);
+            
+            // Refrescar diagnóstico
+            verDuplicados();
+        }
+    </script>
+</body>
+</html>

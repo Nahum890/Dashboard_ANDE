@@ -686,6 +686,72 @@ app.get("*", (req, res) => {
     }
 });
 
+// ==========================================
+// HERRAMIENTAS DE DIAGNÓSTICO (NUEVO)
+// ==========================================
+
+// 1. Ver lista de todos los alimentadores únicos (para encontrar los 10 extra)
+app.get("/api/admin/alimentadores-lista", async (req, res) => {
+    try {
+        const sql = "SELECT DISTINCT seccion FROM mediciones_completas ORDER BY seccion";
+        const rows = await ejecutarConsulta(sql);
+        res.json({
+            total: rows.length,
+            alimentadores: rows.map(r => r.seccion)
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 2. Detectar duplicados exactos (misma fecha, sección y tipo)
+app.get("/api/admin/ver-duplicados", async (req, res) => {
+    try {
+        const sql = `
+            SELECT seccion, anio, mes, tipo_medicion, COUNT(*) as cantidad
+            FROM mediciones_completas
+            GROUP BY seccion, anio, mes, tipo_medicion
+            HAVING COUNT(*) > 1
+            ORDER BY cantidad DESC
+        `;
+        const rows = await ejecutarConsulta(sql);
+        res.json({
+            mensaje: rows.length > 0 ? "⚠️ Se encontraron duplicados" : "✅ No hay duplicados exactos",
+            total_casos: rows.length,
+            detalle: rows
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 3. LIMPIEZA DE DUPLICADOS (Deja solo el registro más reciente ingresado)
+app.post("/api/admin/eliminar-duplicados", async (req, res) => {
+    try {
+        // Esta consulta mantiene el ID más alto (el último insertado) y borra el resto
+        const sql = `
+            DELETE FROM mediciones_completas
+            WHERE id NOT IN (
+                SELECT MAX(id)
+                FROM mediciones_completas
+                GROUP BY seccion, anio, mes, tipo_medicion
+            )
+        `;
+        const resultado = await ejecutarComando(sql);
+        
+        // También hacemos un TRIM para quitar espacios en blanco de los nombres
+        await ejecutarComando("UPDATE mediciones_completas SET seccion = TRIM(seccion)");
+
+        res.json({
+            success: true,
+            filas_eliminadas: resultado.changes,
+            mensaje: "Base de datos optimizada y espacios en blanco eliminados."
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`🚀 Servidor corriendo en puerto ${PORT}`);

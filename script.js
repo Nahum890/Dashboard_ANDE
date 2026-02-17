@@ -861,6 +861,18 @@ class ANDEDashboard {
             console.log("🔄 Selector de orden de ranking cambiado");
             this.updateRankingChart();
         });
+        this.safeAddEventListener('rankingViewMode', 'change', () => {
+            this.updateRankingChart();
+        });
+        this.safeAddEventListener('rankingDisplayMode', 'change', () => {
+            this.updateRankingChart();
+        });
+        this.safeAddEventListener('openFullRankingBtn', 'click', () => {
+            this.openFullRankingTab();
+        });
+        this.safeAddEventListener('stationSummarySelect', 'change', () => {
+            this.updateStationSummary();
+        });
         
         this.safeAddEventListener('expandRankingBtn', 'click', () => {
             console.log("🖱️ Ver ranking completo");
@@ -1143,7 +1155,6 @@ class ANDEDashboard {
         const stationSelectorContainer = document.getElementById('stationSelectorContainer');
         const compareStationContainer = document.getElementById('compareStationContainer');
         const stationMultiContainer = document.getElementById('stationMultiContainer');
-        const openStationMultiBtn = document.getElementById('openStationMultiBtn');
 
         if (stationSelectorContainer) {
             stationSelectorContainer.style.display = (mode === 'manual' || mode === 'compare_stations') ? 'block' : 'none';
@@ -1155,10 +1166,6 @@ class ANDEDashboard {
 
         if (stationMultiContainer) {
             stationMultiContainer.style.display = mode === 'station_multi' ? 'block' : 'none';
-        }
-
-        if (openStationMultiBtn) {
-            openStationMultiBtn.classList.toggle('active', mode === 'station_multi');
         }
 
         if (mode === 'all') this.selectAllFeeders();
@@ -1185,7 +1192,7 @@ class ANDEDashboard {
         const texts = {
             manual: 'Filtra los alimentadores por estación y selecciona manualmente con Ctrl+Click.',
             station: 'Al seleccionar una estación, se marcarán automáticamente todos sus alimentadores.',
-            station_multi: 'Usa el botón de cantidad de estaciones, define el número y presiona aplicar para seleccionar sus alimentadores.',
+            station_multi: 'Define cuántas estaciones comparar y elige cada una para seleccionar sus alimentadores automáticamente.',
             compare_stations: 'Selecciona 2 estaciones para comparar sus alimentadores en conjunto.',
             all: 'Modo "Todos los alimentadores" – se muestran y seleccionan todos.'
         };
@@ -1219,23 +1226,6 @@ class ANDEDashboard {
             });
         }
 
-        const openStationMultiBtn = document.getElementById('openStationMultiBtn');
-        if (openStationMultiBtn) {
-            openStationMultiBtn.addEventListener('click', () => {
-                this.setFeederMode('station_multi');
-                const stationCountInput = document.getElementById('stationCountInput');
-                if (stationCountInput) stationCountInput.focus();
-            });
-        }
-
-        const applyStationMultiBtn = document.getElementById('applyStationMultiBtn');
-        if (applyStationMultiBtn) {
-            applyStationMultiBtn.addEventListener('click', () => {
-                this.setFeederMode('station_multi');
-                this.selectStationsFeeders();
-            });
-        }
-
         const stationCountInput = document.getElementById('stationCountInput');
         if (stationCountInput) {
             stationCountInput.addEventListener('change', () => {
@@ -1264,7 +1254,6 @@ class ANDEDashboard {
         const feederSelect = document.getElementById('filterTransformador');
         if (feederSelect) {
             feederSelect.addEventListener('change', () => {
-                console.log("🔄 Selección de alimentadores cambiada");
                 this.updateFeederCount();
                 if (this.globalMode === 'unique') this.loadDataDebounced();
             });
@@ -1286,6 +1275,7 @@ class ANDEDashboard {
             const option = document.createElement('option');
             option.value = feeder;
             option.textContent = feeder;
+            option.selected = true;
             feederSelect.appendChild(option);
         });
 
@@ -1374,7 +1364,7 @@ class ANDEDashboard {
         this.showNotification(`Comparando estaciones: ${stationLabel}`, 'success');
         if (this.globalMode === 'unique') this.loadDataDebounced();
     }
-    
+
     clearFeeders() {
         console.log("🧹 Limpiando selección de alimentadores");
         const feederSelect = document.getElementById('filterTransformador');
@@ -2031,18 +2021,18 @@ class ANDEDashboard {
             return;
         }
         if (!this.data.length) {
+            this.latestRankingData = [];
             this.rankingChart.data.labels = [];
             this.rankingChart.data.datasets[0].data = [];
             this.rankingChart.update('none');
             return;
         }
-        
+
         const rankingGroup = document.getElementById('rankingGroup')?.value || 'alimentador';
         const sortBy = document.getElementById('rankingSort')?.value || 'avg';
-        console.log(`📊 Ranking group: ${rankingGroup}, sort: ${sortBy}`);
-        
-        let series = {};
-        
+        const viewMode = document.getElementById('rankingViewMode')?.value || 'top10';
+
+        const series = {};
         if (rankingGroup === 'alimentador') {
             this.data.forEach(d => {
                 const key = d.combinationLabel;
@@ -2056,16 +2046,16 @@ class ANDEDashboard {
                 series[station].push(d.frecuencia);
             });
         }
-        
-        let ranking = Object.entries(series).map(([lbl, vals]) => {
-            const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
-            const min = Math.min(...vals);
-            const max = Math.max(...vals);
-            const last = vals[vals.length-1];
-            return { label: lbl, avg, range: max-min, last };
+
+        const ranking = Object.entries(series).map(([label, values]) => {
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const last = values[values.length - 1];
+            return { label, avg, range: max - min, last };
         });
-        
-        ranking.sort((a,b) => {
+
+        ranking.sort((a, b) => {
             if (sortBy === 'stability') return a.range - b.range;
             if (sortBy === 'trend') return b.last - a.last;
             return b.avg - a.avg;
@@ -2083,7 +2073,19 @@ class ANDEDashboard {
         this.rankingChart.update();
         console.log("✅ Ranking HD actualizado con animaciones");
     }
-    
+
+    openFullRankingTab() {
+        const payload = {
+            labels: this.latestRankingData.map(item => item.label),
+            data: this.latestRankingData.map(item => item.avg),
+            title: 'Ranking completo',
+            subtitle: `Total de elementos: ${this.latestRankingData.length}`,
+            palette: this.chartPalette
+        };
+        localStorage.setItem('ande_ranking_full_data', JSON.stringify(payload));
+        window.open('ranking.html', '_blank', 'width=1600,height=1000');
+    }
+
     updateScatterChart() {
         console.log("📉 Actualizando gráfico de dispersión HD...");
         if (!this.scatterChart) {
@@ -2224,7 +2226,6 @@ class ANDEDashboard {
     }
 
     updateStationSummary() {
-        console.log("🏭 Actualizando resumen de estación HD...");
         if (!this.stationSummaryChart) return;
 
         const container = document.getElementById('stationSummaryContainer');
