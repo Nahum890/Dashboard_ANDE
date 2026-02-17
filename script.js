@@ -1204,32 +1204,16 @@ class ANDEDashboard {
         }
 
         const stationCountInput = document.getElementById('stationCountInput');
-        const applyStationCount = () => {
-            this.renderStationSelectors();
-            if (this.selectionMode === 'station_multi') {
-                this.selectStationsFeeders();
-                this.showNotification('Cantidad de estaciones aplicada', 'success');
-            }
-        };
-
         if (stationCountInput) {
-            stationCountInput.addEventListener('change', applyStationCount);
+            stationCountInput.addEventListener('change', () => {
+                this.renderStationSelectors();
+                if (this.selectionMode === 'station_multi') this.selectStationsFeeders();
+            });
             stationCountInput.addEventListener('input', () => {
                 const val = parseInt(stationCountInput.value, 10);
                 if (Number.isNaN(val)) return;
                 stationCountInput.value = String(Math.max(1, Math.min(20, val)));
             });
-            stationCountInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    applyStationCount();
-                }
-            });
-        }
-
-        const applyStationCountBtn = document.getElementById('applyStationCountBtn');
-        if (applyStationCountBtn) {
-            applyStationCountBtn.addEventListener('click', applyStationCount);
         }
 
         const selectAllBtn = document.getElementById('selectAllFeedersBtn');

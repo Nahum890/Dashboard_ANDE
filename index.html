@@ -121,23 +121,18 @@
                         <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
                             <i class="fas fa-list-ol"></i> Cantidad de estaciones a comparar
                         </label>
-                        <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem;">
-                            <input
-                                id="stationCountInput"
-                                class="form-select"
-                                type="number"
-                                min="1"
-                                max="20"
-                                step="1"
-                                value="2"
-                                style="margin-bottom: 0; flex: 1;"
-                            >
-                            <button type="button" class="btn-outline small" id="applyStationCountBtn" title="Aplicar cantidad de estaciones">
-                                <i class="fas fa-check"></i> Mostrar
-                            </button>
-                        </div>
+                        <input
+                            id="stationCountInput"
+                            class="form-select"
+                            type="number"
+                            min="1"
+                            max="20"
+                            step="1"
+                            value="2"
+                            style="margin-bottom: 0.6rem;"
+                        >
                         <small class="form-hint" style="display:block; margin-bottom:0.65rem;">
-                            <i class="fas fa-circle-info"></i> Ingresa la cantidad y presiona <strong>Mostrar</strong> para habilitar las estaciones.
+                            <i class="fas fa-circle-info"></i> Define cuántas estaciones deseas comparar y luego selecciónalas.
                         </small>
                         <div id="stationSelectorsDynamic"></div>
                     </div>
