@@ -663,6 +663,9 @@
                 return value.toFixed(2);
             }
 
+            // Compatibilidad preventiva para referencias globales antiguas
+            window.renderStationSummaryExpanded = window.renderStationSummaryExpanded || function() {};
+
             // ---- Cargar datos desde localStorage ----
             updateProgress(10, 'Leyendo datos del dashboard...');
             let rawData = null;
@@ -674,7 +677,7 @@
                 updateProgress(25, 'Datos listos, preparando gráficos...');
             } catch (e) {
                 console.error('❌ Error al cargar datos:', e);
-                loadingOverlay.innerHTML = `
+                if (loadingOverlay) loadingOverlay.innerHTML = `
                     <div class="loader-card" style="background: rgba(30,41,59,0.9);">
                         <i class="fas fa-exclamation-triangle" style="font-size: 3.5rem; color: #f59e0b; margin-bottom: 1rem;"></i>
                         <p style="font-size: 1.3rem; font-weight: 600; color: white;">No hay datos disponibles</p>
@@ -1028,11 +1031,14 @@
             const stationCard = document.getElementById('stationSummaryCard');
             const stationNameSpan = document.getElementById('stationNameSpan');
             const stationSummarySelect = document.getElementById('stationSummarySelectExpanded');
+            const stationSelectExpanded = stationSummarySelect; // Compatibilidad con referencias antiguas
+            window.stationSelectExpanded = stationSummarySelect || null; // Compat global para scripts externos
             const summaryBundle = rawData.stationSummaryBundle;
-            if (stationCtx && summaryBundle && summaryBundle.stations?.length) {
+            const stations = Array.isArray(summaryBundle?.stations) ? summaryBundle.stations : [];
+            if (stationCard && stationCtx && stationSummarySelect && stations.length) {
                 stationCard.classList.remove('hidden-chart');
                 stationSummarySelect.innerHTML = '<option value="__ALL__">Resumen global de estaciones seleccionadas</option>' +
-                    summaryBundle.stations.map(st => `<option value="${st}">${st}</option>`).join('');
+                    stations.map(st => `<option value="${st}">${st}</option>`).join('');
 
                 const renderSummary = (value) => {
                     const selected = value || '__ALL__';
@@ -1067,15 +1073,18 @@
                     });
                 };
 
+                // Compatibilidad con versiones/scripts que esperan una función global
+                window.renderStationSummaryExpanded = (value) => renderSummary(value || stationSummarySelect.value || '__ALL__');
+
                 const initial = rawData.stationSummarySelection || '__ALL__';
                 if (initial && Array.from(stationSummarySelect.options).some(o => o.value === initial)) {
                     stationSummarySelect.value = initial;
                 } else {
                     stationSummarySelect.value = '__ALL__';
                 }
-                stationSummarySelect.addEventListener('change', (e) => renderSummary(e.target.value));
-                renderSummary(stationSummarySelect.value);
-            } else if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+                stationSummarySelect.addEventListener('change', (e) => window.renderStationSummaryExpanded(e.target.value));
+                window.renderStationSummaryExpanded(stationSummarySelect.value);
+            } else if (stationCard && stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
                 stationCard.classList.remove('hidden-chart');
                 if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
                 if (stationSummarySelect) stationSummarySelect.style.display = 'none';
@@ -1084,15 +1093,19 @@
                     data: { labels: rawData.stationSummary.labels, datasets: [{ label: 'Promedio', data: rawData.stationSummary.data, backgroundColor: rawData.stationSummary.colors || palette, borderWidth: 1, borderRadius: 4 }] },
                     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Promedio: ${formatNumber(ctx.raw)}` } } } }
                 });
-            } else {
+            } else if (stationCard) {
                 stationCard.classList.add('hidden-chart');
             }
 
             // ---- ACTUALIZAR PANEL DE INFORMACIÓN ----
-            document.getElementById('seriesCountDisplay').textContent = rawData.seriesCount || '0';
-            document.getElementById('dataPointsDisplay').textContent = (rawData.dataPoints || 0).toLocaleString();
-            document.getElementById('periodRangeDisplay').textContent = rawData.periodRange || 'N/A';
-            document.getElementById('lastUpdateDisplay').textContent = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            const seriesCountDisplay = document.getElementById('seriesCountDisplay');
+            const dataPointsDisplay = document.getElementById('dataPointsDisplay');
+            const periodRangeDisplay = document.getElementById('periodRangeDisplay');
+            const lastUpdateDisplay = document.getElementById('lastUpdateDisplay');
+            if (seriesCountDisplay) seriesCountDisplay.textContent = rawData.seriesCount || '0';
+            if (dataPointsDisplay) dataPointsDisplay.textContent = (rawData.dataPoints || 0).toLocaleString();
+            if (periodRangeDisplay) periodRangeDisplay.textContent = rawData.periodRange || 'N/A';
+            if (lastUpdateDisplay) lastUpdateDisplay.textContent = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
             const params = new URLSearchParams(window.location.search);
             if (rawData.rankingOnly || params.get('view') === 'ranking') {
@@ -1112,9 +1125,11 @@
             // ---- FINALIZAR Y MOSTRAR ----
             updateProgress(100, '¡Visualización completa!');
             setTimeout(() => {
-                loadingOverlay.style.opacity = '0';
-                loadingOverlay.style.visibility = 'hidden';
-                chartsContainer.style.display = 'block';
+                if (loadingOverlay) {
+                    loadingOverlay.style.opacity = '0';
+                    loadingOverlay.style.visibility = 'hidden';
+                }
+                if (chartsContainer) chartsContainer.style.display = 'block';
             }, 600);
 
             // ---- REDIMENSIONAMIENTO SUAVE ----
