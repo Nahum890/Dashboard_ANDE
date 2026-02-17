@@ -1084,6 +1084,134 @@
                     data: { labels: rawData.stationSummary.labels, datasets: [{ label: 'Promedio', data: rawData.stationSummary.data, backgroundColor: rawData.stationSummary.colors || palette, borderWidth: 1, borderRadius: 4 }] },
                     options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Promedio: ${formatNumber(ctx.raw)}` } } } }
                 });
+            };
+
+            if (stationCtx && stations.length) {
+                stationCard.classList.remove('hidden-chart');
+                if (stationSelectExpanded) {
+                    const selectedDefault = rawData.stationSummarySelected || '__all__';
+                    stationSelectExpanded.innerHTML = '<option value="__all__">Todas las estaciones (promedio)</option>' +
+                        stations.map(st => `<option value="${st}">${st}</option>`).join('');
+                    stationSelectExpanded.value = stations.includes(selectedDefault) ? selectedDefault : '__all__';
+                    stationSelectExpanded.addEventListener('change', (e) => renderStationSummaryExpanded(e.target.value));
+                    renderStationSummaryExpanded(stationSelectExpanded.value);
+                } else {
+                    renderStationSummaryExpanded(rawData.stationSummarySelected || '__all__');
+                }
+            } else if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+                // fallback con formato antiguo
+                stationCard.classList.remove('hidden-chart');
+                if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
+                stationSummaryChartExpanded = new Chart(stationCtx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Promedio',
+                            data: values,
+                            backgroundColor: labels.map((_, i) => (palette[i % palette.length]) + '80'),
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                });
+            };
+
+            if (stationCtx && stationKeys.length) {
+                stationCard.classList.remove('hidden-chart');
+                if (stationSelectExpanded) {
+                    const selectedDefault = rawData.stationSummarySelected || '__all__';
+                    stationSelectExpanded.innerHTML = '<option value="__all__">Todas las estaciones (promedio)</option>' +
+                        stationKeys.map(st => `<option value="${st}">${st}</option>`).join('');
+                    stationSelectExpanded.value = stationKeys.includes(selectedDefault) ? selectedDefault : '__all__';
+                    stationSelectExpanded.addEventListener('change', (e) => renderStationSummaryExpanded(e.target.value));
+                    renderStationSummaryExpanded(stationSelectExpanded.value);
+                } else {
+                    renderStationSummaryExpanded(rawData.stationSummarySelected || '__all__');
+                }
+            } else if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+                // fallback con formato antiguo
+                stationCard.classList.remove('hidden-chart');
+                if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
+                stationSummaryChartExpanded = new Chart(stationCtx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Promedio',
+                            data: values,
+                            backgroundColor: labels.map((_, i) => (palette[i % palette.length]) + '80'),
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                });
+            };
+
+            if (stationCtx && stationKeys.length) {
+                stationCard.classList.remove('hidden-chart');
+                if (stationSelectExpanded) {
+                    const selectedDefault = rawData.stationSummarySelected || '__all__';
+                    stationSelectExpanded.innerHTML = '<option value="__all__">Todas las estaciones (promedio)</option>' +
+                        stationKeys.map(st => `<option value="${st}">${st}</option>`).join('');
+                    stationSelectExpanded.value = stationKeys.includes(selectedDefault) ? selectedDefault : '__all__';
+                    stationSelectExpanded.addEventListener('change', (e) => renderStationSummaryExpanded(e.target.value));
+                    renderStationSummaryExpanded(stationSelectExpanded.value);
+                } else {
+                    renderStationSummaryExpanded(rawData.stationSummarySelected || '__all__');
+                }
+            } else if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+                // fallback con formato antiguo
+                stationCard.classList.remove('hidden-chart');
+                if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
+                stationSummaryChartExpanded = new Chart(stationCtx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Promedio',
+                            data: values,
+                            backgroundColor: labels.map((_, i) => (palette[i % palette.length]) + '80'),
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                });
+            };
+
+            if (stationCtx && stationKeys.length) {
+                stationCard.classList.remove('hidden-chart');
+                if (stationSelectExpanded) {
+                    const selectedDefault = rawData.stationSummarySelected || '__all__';
+                    stationSelectExpanded.innerHTML = '<option value="__all__">Todas las estaciones (promedio)</option>' +
+                        stationKeys.map(st => `<option value="${st}">${st}</option>`).join('');
+                    stationSelectExpanded.value = stationKeys.includes(selectedDefault) ? selectedDefault : '__all__';
+                    stationSelectExpanded.addEventListener('change', (e) => renderStationSummaryExpanded(e.target.value));
+                    renderStationSummaryExpanded(stationSelectExpanded.value);
+                } else {
+                    renderStationSummaryExpanded(rawData.stationSummarySelected || '__all__');
+                }
+            } else if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
+                // fallback con formato antiguo
+                stationCard.classList.remove('hidden-chart');
+                if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
+                stationSummaryChartExpanded = new Chart(stationCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: rawData.stationSummary.labels,
+                        datasets: [{
+                            label: 'Promedio',
+                            data: rawData.stationSummary.data,
+                            backgroundColor: rawData.stationSummary.colors || palette,
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                });
             } else {
                 stationCard.classList.add('hidden-chart');
             }
