@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0, user-scalable=yes">
     <title>Dashboard ANDE · Vista Completa</title>
-    <!-- Chart.js y adaptador de fechas -->
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <!-- Font Awesome 6 -->
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* ---------- RESET Y VARIABLES ---------- */
+        /* ---------- RESET Y VARIABLES (igual que antes) ---------- */
         * {
             margin: 0;
             padding: 0;
@@ -56,7 +56,7 @@
             gap: 1.75rem;
         }
 
-        /* ---------- LOADING OVERLAY PROFESIONAL ---------- */
+        /* ---------- LOADING OVERLAY ---------- */
         .loading-overlay {
             position: fixed;
             top: 0;
@@ -134,7 +134,7 @@
             box-shadow: 0 0 10px #60a5fa;
         }
 
-        /* ---------- HEADER RESPONSIVE ---------- */
+        /* ---------- HEADER ---------- */
         .app-header {
             display: flex;
             justify-content: space-between;
@@ -232,7 +232,6 @@
             gap: 1.5rem;
         }
 
-        /* Tarjetas de gráficos */
         .chart-card {
             background: var(--bg-card);
             backdrop-filter: blur(8px);
@@ -292,7 +291,6 @@
             border-radius: 12px;
         }
 
-        /* Ocupación de columnas responsive */
         .col-span-12 { grid-column: span 12; }
         .col-span-8 { grid-column: span 8; }
         .col-span-7 { grid-column: span 7; }
@@ -420,7 +418,91 @@
 
         .hidden-chart { display: none; }
 
-        /* ---------- RESPONSIVE ---------- */
+        /* ---------- NUEVOS ESTILOS PARA EL RANKING AVANZADO ---------- */
+        .ranking-controls-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            margin-top: 0.5rem;
+            background: rgba(15, 23, 42, 0.4);
+            padding: 0.6rem 1rem;
+            border-radius: 16px;
+            align-items: center;
+            width: 100%;
+        }
+        .ranking-controls-panel select,
+        .ranking-controls-panel input {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(96,165,250,0.3);
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            outline: none;
+        }
+        .ranking-controls-panel button {
+            background: var(--accent);
+            border: none;
+            color: white;
+            padding: 0.4rem 1rem;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.2s;
+        }
+        .ranking-controls-panel button:hover {
+            background: var(--accent-glow);
+            transform: translateY(-2px);
+        }
+        .ranking-table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.2);
+            margin-top: 1rem;
+        }
+        .ranking-table {
+            width: 100%;
+            border-collapse: collapse;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+        .ranking-table th {
+            position: sticky;
+            top: 0;
+            background: #1e293b;
+            padding: 0.6rem;
+            text-align: left;
+            font-weight: 600;
+            color: var(--accent-glow);
+        }
+        .ranking-table td {
+            padding: 0.5rem 0.6rem;
+            border-bottom: 1px solid rgba(148,163,184,0.2);
+        }
+        .ranking-table tr {
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .ranking-table tr:hover {
+            background: rgba(96,165,250,0.2);
+        }
+        .badge {
+            padding: 0.2rem 0.6rem;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            display: inline-block;
+        }
+        .badge.primary { background: #3b82f6; color: white; }
+        .badge.success { background: #10b981; color: white; }
+        .badge.warning { background: #f59e0b; color: white; }
+
+        /* Responsive */
         @media screen and (max-width: 1200px) {
             .col-span-8, .col-span-7, .col-span-6, .col-span-5, .col-span-4 {
                 grid-column: span 12;
@@ -451,7 +533,6 @@
             .btn { padding: 0.5rem 1rem; font-size: 0.85rem; }
         }
 
-        /* Oculto hasta que termine la carga */
         #chartsContainer {
             display: none;
             opacity: 0;
@@ -465,7 +546,7 @@
 </head>
 <body>
     <div class="container">
-        <!-- LOADING PROFESIONAL (visible por defecto) -->
+        <!-- LOADING -->
         <div id="loadingOverlay" class="loading-overlay">
             <div class="loader-card">
                 <div class="spinner-ring"></div>
@@ -477,7 +558,7 @@
             </div>
         </div>
 
-        <!-- HEADER (siempre visible) -->
+        <!-- HEADER -->
         <header class="app-header">
             <div class="logo-area">
                 <div class="logo-icon">
@@ -498,12 +579,10 @@
             </div>
         </header>
 
-        <!-- CONTENEDOR DE GRÁFICOS (se muestra tras carga) -->
+        <!-- CONTENEDOR DE GRÁFICOS -->
         <div id="chartsContainer">
-            <!-- GRID PRINCIPAL -->
             <div class="dashboard-grid">
-                
-                <!-- TARJETA 1: GRÁFICO PRINCIPAL (EVOLUCIÓN) -->
+                <!-- TARJETA 1: EVOLUCIÓN TEMPORAL -->
                 <div class="chart-card col-span-8">
                     <div class="card-header">
                         <h2><i class="fas fa-chart-line"></i> Evolución temporal</h2>
@@ -537,22 +616,43 @@
                     <div id="interactiveLegend" class="legend-container"></div>
                 </div>
 
-                <!-- TARJETA 2: RANKING DE SERIES -->
+                <!-- TARJETA 2: RANKING AVANZADO -->
                 <div class="chart-card col-span-4">
                     <div class="card-header">
-                        <h3><i class="fas fa-trophy"></i> Ranking por serie</h3>
-                        <select id="rankingSortSelect" class="control-select">
-                            <option value="avg">📊 Promedio</option>
-                            <option value="stability">⚖️ Estabilidad</option>
-                            <option value="trend">📈 Tendencia</option>
-                        </select>
+                        <h3><i class="fas fa-trophy"></i> Ranking avanzado</h3>
+                        <div class="ranking-controls-panel">
+                            <select id="rankingGroupSelect">
+                                <option value="alimentador">Agrupar por: Alimentador</option>
+                                <option value="estacion">Agrupar por: Estación</option>
+                                <option value="tipo">Agrupar por: Tipo</option>
+                                <option value="year">Agrupar por: Año</option>
+                            </select>
+                            <select id="rankingMetricSelect">
+                                <option value="avg">📊 Promedio</option>
+                                <option value="median">📏 Mediana</option>
+                                <option value="max">🔺 Máximo</option>
+                                <option value="min">🔻 Mínimo</option>
+                                <option value="std">📉 Desviación estándar</option>
+                                <option value="cv">⚖️ Coef. variación</option>
+                            </select>
+                            <select id="rankingLimitSelect">
+                                <option value="10">Top 10</option>
+                                <option value="20">Top 20</option>
+                                <option value="50">Top 50</option>
+                                <option value="all">Todos</option>
+                            </select>
+                            <button id="toggleRankingViewBtn" title="Cambiar vista">
+                                <i class="fas fa-chart-bar"></i> / <i class="fas fa-table"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div class="chart-wrapper">
+                    <div class="chart-wrapper" id="rankingChartWrapper">
                         <canvas id="rankingChartExpanded"></canvas>
                     </div>
+                    <div id="rankingTableWrapper" style="display: none;" class="ranking-table-container"></div>
                 </div>
 
-                <!-- TARJETA 3: GRÁFICO DE DISPERSIÓN (full width) -->
+                <!-- TARJETA 3: DISPERSIÓN -->
                 <div class="chart-card col-span-12">
                     <div class="card-header">
                         <h3><i class="fas fa-braille"></i> Dispersión por alimentador</h3>
@@ -585,7 +685,7 @@
                     </div>
                 </div>
 
-                <!-- TARJETA 6: RESUMEN POR ESTACIÓN (oculta si no aplica) -->
+                <!-- TARJETA 6: RESUMEN POR ESTACIÓN -->
                 <div id="stationSummaryCard" class="chart-card col-span-12 hidden-chart">
                     <div class="card-header">
                         <h3><i class="fas fa-layer-group"></i> Resumen estación <span id="stationNameSpan"></span></h3>
@@ -595,7 +695,7 @@
                         <canvas id="stationSummaryExpanded"></canvas>
                     </div>
                 </div>
-            </div> <!-- dashboard-grid -->
+            </div>
 
             <!-- PANEL DE INFORMACIÓN GLOBAL -->
             <div class="info-panel">
@@ -616,14 +716,14 @@
                     <div class="info-value" id="lastUpdateDisplay">--:--</div>
                 </div>
             </div>
-        </div> <!-- chartsContainer -->
-    </div> <!-- container -->
+        </div>
+    </div>
 
     <script>
         (function() {
             "use strict";
 
-            // ---- Configuración global de Chart.js - ALTA CALIDAD ----
+            // ---- Configuración global de Chart.js ----
             Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
             Chart.defaults.font.size = 11;
             Chart.defaults.color = '#cbd5e1';
@@ -636,7 +736,7 @@
             Chart.defaults.plugins.tooltip.cornerRadius = 8;
             Chart.defaults.responsive = true;
             Chart.defaults.maintainAspectRatio = false;
-            Chart.defaults.devicePixelRatio = window.devicePixelRatio || 2; // 4K ready
+            Chart.defaults.devicePixelRatio = window.devicePixelRatio || 2;
             Chart.defaults.animation.duration = 500;
             Chart.defaults.animation.easing = 'easeOutQuart';
 
@@ -686,14 +786,14 @@
                 return;
             }
 
-            // ---- Paleta de colores (heredada o por defecto) ----
+            // ---- Paleta de colores ----
             const palette = rawData.palette || [
                 '#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0', '#118AB2',
                 '#EF476F', '#7B68EE', '#20B2AA', '#FF8C00', '#9ACD32',
                 '#DA70D6', '#00CED1', '#FF6347', '#4682B4', '#DAA520'
             ];
 
-            // ---- REFERENCIAS A LOS CANVAS ----
+            // ---- Referencias a canvas ----
             const mainCtx = document.getElementById('mainChartExpanded')?.getContext('2d');
             const rankCtx = document.getElementById('rankingChartExpanded')?.getContext('2d');
             const scatterCtx = document.getElementById('scatterChartExpanded')?.getContext('2d');
@@ -701,7 +801,7 @@
             const pieTypeCtx = document.getElementById('pieTypeExpanded')?.getContext('2d');
             const stationCtx = document.getElementById('stationSummaryExpanded')?.getContext('2d');
 
-            // ---- GRÁFICO PRINCIPAL ----
+            // ---- Gráfico principal (igual que antes) ----
             updateProgress(35, 'Dibujando evolución temporal...');
             let mainChart = null;
             if (mainCtx && rawData.mainChart) {
@@ -802,16 +902,14 @@
             }
             setTimeout(buildLegend, 150);
 
-            // ---- Controles del gráfico principal ----
+            // ---- Controles del gráfico principal (igual que antes) ----
             if (mainChart) {
                 const typeSelect = document.getElementById('chartTypeSelect');
                 if (typeSelect) {
                     typeSelect.addEventListener('change', function(e) {
                         const selectedType = e.target.value;
                         const resolvedChartType = selectedType === 'area' ? 'line' : selectedType;
-
                         mainChart.config.type = resolvedChartType;
-
                         if (selectedType === 'area') {
                             mainChart.data.datasets.forEach(ds => { ds.fill = true; ds.backgroundColor = ds.borderColor + '30'; });
                         } else if (selectedType === 'bar') {
@@ -823,7 +921,6 @@
                         buildLegend();
                     });
                 }
-                // Puntos
                 let pointsVisible = false;
                 const toggleBtn = document.getElementById('togglePointsBtn');
                 if (toggleBtn) {
@@ -837,7 +934,6 @@
                         mainChart.update();
                     });
                 }
-                // Tension
                 const tensionSel = document.getElementById('tensionSelect');
                 if (tensionSel) {
                     tensionSel.addEventListener('change', function(e) {
@@ -845,7 +941,6 @@
                         mainChart.update();
                     });
                 }
-                // Descargar PNG
                 const downloadBtn = document.getElementById('downloadChartBtn');
                 if (downloadBtn) {
                     downloadBtn.addEventListener('click', function() {
@@ -855,7 +950,6 @@
                         link.click();
                     });
                 }
-                // Reset zoom
                 const resetBtn = document.getElementById('resetZoomBtn');
                 if (resetBtn) {
                     resetBtn.addEventListener('click', function() {
@@ -869,23 +963,120 @@
                 }
             }
 
-            // ---- RANKING CHART ----
+            // ---- RANKING AVANZADO (NUEVO) ----
             updateProgress(50, 'Procesando ranking...');
+            const rankingGroupSelect = document.getElementById('rankingGroupSelect');
+            const rankingMetricSelect = document.getElementById('rankingMetricSelect');
+            const rankingLimitSelect = document.getElementById('rankingLimitSelect');
+            const toggleViewBtn = document.getElementById('toggleRankingViewBtn');
+            const rankingChartWrapper = document.getElementById('rankingChartWrapper');
+            const rankingTableWrapper = document.getElementById('rankingTableWrapper');
             let rankingChart = null;
-            if (rankCtx && rawData.rankingChart) {
-                const rankingSource = (rawData.rankingChartAll && rawData.rankingChartAll.labels?.length) ? rawData.rankingChartAll : rawData.rankingChart;
-                const rankLabels = rankingSource?.labels || [];
-                const rankData = rankingSource?.data || [];
-                const rankColors = rankingSource?.colors || rankLabels.map((_, i) => palette[i % palette.length]);
+            let currentRankingView = 'chart'; // 'chart' o 'table'
+
+            // Función para calcular métricas
+            function calculateMetric(values, metric) {
+                if (!values || values.length === 0) return 0;
+                const sorted = [...values].sort((a,b) => a - b);
+                const sum = values.reduce((a,b) => a + b, 0);
+                const avg = sum / values.length;
+                if (metric === 'avg') return avg;
+                if (metric === 'median') {
+                    const mid = Math.floor(sorted.length / 2);
+                    return sorted.length % 2 === 0 ? (sorted[mid-1] + sorted[mid]) / 2 : sorted[mid];
+                }
+                if (metric === 'max') return Math.max(...values);
+                if (metric === 'min') return Math.min(...values);
+                if (metric === 'std') {
+                    const variance = values.reduce((a,b) => a + Math.pow(b - avg, 2), 0) / values.length;
+                    return Math.sqrt(variance);
+                }
+                if (metric === 'cv') {
+                    if (avg === 0) return 0;
+                    const std = Math.sqrt(values.reduce((a,b) => a + Math.pow(b - avg, 2), 0) / values.length);
+                    return (std / avg) * 100;
+                }
+                return avg;
+            }
+
+            // Función para agrupar datos según el grupo seleccionado
+            function groupDataForRanking(groupBy) {
+                const groups = {};
+                // Si no hay datos completos, intentar usar rankingChartAll o rankingChart
+                if (!rawData.rankingFullData || !rawData.rankingFullData.series) {
+                    // Fallback: usar los datos del ranking simple (solo promedios)
+                    const fallback = rawData.rankingChartAll || rawData.rankingChart;
+                    if (fallback && fallback.labels && fallback.data) {
+                        fallback.labels.forEach((label, i) => {
+                            groups[label] = [fallback.data[i]]; // un solo valor, no podemos calcular otras métricas
+                        });
+                    }
+                    return groups;
+                }
+                const series = rawData.rankingFullData.series; // { clave: [valores] }
+                for (let key in series) {
+                    let groupKey = key;
+                    if (groupBy === 'alimentador') {
+                        // Extraer alimentador (suponiendo formato "ACY1 (2024, TOTAL FEP)")
+                        groupKey = key.split(' ')[0];
+                    } else if (groupBy === 'estacion') {
+                        groupKey = key.substring(0,3);
+                    } else if (groupBy === 'tipo') {
+                        // Extraer tipo de medición (después de la coma)
+                        let match = key.match(/,\s*([^)]+)/);
+                        groupKey = match ? match[1].trim() : 'Otro';
+                    } else if (groupBy === 'year') {
+                        // Extraer año
+                        let match = key.match(/\d{4}/);
+                        groupKey = match ? match[0] : 'Desconocido';
+                    }
+                    if (!groups[groupKey]) groups[groupKey] = [];
+                    groups[groupKey] = groups[groupKey].concat(series[key]);
+                }
+                return groups;
+            }
+
+            function updateRanking() {
+                const groupBy = rankingGroupSelect.value;
+                const metric = rankingMetricSelect.value;
+                const limit = rankingLimitSelect.value;
+
+                const groups = groupDataForRanking(groupBy);
+                const items = Object.entries(groups).map(([label, values]) => ({
+                    label,
+                    value: calculateMetric(values, metric)
+                }));
+
+                // Ordenar descendente (para métricas como avg, max, etc.) 
+                // Para cv, podría ser interesante ver los más variables arriba, igual dejamos descendente.
+                items.sort((a,b) => b.value - a.value);
+
+                let displayItems = items;
+                if (limit !== 'all') {
+                    const topN = parseInt(limit, 10);
+                    displayItems = items.slice(0, topN);
+                }
+
+                if (currentRankingView === 'chart') {
+                    renderRankingChart(displayItems);
+                } else {
+                    renderRankingTable(displayItems);
+                }
+            }
+
+            function renderRankingChart(items) {
+                if (!rankCtx) return;
+                if (rankingChart) rankingChart.destroy();
+
                 rankingChart = new Chart(rankCtx, {
                     type: 'bar',
                     data: {
-                        labels: rankLabels,
+                        labels: items.map(i => i.label),
                         datasets: [{
-                            label: 'Promedio',
-                            data: rankData,
-                            backgroundColor: rankColors.map(c => c + '80'),
-                            borderColor: rankColors,
+                            label: 'Valor',
+                            data: items.map(i => i.value),
+                            backgroundColor: items.map((_,i) => palette[i % palette.length] + '80'),
+                            borderColor: items.map((_,i) => palette[i % palette.length]),
                             borderWidth: 1,
                             borderRadius: 4
                         }]
@@ -898,7 +1089,7 @@
                             legend: { display: false },
                             tooltip: {
                                 callbacks: {
-                                    label: (ctx) => `Promedio: ${formatNumber(ctx.parsed.x)}`
+                                    label: (ctx) => `Valor: ${formatNumber(ctx.raw)}`
                                 }
                             }
                         },
@@ -916,10 +1107,40 @@
                 });
             }
 
-            // ---- DISPERSIÓN ----
+            function renderRankingTable(items) {
+                let html = '<table class="ranking-table"><thead><tr><th>Elemento</th><th>Valor</th><th>Acción</th></tr></thead><tbody>';
+                items.forEach(item => {
+                    html += `<tr data-label="${item.label}">
+                        <td>${item.label}</td>
+                        <td><span class="badge primary">${formatNumber(item.value)}</span></td>
+                        <td><button class="btn-icon small" onclick="alert('Detalles de ${item.label} (pendiente)')" title="Ver detalles"><i class="fas fa-eye"></i></button></td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                rankingTableWrapper.innerHTML = html;
+            }
+
+            // Event listeners para ranking
+            if (rankingGroupSelect && rankingMetricSelect && rankingLimitSelect && toggleViewBtn) {
+                rankingGroupSelect.addEventListener('change', updateRanking);
+                rankingMetricSelect.addEventListener('change', updateRanking);
+                rankingLimitSelect.addEventListener('change', updateRanking);
+                toggleViewBtn.addEventListener('click', () => {
+                    currentRankingView = currentRankingView === 'chart' ? 'table' : 'chart';
+                    rankingChartWrapper.style.display = currentRankingView === 'chart' ? 'block' : 'none';
+                    rankingTableWrapper.style.display = currentRankingView === 'table' ? 'block' : 'none';
+                    updateRanking();
+                });
+
+                // Inicializar ranking
+                if (rawData.rankingFullData || rawData.rankingChartAll || rawData.rankingChart) {
+                    updateRanking();
+                }
+            }
+
+            // ---- DISPERSIÓN (igual que antes) ----
             updateProgress(65, 'Renderizando dispersión...');
             if (scatterCtx && rawData.scatterChart) {
-                // Convertir datos scatter {x: Date, y: value} a formato category
                 const scatterDatasets = rawData.scatterChart.datasets || [];
                 const scatterLabels = rawData.scatterChart.labels || [];
                 new Chart(scatterCtx, {
@@ -937,15 +1158,8 @@
                             }
                         },
                         scales: {
-                            x: {
-                                type: 'category',
-                                grid: { color: 'rgba(148,163,184,0.15)' },
-                                ticks: { color: '#94a3b8' }
-                            },
-                            y: {
-                                grid: { color: 'rgba(148,163,184,0.15)' },
-                                ticks: { color: '#94a3b8', callback: formatNumber }
-                            }
+                            x: { type: 'category', grid: { color: 'rgba(148,163,184,0.15)' }, ticks: { color: '#94a3b8' } },
+                            y: { grid: { color: 'rgba(148,163,184,0.15)' }, ticks: { color: '#94a3b8', callback: formatNumber } }
                         }
                     }
                 });
@@ -1092,7 +1306,6 @@
                 stationSummarySelect.addEventListener('change', (e) => renderStationSummary(e.target.value));
                 renderStationSummary(stationSummarySelect.value);
             } else if (stationCtx && rawData.stationSummary && rawData.stationSummary.labels?.length) {
-                // Fallback para formato antiguo (sin bundle)
                 stationCard.classList.remove('hidden-chart');
                 if (stationNameSpan) stationNameSpan.textContent = rawData.stationSummary.stationName || '';
                 if (stationSummarySelect) stationSummarySelect.style.display = 'none';
@@ -1129,7 +1342,7 @@
             if (periodRangeDisplay) periodRangeDisplay.textContent = rawData.periodRange || 'N/A';
             if (lastUpdateDisplay) lastUpdateDisplay.textContent = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
-            // Si la vista es solo ranking (por parámetro o por datos)
+            // Si la vista es solo ranking
             const params = new URLSearchParams(window.location.search);
             if (rawData.rankingOnly || params.get('view') === 'ranking') {
                 document.querySelectorAll('.dashboard-grid .chart-card').forEach(card => {
@@ -1162,7 +1375,6 @@
                 resizeTimer = setTimeout(() => {
                     if (mainChart) mainChart.resize();
                     if (rankingChart) rankingChart.resize();
-                    // Chart.js se encarga del resto
                 }, 200);
             });
         })();
