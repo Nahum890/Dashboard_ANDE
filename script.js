@@ -28,7 +28,7 @@ class ANDEDashboard {
         this.estaciones = [];
         
         this.defaultFilters = {
-            tipoMedicion: ['ACCID.DEP'],
+            tipoMedicion: ['TOTAL FEP'],
             transformador: ['ACY1'],
             year: ['2024'],
             month: [1,2,3,4,5,6,7,8,9,10,11,12],
@@ -49,6 +49,8 @@ class ANDEDashboard {
         // ---------- PROPIEDADES PARA FILTRO INTELIGENTE ----------
         this.selectionMode = 'manual';
         this.currentStationFilter = '';
+        this.selectedFullStations = [];
+        this.latestRankingData = [];
         
         // ---------- DEBOUNCE ----------
         this.loadDataDebounced = this.debounce(this.loadData.bind(this), 500);
@@ -890,6 +892,18 @@ class ANDEDashboard {
             console.log("🔄 Selector de orden de ranking cambiado");
             this.updateRankingChart();
         });
+        this.safeAddEventListener('rankingViewMode', 'change', () => {
+            this.updateRankingChart();
+        });
+        this.safeAddEventListener('rankingDisplayMode', 'change', () => {
+            this.updateRankingChart();
+        });
+        this.safeAddEventListener('openFullRankingBtn', 'click', () => {
+            this.openFullRankingTab();
+        });
+        this.safeAddEventListener('stationSummarySelect', 'change', () => {
+            this.updateStationSummary();
+        });
         
         this.safeAddEventListener('tableSearch', 'input', (e) => {
             console.log("🔍 Búsqueda en tabla:", e.target.value);
@@ -1035,6 +1049,8 @@ class ANDEDashboard {
                 estSel.innerHTML = '<option value="">Todas las estaciones</option>' + 
                     this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
             }
+
+            this.renderStationSelectors(parseInt(document.getElementById('stationCountInput')?.value || '1', 10));
     
             const feedSel = document.getElementById('filterTransformador');
             if (feedSel) {
@@ -1087,131 +1103,165 @@ class ANDEDashboard {
         this.selectionMode = mode;
         const tabs = document.querySelectorAll('.mode-tab');
         tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
-    
+
         const stationSelectorContainer = document.getElementById('stationSelectorContainer');
-        if (stationSelectorContainer) {
-            stationSelectorContainer.style.display = (mode === 'station' || mode === 'manual') ? 'block' : 'none';
-        }
-    
+        const stationMultiContainer = document.getElementById('stationMultiContainer');
+
+        if (stationSelectorContainer) stationSelectorContainer.style.display = mode === 'manual' ? 'block' : 'none';
+        if (stationMultiContainer) stationMultiContainer.style.display = (mode === 'station' || mode === 'compare_two') ? 'block' : 'none';
+
         if (mode === 'all') this.selectAllFeeders();
-        if (mode === 'station' && this.currentStationFilter) this.selectStationFeeders(this.currentStationFilter);
-        
+        if (mode === 'station') {
+            const stationCountInput = document.getElementById('stationCountInput');
+            if (stationCountInput) stationCountInput.disabled = false;
+            this.selectStationsFeeders(this.getSelectedStationsFromMultiSelects());
+        }
+        if (mode === 'compare_two') {
+            const stationCountInput = document.getElementById('stationCountInput');
+            if (stationCountInput) {
+                stationCountInput.value = '2';
+                stationCountInput.disabled = true;
+            }
+            this.renderStationSelectors(2);
+            this.selectStationsFeeders(this.getSelectedStationsFromMultiSelects());
+        }
+
         this.updateFeederModeHint();
     }
-    
+
     updateFeederModeHint() {
         const hint = document.getElementById('estacionHint');
         if (!hint) return;
         const texts = {
-            manual: 'Filtra los alimentadores por estación y selecciona manualmente con Ctrl+Click.',
-            station: 'Al seleccionar una estación, se marcarán automáticamente todos sus alimentadores.',
+            manual: 'Filtra alimentadores por una estación y selecciona manualmente con Ctrl+Click.',
+            station: 'Indica la cantidad de estaciones y selecciona cuáles estaciones completas quieres incluir.',
+            compare_two: 'Selecciona exactamente dos estaciones para compararlas.',
             all: 'Modo "Todos los alimentadores" – se muestran y seleccionan todos.'
         };
         hint.innerHTML = `<i class="fas fa-info-circle"></i> ${texts[this.selectionMode] || texts.manual}`;
     }
-    
+
     setupFeederEventListeners() {
         const estacionSelect = document.getElementById('filterEstacion');
         if (estacionSelect) {
             estacionSelect.addEventListener('change', (e) => {
                 const estacion = e.target.value;
-                console.log("🔄 Estación seleccionada:", estacion);
                 this.currentStationFilter = estacion;
-                this.filterFeedersByStation(estacion);
-                if (this.selectionMode === 'station' && estacion) this.selectStationFeeders(estacion);
+                if (this.selectionMode === 'manual') this.filterFeedersByStation(estacion);
             });
         }
-    
+
+        const stationCountInput = document.getElementById('stationCountInput');
+        if (stationCountInput) {
+            stationCountInput.addEventListener('change', () => {
+                const count = Math.max(1, parseInt(stationCountInput.value || '1', 10));
+                stationCountInput.value = count;
+                this.renderStationSelectors(count);
+                if (this.selectionMode === 'station' || this.selectionMode === 'compare_two') this.selectStationsFeeders(this.getSelectedStationsFromMultiSelects());
+            });
+        }
+
+        const stationMultiContainer = document.getElementById('stationMultiSelects');
+        if (stationMultiContainer) {
+            stationMultiContainer.addEventListener('change', () => {
+                if (this.selectionMode === 'station' || this.selectionMode === 'compare_two') this.selectStationsFeeders(this.getSelectedStationsFromMultiSelects());
+            });
+        }
+
         const selectAllBtn = document.getElementById('selectAllFeedersBtn');
-        if (selectAllBtn) selectAllBtn.addEventListener('click', () => {
-            console.log("🖱️ Botón 'Todos' clickeado");
-            this.selectAllFeeders();
-        });
-    
-        const selectStationBtn = document.getElementById('selectStationFeedersBtn');
-        if (selectStationBtn) {
-            selectStationBtn.addEventListener('click', () => {
-                console.log("🖱️ Botón 'Todos de esta estación' clickeado");
-                const estacion = document.getElementById('filterEstacion')?.value;
-                if (estacion) this.selectStationFeeders(estacion);
-                else this.showNotification('Selecciona una estación primero', 'warning');
-            });
-        }
-    
+        if (selectAllBtn) selectAllBtn.addEventListener('click', () => this.selectAllFeeders());
+
         const clearBtn = document.getElementById('clearFeedersBtn');
-        if (clearBtn) clearBtn.addEventListener('click', () => {
-            console.log("🖱️ Botón 'Limpiar' clickeado");
-            this.clearFeeders();
-        });
-    
+        if (clearBtn) clearBtn.addEventListener('click', () => this.clearFeeders());
+
         const feederSelect = document.getElementById('filterTransformador');
         if (feederSelect) {
             feederSelect.addEventListener('change', () => {
-                console.log("🔄 Selección de alimentadores cambiada");
                 this.updateFeederCount();
                 if (this.globalMode === 'unique') this.loadDataDebounced();
             });
         }
     }
-    
-    filterFeedersByStation(estacion) {
-        console.log("🔍 Filtrando alimentadores por estación:", estacion);
+
+    renderStationSelectors(count = 1) {
+        const container = document.getElementById('stationMultiSelects');
+        if (!container) return;
+
+        const previous = this.getSelectedStationsFromMultiSelects();
+        container.innerHTML = '';
+
+        for (let i = 0; i < count; i++) {
+            const wrap = document.createElement('div');
+            wrap.style.marginBottom = '0.45rem';
+
+            const select = document.createElement('select');
+            select.className = 'form-select station-multi-select';
+            select.dataset.index = String(i);
+
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = `Selecciona estación ${i + 1}`;
+            select.appendChild(placeholder);
+
+            this.estaciones.forEach(st => {
+                const option = document.createElement('option');
+                option.value = st;
+                option.textContent = st;
+                select.appendChild(option);
+            });
+
+            if (previous[i]) select.value = previous[i];
+            wrap.appendChild(select);
+            container.appendChild(wrap);
+        }
+
+        this.updateStationMultiHint();
+    }
+
+    getSelectedStationsFromMultiSelects() {
+        return Array.from(document.querySelectorAll('.station-multi-select'))
+            .map(sel => sel.value)
+            .filter(Boolean)
+            .filter((value, idx, arr) => arr.indexOf(value) === idx);
+    }
+
+    updateStationMultiHint() {
+        const hint = document.getElementById('stationMultiHint');
+        if (!hint) return;
+        const selectedCount = this.getSelectedStationsFromMultiSelects().length;
+        hint.innerHTML = `<i class="fas fa-info-circle"></i> ${selectedCount} estación(es) seleccionada(s)`;
+    }
+
+    selectStationsFeeders(stations) {
         const feederSelect = document.getElementById('filterTransformador');
         if (!feederSelect) return;
-    
-        const selectedValues = Array.from(feederSelect.selectedOptions).map(opt => opt.value);
+
+        this.selectedFullStations = stations;
+        this.updateStationMultiHint();
+
+        if (!stations.length) {
+            this.filterFeedersByStation('');
+            Array.from(feederSelect.options).forEach(opt => opt.selected = false);
+            this.updateFeederCount();
+            return;
+        }
+
+        const feeders = this.allSecciones.filter(feeder => stations.some(st => feeder.startsWith(st)));
         feederSelect.innerHTML = '';
-    
-        let allFeeders = [...this.allSecciones];
-        if (estacion) allFeeders = allFeeders.filter(f => f.startsWith(estacion));
-    
-        allFeeders.forEach(feeder => {
+
+        feeders.forEach(feeder => {
             const option = document.createElement('option');
             option.value = feeder;
             option.textContent = feeder;
+            option.selected = true;
             feederSelect.appendChild(option);
         });
-    
-        selectedValues.forEach(val => {
-            const option = Array.from(feederSelect.options).find(opt => opt.value === val);
-            if (option) option.selected = true;
-        });
-    
+
         this.updateFeederCount();
-    }
-    
-    selectAllFeeders() {
-        console.log("✅ Seleccionando todos los alimentadores");
-        const feederSelect = document.getElementById('filterTransformador');
-        if (!feederSelect) return;
-        
-        if (document.getElementById('filterEstacion').value !== '') {
-            document.getElementById('filterEstacion').value = '';
-            this.filterFeedersByStation('');
-        }
-        
-        Array.from(feederSelect.options).forEach(opt => opt.selected = true);
-        this.updateFeederCount();
-        this.showNotification('Todos los alimentadores seleccionados', 'success');
+        this.showNotification(`Estaciones seleccionadas: ${stations.join(', ')}`, 'success');
         if (this.globalMode === 'unique') this.loadDataDebounced();
     }
-    
-    selectStationFeeders(estacion) {
-        console.log("✅ Seleccionando todos los alimentadores de la estación:", estacion);
-        const feederSelect = document.getElementById('filterTransformador');
-        if (!feederSelect) return;
-    
-        if (document.getElementById('filterEstacion').value !== estacion) {
-            document.getElementById('filterEstacion').value = estacion;
-            this.filterFeedersByStation(estacion);
-        }
-    
-        Array.from(feederSelect.options).forEach(opt => opt.selected = true);
-        this.updateFeederCount();
-        this.showNotification(`Todos los alimentadores de ${estacion} seleccionados`, 'success');
-        if (this.globalMode === 'unique') this.loadDataDebounced();
-    }
-    
+
     clearFeeders() {
         console.log("🧹 Limpiando selección de alimentadores");
         const feederSelect = document.getElementById('filterTransformador');
@@ -1254,12 +1304,15 @@ class ANDEDashboard {
                 }
             };
             setSelect('filterYear', '2024');
-            setSelect('filterTipoMedicion', 'ACCID.DEP');
+            setSelect('filterTipoMedicion', 'TOTAL FEP');
             
             const feedSel = document.getElementById('filterTransformador');
             if (feedSel) {
                 const estSel = document.getElementById('filterEstacion');
                 if (estSel) estSel.value = '';
+                const stationCountInput = document.getElementById('stationCountInput');
+                if (stationCountInput) { stationCountInput.value = '1'; stationCountInput.disabled = false; }
+                this.renderStationSelectors(1);
                 this.filterFeedersByStation('');
                 const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
                 if (option) option.selected = true;
@@ -1269,7 +1322,7 @@ class ANDEDashboard {
             
             this.filters = {
                 year: [document.getElementById('filterYear')?.value || '2024'],
-                tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'ACCID.DEP'],
+                tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'TOTAL FEP'],
                 transformador: this.getSelectedValues('filterTransformador'),
                 month: Array.from(this.selectedMonths),
                 estacion: '',
@@ -1307,6 +1360,9 @@ class ANDEDashboard {
         this.currentStationFilter = '';
         const estSel = document.getElementById('filterEstacion');
         if (estSel) estSel.value = '';
+        const stationCountInput = document.getElementById('stationCountInput');
+        if (stationCountInput) { stationCountInput.value = '1'; stationCountInput.disabled = false; }
+        this.renderStationSelectors(1);
         this.filterFeedersByStation('');
         this.clearFeeders();
         
@@ -1319,7 +1375,7 @@ class ANDEDashboard {
         
         const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
         setVal('filterYear', '2024');
-        setVal('filterTipoMedicion', 'ACCID.DEP');
+        setVal('filterTipoMedicion', 'TOTAL FEP');
         
         document.querySelectorAll('.period-tab').forEach(tab => {
             tab.classList.toggle('active', tab.dataset.period === 'select_months');
@@ -1344,6 +1400,9 @@ class ANDEDashboard {
         this.currentStationFilter = '';
         const estSel = document.getElementById('filterEstacion');
         if (estSel) estSel.value = '';
+        const stationCountInput = document.getElementById('stationCountInput');
+        if (stationCountInput) { stationCountInput.value = '1'; stationCountInput.disabled = false; }
+        this.renderStationSelectors(1);
         this.filterFeedersByStation('');
         this.clearFeeders();
         
@@ -1431,7 +1490,7 @@ class ANDEDashboard {
             
             const tipoSel = document.getElementById('filterTipoMedicion');
             const tipos = this.getSelectedValues('filterTipoMedicion');
-            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'ACCID.DEP');
+            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'TOTAL FEP');
             params.append('tipo_medicion', tipoVal);
             console.log("📊 Tipos:", tipos);
             
@@ -1612,7 +1671,7 @@ class ANDEDashboard {
         console.log("⚠️ Generando datos de ejemplo...");
         const secciones = this.filters.transformador?.length ? this.filters.transformador : ['ACY1','ACY2','ACY3'];
         const años = this.filters.year?.map(y=>parseInt(y)).filter(y=>!isNaN(y)).length ? this.filters.year.map(y=>parseInt(y)) : [2023,2024];
-        const tipos = this.filters.tipoMedicion?.length ? this.filters.tipoMedicion : ['ACCID.DEP','TOTAL FEP'];
+        const tipos = this.filters.tipoMedicion?.length ? this.filters.tipoMedicion : ['TOTAL FEP'];
         const meses = Array.from(this.selectedMonths).length ? Array.from(this.selectedMonths) : [1,2,3,4,5,6,7,8,9,10,11,12];
         this.data = [];
         secciones.forEach((sec, i) => {
@@ -1856,18 +1915,18 @@ class ANDEDashboard {
             return;
         }
         if (!this.data.length) {
+            this.latestRankingData = [];
             this.rankingChart.data.labels = [];
             this.rankingChart.data.datasets[0].data = [];
             this.rankingChart.update('none');
             return;
         }
-        
+
         const rankingGroup = document.getElementById('rankingGroup')?.value || 'alimentador';
         const sortBy = document.getElementById('rankingSort')?.value || 'avg';
-        console.log(`📊 Ranking group: ${rankingGroup}, sort: ${sortBy}`);
-        
-        let series = {};
-        
+        const viewMode = document.getElementById('rankingViewMode')?.value || 'top10';
+
+        const series = {};
         if (rankingGroup === 'alimentador') {
             this.data.forEach(d => {
                 const key = d.combinationLabel;
@@ -1881,33 +1940,52 @@ class ANDEDashboard {
                 series[station].push(d.frecuencia);
             });
         }
-        
-        let ranking = Object.entries(series).map(([lbl, vals]) => {
-            const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
-            const min = Math.min(...vals);
-            const max = Math.max(...vals);
-            const last = vals[vals.length-1];
-            return { label: lbl, avg, range: max-min, last };
+
+        const ranking = Object.entries(series).map(([label, values]) => {
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const last = values[values.length - 1];
+            return { label, avg, range: max - min, last };
         });
-        
-        ranking.sort((a,b) => {
+
+        ranking.sort((a, b) => {
             if (sortBy === 'stability') return a.range - b.range;
             if (sortBy === 'trend') return b.last - a.last;
             return b.avg - a.avg;
         });
-        
-        const top = ranking.slice(0, 10);
-        console.log("🏆 Top 10 ranking:", top);
-        this.rankingChart.data.labels = top.map(t => t.label);
-        this.rankingChart.data.datasets[0].data = top.map(t => t.avg);
-        this.rankingChart.data.datasets[0].backgroundColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
-        this.rankingChart.data.datasets[0].borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
-        
-        // ✨ Actualizar con animación
+
+        this.latestRankingData = ranking;
+        const visibleRanking = viewMode === 'all' ? ranking : ranking.slice(0, 10);
+        const displayMode = document.getElementById('rankingDisplayMode')?.value || 'chart';
+        const chartWrap = document.getElementById('rankingChartWrapper');
+        const listWrap = document.getElementById('rankingListWrapper');
+        if (chartWrap) chartWrap.style.display = displayMode === 'list' ? 'none' : 'block';
+        if (listWrap) {
+            listWrap.style.display = displayMode === 'chart' ? 'none' : 'block';
+            listWrap.innerHTML = ranking.map((item, idx) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 6px;border-bottom:1px solid rgba(148,163,184,0.12);"><span>${idx+1}. ${item.label}</span><strong>${this.safeToFixed(item.avg, 4)}</strong></div>`).join('');
+        }
+
+        this.rankingChart.data.labels = visibleRanking.map(t => t.label);
+        this.rankingChart.data.datasets[0].data = visibleRanking.map(t => t.avg);
+        this.rankingChart.data.datasets[0].backgroundColor = visibleRanking.map((_, i) => this.chartPalette[i % this.chartPalette.length] + '80');
+        this.rankingChart.data.datasets[0].borderColor = visibleRanking.map((_, i) => this.chartPalette[i % this.chartPalette.length]);
         this.rankingChart.update('active');
-        console.log("✅ Ranking HD actualizado con animaciones");
+        console.log(`✅ Ranking actualizado (${visibleRanking.length}/${ranking.length})`);
     }
-    
+
+    openFullRankingTab() {
+        const payload = {
+            labels: this.latestRankingData.map(item => item.label),
+            data: this.latestRankingData.map(item => item.avg),
+            title: 'Ranking completo',
+            subtitle: `Total de elementos: ${this.latestRankingData.length}`,
+            palette: this.chartPalette
+        };
+        localStorage.setItem('ande_ranking_full_data', JSON.stringify(payload));
+        window.open('ranking.html', '_blank', 'width=1600,height=1000');
+    }
+
     updateScatterChart() {
         console.log("📉 Actualizando gráfico de dispersión HD...");
         if (!this.scatterChart) {
@@ -1983,48 +2061,77 @@ class ANDEDashboard {
     }
     
     updateStationSummary() {
-        console.log("🏭 Actualizando resumen de estación HD...");
         if (!this.stationSummaryChart) return;
-        
-        const selectedFeeders = this.getSelectedValues('filterTransformador');
-        if (selectedFeeders.length === 0) {
-            document.getElementById('stationSummaryContainer').style.display = 'none';
-            return;
-        }
-        const prefixes = new Set(selectedFeeders.map(f => f.substring(0,3)));
-        if (prefixes.size !== 1) {
-            document.getElementById('stationSummaryContainer').style.display = 'none';
-            return;
-        }
-        const estacion = Array.from(prefixes)[0];
-        this.currentStationGroup = estacion;
-        
+
         const container = document.getElementById('stationSummaryContainer');
-        container.style.display = 'block';
         const stationName = document.getElementById('stationName');
-        if (stationName) stationName.textContent = this.currentStationGroup;
-        
-        const stationData = this.data.filter(d => d.transformador.startsWith(this.currentStationGroup));
-        if (!stationData.length) return;
-        
-        const feederAvg = {};
-        stationData.forEach(d => {
-            if (!feederAvg[d.transformador]) feederAvg[d.transformador] = { sum: 0, count: 0 };
-            feederAvg[d.transformador].sum += d.frecuencia;
-            feederAvg[d.transformador].count += 1;
+        const stationSummarySelect = document.getElementById('stationSummarySelect');
+        if (!container || !stationSummarySelect) return;
+
+        const selectedFeeders = this.getSelectedValues('filterTransformador');
+        const selectedStationsFromFeeders = [...new Set(selectedFeeders.map(f => f.substring(0, 3)))].filter(Boolean);
+        let availableStations = [];
+
+        if (this.selectionMode === 'all') {
+            availableStations = [...new Set(this.data.map(d => d.transformador.substring(0, 3)))].filter(Boolean).sort();
+        } else if (this.selectionMode === 'station') {
+            availableStations = this.getSelectedStationsFromMultiSelects();
+        } else {
+            availableStations = selectedStationsFromFeeders;
+        }
+
+        const stationSummaryByStation = {};
+        availableStations.forEach(station => {
+            const stationData = this.data.filter(d => d.transformador.startsWith(station));
+            if (!stationData.length) return;
+            const feederAvg = {};
+            stationData.forEach(d => {
+                if (!feederAvg[d.transformador]) feederAvg[d.transformador] = { sum: 0, count: 0 };
+                feederAvg[d.transformador].sum += d.frecuencia;
+                feederAvg[d.transformador].count += 1;
+            });
+            const labels = Object.keys(feederAvg);
+            const data = labels.map(label => feederAvg[label].sum / feederAvg[label].count);
+            stationSummaryByStation[station] = { labels, data };
         });
-        const labels = Object.keys(feederAvg);
-        const avgs = labels.map(l => feederAvg[l].sum / feederAvg[l].count);
-        console.log(`🏭 Resumen de ${estacion}:`, labels, avgs);
-        this.stationSummaryChart.data.labels = labels;
-        this.stationSummaryChart.data.datasets[0].data = avgs;
-        this.stationSummaryChart.data.datasets[0].backgroundColor = labels.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
-        
-        // ✨ Actualizar con animación
+
+        const stationsWithData = Object.keys(stationSummaryByStation);
+        if (!stationsWithData.length) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+
+        const currentValue = stationSummarySelect.value;
+        stationSummarySelect.innerHTML = '<option value="__all__">Todas las estaciones (promedio)</option>' +
+            stationsWithData.map(st => `<option value="${st}">${st}</option>`).join('');
+        stationSummarySelect.value = stationsWithData.includes(currentValue) || currentValue === '__all__' ? currentValue : '__all__';
+
+        const selectedSummaryStation = stationSummarySelect.value || '__all__';
+        this.currentStationGroup = selectedSummaryStation;
+
+        if (selectedSummaryStation === '__all__') {
+            const labels = stationsWithData;
+            const data = labels.map(st => {
+                const vals = stationSummaryByStation[st].data;
+                return vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
+            });
+            if (stationName) stationName.textContent = '(promedio por estación)';
+            this.stationSummaryChart.data.labels = labels;
+            this.stationSummaryChart.data.datasets[0].data = data;
+            this.stationSummaryChart.data.datasets[0].backgroundColor = labels.map((_, i) => this.chartPalette[i % this.chartPalette.length]);
+        } else {
+            if (stationName) stationName.textContent = selectedSummaryStation;
+            this.stationSummaryChart.data.labels = stationSummaryByStation[selectedSummaryStation].labels;
+            this.stationSummaryChart.data.datasets[0].data = stationSummaryByStation[selectedSummaryStation].data;
+            this.stationSummaryChart.data.datasets[0].backgroundColor = stationSummaryByStation[selectedSummaryStation].labels.map((_, i) => this.chartPalette[i % this.chartPalette.length]);
+        }
+
+        this.stationSummaryByStation = stationSummaryByStation;
         this.stationSummaryChart.update('active');
-        console.log("✅ Resumen de estación HD actualizado con animaciones");
     }
-    
+
     // ========== CONTROLES DE GRÁFICOS ==========
     onChartTypeChange() { 
         console.log("🔄 Tipo de gráfico cambiado a:", document.getElementById('chartType')?.value);
@@ -2089,6 +2196,11 @@ class ANDEDashboard {
                 data: this.rankingChart?.data.datasets[0]?.data || [],
                 colors: this.rankingChart?.data.datasets[0]?.backgroundColor || []
             },
+            rankingChartFull: {
+                labels: this.latestRankingData.map(item => item.label),
+                data: this.latestRankingData.map(item => item.avg),
+                colors: this.latestRankingData.map((_, i) => this.chartPalette[i % this.chartPalette.length])
+            },
             scatterChart: {
                 datasets: this.scatterChart?.data.datasets || []
             },
@@ -2108,6 +2220,8 @@ class ANDEDashboard {
                 colors: this.stationSummaryChart?.data.datasets[0]?.backgroundColor || [],
                 stationName: this.currentStationGroup || ''
             },
+            stationSummaryByStation: this.stationSummaryByStation || {},
+            stationSummarySelected: this.currentStationGroup || '__all__',
             seriesCount: this.mainChart?.data.datasets?.length || 0,
             dataPoints: this.data.length,
             periodRange: this.getPeriodRange(),
