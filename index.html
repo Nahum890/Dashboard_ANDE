@@ -55,98 +55,45 @@
                 <button class="sidebar-close" id="sidebarClose"><i class="fas fa-times"></i></button>
             </div>
             <div class="sidebar-content compact">
-                <!-- MODO DE COMPARACIÓN -->
+                <!-- MODO DE SELECCIÓN -->
                 <div class="filter-group">
-                    <label class="form-label">Modo de comparación</label>
+                    <label class="form-label">Modo de selección</label>
                     <div class="toggle-buttons">
                         <button type="button" class="toggle-btn active" id="globalModeUnique" data-mode="unique">
-                            <i class="fas fa-check-circle"></i> Único
+                            <i class="fas fa-check-circle"></i> Simple
                         </button>
                         <button type="button" class="toggle-btn" id="globalModeMultiple" data-mode="multiple">
                             <i class="fas fa-check-double"></i> Múltiple
                         </button>
                     </div>
                     <small class="form-hint" id="globalModeHint">
-                        <i class="fas fa-info-circle"></i> Único: un valor por filtro
+                        <i class="fas fa-info-circle"></i> Simple: un valor por filtro
                     </small>
                 </div>
 
-                <!-- AÑO(S) -->
+                <!-- AÑOS -->
                 <div class="filter-group">
-                    <label class="form-label"><i class="fas fa-calendar"></i> Año(s)</label>
+                    <label class="form-label"><i class="fas fa-calendar"></i> Años</label>
                     <div class="multi-select-container">
                         <select id="filterYear" class="form-select multi-select" multiple size="4"></select>
                     </div>
                     <small class="form-hint"><i class="fas fa-info-circle"></i> Ctrl+Click para varios</small>
                 </div>
 
-                <!-- FILTRO DE ALIMENTADORES INTELIGENTE -->
+                <!-- ESTACIONES -->
+                <div class="filter-group">
+                    <label class="form-label"><i class="fas fa-building"></i> Estaciones</label>
+                    <div class="multi-select-container">
+                        <select id="filterEstacion" class="form-select multi-select" multiple size="4"></select>
+                    </div>
+                    <small class="form-hint" id="estacionHint">
+                        <i class="fas fa-info-circle"></i> Selecciona una o varias estaciones para filtrar alimentadores
+                    </small>
+                </div>
+
+                <!-- ALIMENTADORES -->
                 <div class="filter-group">
                     <label class="form-label"><i class="fas fa-transformer"></i> Alimentadores</label>
-                    
-                    <div class="selection-mode-tabs">
-                        <button type="button" class="mode-tab" data-mode="manual">
-                            <i class="fas fa-mouse-pointer"></i> Manual
-                        </button>
-                        <button type="button" class="mode-tab" data-mode="station_multi">
-                            <i class="fas fa-building"></i> Estaciones completas
-                        </button>
-                        <button type="button" class="mode-tab active" data-mode="compare_stations">
-                            <i class="fas fa-code-compare"></i> Comparar 2 estaciones
-                        </button>
-                        <button type="button" class="mode-tab" data-mode="all">
-                            <i class="fas fa-layer-group"></i> Todos
-                        </button>
-                    </div>
-
-                    <div style="margin-top: 0.6rem;">
-                        <button type="button" class="btn-outline small" id="openStationMultiBtn" style="width:100%;">
-                            <i class="fas fa-list-ol"></i> Elegir cantidad de estaciones a comparar
-                        </button>
-                    </div>
-
-                    <div id="stationSelectorContainer" style="margin-top: 0.8rem;">
-                        <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
-                            <i class="fas fa-building"></i> Estación 1
-                        </label>
-                        <select id="filterEstacion" class="form-select">
-                            <option value="">Todas las estaciones</option>
-                        </select>
-                    </div>
-
-                    <div id="compareStationContainer" style="margin-top: 0.6rem; display: none;">
-                        <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
-                            <i class="fas fa-building"></i> Estación 2
-                        </label>
-                        <select id="filterEstacionCompare" class="form-select">
-                            <option value="">Selecciona estación 2</option>
-                        </select>
-                    </div>
-
-                    <div id="stationMultiContainer" style="margin-top: 0.8rem; display: none;">
-                        <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
-                            <i class="fas fa-list-ol"></i> Cantidad de estaciones a comparar
-                        </label>
-                        <input
-                            id="stationCountInput"
-                            class="form-select"
-                            type="number"
-                            min="1"
-                            max="20"
-                            step="1"
-                            value="2"
-                            style="margin-bottom: 0.6rem;"
-                        >
-                        <small class="form-hint" style="display:block; margin-bottom:0.65rem;">
-                            <i class="fas fa-circle-info"></i> Define cuántas estaciones deseas comparar y luego selecciónalas.
-                        </small>
-                        <div id="stationSelectorsDynamic"></div>
-                    </div>
-
-                    <small class="form-hint" id="estacionHint">
-                        <i class="fas fa-info-circle"></i> Filtra los alimentadores por estación
-                    </small>
-
                     <div class="feeder-actions" id="feederActions">
                         <button type="button" class="btn-outline small" id="selectAllFeedersBtn">
                             <i class="fas fa-check-double"></i> Todos
@@ -155,7 +102,6 @@
                             <i class="fas fa-times"></i> Limpiar
                         </button>
                     </div>
-
                     <div class="multi-select-container">
                         <select id="filterTransformador" class="form-select multi-select" multiple size="6"></select>
                     </div>
@@ -164,9 +110,9 @@
                     </small>
                 </div>
 
-                <!-- VARIABLE -->
+                <!-- TIPOS DE MEDICIÓN -->
                 <div class="filter-group">
-                    <label class="form-label"><i class="fas fa-chart-line"></i> Variable</label>
+                    <label class="form-label"><i class="fas fa-chart-line"></i> Tipos de medición</label>
                     <div class="multi-select-container">
                         <select id="filterTipoMedicion" class="form-select multi-select" multiple size="5"></select>
                     </div>
@@ -206,7 +152,7 @@
                     <select id="filterMonth" multiple style="display: none;"></select>
                 </div>
 
-                <!-- AGRUPACIÓN GRÁFICO MULTIDIMENSIONAL -->
+                <!-- AGRUPACIÓN GRÁFICO PRINCIPAL -->
                 <div class="filter-group">
                     <label class="form-label"><i class="fas fa-layer-group"></i> Agrupar por</label>
                     <select id="groupBy" class="form-select">

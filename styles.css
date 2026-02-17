@@ -1893,6 +1893,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
 .tag.tipo { background: rgba(139,92,246,0.15); color: var(--purple); border: 1px solid rgba(139,92,246,0.3); }
 .tag.alimentador { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+.tag.estacion { background: rgba(96,165,250,0.15); color: var(--accent); border: 1px solid rgba(96,165,250,0.3); }
 .tag.año { background: rgba(37,99,235,0.15); color: var(--primary); border: 1px solid rgba(37,99,235,0.3); }
 .tag.hint { background: #f1f5f9; color: var(--text-light); border: 1px solid #e2e8f0; }
 
