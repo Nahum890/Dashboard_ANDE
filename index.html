@@ -99,6 +99,12 @@
                         </button>
                     </div>
 
+                    <div style="margin-top: 0.6rem;">
+                        <button type="button" class="btn-outline small" id="openStationMultiBtn" style="width:100%;">
+                            <i class="fas fa-list-ol"></i> Elegir cantidad de estaciones a comparar
+                        </button>
+                    </div>
+
                     <div id="stationSelectorContainer" style="margin-top: 0.8rem;">
                         <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
                             <i class="fas fa-building"></i> Estación 1
@@ -115,6 +121,29 @@
                         <select id="filterEstacionCompare" class="form-select">
                             <option value="">Selecciona estación 2</option>
                         </select>
+                    </div>
+
+                    <div id="stationMultiContainer" style="margin-top: 0.8rem; display: none;">
+                        <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.4rem;">
+                            <i class="fas fa-list-ol"></i> Cantidad de estaciones a comparar
+                        </label>
+                        <input
+                            id="stationCountInput"
+                            class="form-select"
+                            type="number"
+                            min="1"
+                            max="20"
+                            step="1"
+                            value="2"
+                            style="margin-bottom: 0.6rem;"
+                        >
+                        <small class="form-hint" style="display:block; margin-bottom:0.65rem;">
+                            <i class="fas fa-circle-info"></i> Define cuántas estaciones deseas comparar y luego selecciónalas.
+                        </small>
+                        <div id="stationSelectorsDynamic"></div>
+                        <button type="button" class="btn-primary" id="applyStationMultiBtn" style="margin-top:0.75rem; width:100%;">
+                            <i class="fas fa-check"></i> Aplicar estaciones seleccionadas
+                        </button>
                     </div>
 
                     <small class="form-hint" id="estacionHint">
