@@ -47,7 +47,7 @@ class ANDEDashboard {
         this.currentStationGroup = null;
         
         // ---------- PROPIEDADES PARA FILTRO INTELIGENTE ----------
-        this.selectionMode = 'manual';
+        this.selectionMode = 'compare_stations';
         this.currentStationFilter = '';
         this.currentStationCompare = '';
         this.selectedStations = [];
@@ -1069,7 +1069,7 @@ class ANDEDashboard {
         this.setupFeederModeTabs();
         this.setupFeederEventListeners();
         this.updateFeederCount();
-        this.setFeederMode('manual');
+        this.setFeederMode('compare_stations');
         this.renderStationSelectors();
     }
     
@@ -1170,7 +1170,18 @@ class ANDEDashboard {
 
         if (mode === 'all') this.selectAllFeeders();
         if (mode === 'station' && this.currentStationFilter) this.selectStationFeeders(this.currentStationFilter);
-        if (mode === 'compare_stations') this.selectComparisonStationsFeeders();
+        if (mode === 'compare_stations') {
+            const estSel = document.getElementById('filterEstacion');
+            const estCompareSel = document.getElementById('filterEstacionCompare');
+            const available = this.estaciones || [];
+            if (available.length) {
+                if (estSel && !estSel.value) estSel.value = available[0];
+                if (estCompareSel && !estCompareSel.value) estCompareSel.value = available[1] || available[0];
+                this.currentStationFilter = estSel?.value || this.currentStationFilter;
+                this.currentStationCompare = estCompareSel?.value || this.currentStationCompare;
+            }
+            this.selectComparisonStationsFeeders();
+        }
 
         this.updateFeederModeHint();
     }

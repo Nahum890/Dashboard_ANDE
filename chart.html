@@ -1029,10 +1029,11 @@
             const stationNameSpan = document.getElementById('stationNameSpan');
             const stationSummarySelect = document.getElementById('stationSummarySelectExpanded');
             const summaryBundle = rawData.stationSummaryBundle;
-            if (stationCtx && summaryBundle && summaryBundle.stations?.length) {
+            const stations = Array.isArray(summaryBundle?.stations) ? summaryBundle.stations : [];
+            if (stationCtx && stations.length) {
                 stationCard.classList.remove('hidden-chart');
                 stationSummarySelect.innerHTML = '<option value="__ALL__">Resumen global de estaciones seleccionadas</option>' +
-                    summaryBundle.stations.map(st => `<option value="${st}">${st}</option>`).join('');
+                    stations.map(st => `<option value="${st}">${st}</option>`).join('');
 
                 const renderSummary = (value) => {
                     const selected = value || '__ALL__';
