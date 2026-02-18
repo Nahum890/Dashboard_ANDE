@@ -2405,14 +2405,6 @@ class ANDEDashboard {
     // ========== EXPANDIR GRÁFICOS ==========
     expandChart() {
         console.log("🖥️ Expandiendo gráficos a nueva ventana");
-
-        // Recolectar todos los valores por serie para el ranking avanzado
-        const seriesData = {};
-        this.data.forEach(d => {
-            if (!seriesData[d.combinationKey]) seriesData[d.combinationKey] = [];
-            seriesData[d.combinationKey].push(d.frecuencia);
-        });
-
         const chartData = {
             mainChart: {
                 labels: this.mainChart?.data.labels || [],
@@ -2465,10 +2457,9 @@ class ANDEDashboard {
             seriesCount: this.mainChart?.data.datasets?.length || 0,
             dataPoints: this.data.length,
             periodRange: this.getPeriodRange(),
-            palette: this.chartPalette,
-            rankingFullData: { series: seriesData }
+            palette: this.chartPalette
+            
         };
-
         localStorage.setItem('ande_chart_data', JSON.stringify(chartData));
         window.open('chart.html', '_blank', 'width=1400,height=900');
     }
