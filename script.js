@@ -1929,7 +1929,6 @@ class ANDEDashboard {
         const totalDepEl = document.getElementById('totalDep');
         if (totalFepEl) totalFepEl.textContent = this.safeToFixed(totalFep, 2);
         if (totalDepEl) totalDepEl.textContent = this.safeToFixed(totalDep, 2);
-        console.log(`📊 Totales calculados - FEP: ${totalFep}, DEP: ${totalDep}`);
     }
 
     async refreshFepDepTotals() {
@@ -1956,12 +1955,10 @@ class ANDEDashboard {
             params.append('tipo_medicion', 'all');
 
             const url = `${this.apiBaseUrl}/api/datos?${params}`;
-            console.log('🌐 Solicitando totales FEP/DEP:', url);
             const res = await fetch(url);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             const data = await res.json();
-            console.log(`📊 refreshFepDepTotals: ${data.length} registros recibidos`);
             const totals = this.calculateFepDepTotals(data);
             this.renderFepDepTotals(totals.fep, totals.dep);
         } catch (error) {
@@ -2015,6 +2012,19 @@ class ANDEDashboard {
             const wv = document.getElementById('worstValue');
             if (wv) wv.textContent = worstAvg.toFixed(4);
         }
+
+        // --- NUEVO: Totales de FEP y DEP ---
+        const totalFep = this.data
+            .filter(d => d.tipo === 'TOTAL FEP')
+            .reduce((sum, d) => sum + d.frecuencia, 0);
+        const totalDep = this.data
+            .filter(d => d.tipo === 'ACCID.DEP')
+            .reduce((sum, d) => sum + d.frecuencia, 0);
+
+        const totalFepEl = document.getElementById('totalFep');
+        const totalDepEl = document.getElementById('totalDep');
+        if (totalFepEl) totalFepEl.textContent = this.safeToFixed(totalFep, 2);
+        if (totalDepEl) totalDepEl.textContent = this.safeToFixed(totalDep, 2);
     }
     
     updateComparisonTags() {
