@@ -314,9 +314,11 @@ app.get("/api/datos", async (req, res) => {
     let { seccion, anio, mes, tipo_medicion, estacion, periodo } = req.query;
     
     // VALORES POR DEFECTO SEGUROS
-    if (!seccion || seccion === '' || seccion === 'all') {
-        seccion = 'ACY1'; // Valor por defecto seguro
+    if (!seccion || seccion === '') {
+        seccion = 'ACY1'; // Si no se envía, usar ACY1
     }
+    // Si seccion es 'all', lo dejamos como 'all' para que no se filtre
+    // No reasignamos 'all' a 'ACY1'
     
     if (!anio || anio === '' || anio === 'all') {
         anio = '2024'; // Año por defecto seguro
