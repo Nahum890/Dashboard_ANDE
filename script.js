@@ -1678,6 +1678,7 @@ class ANDEDashboard {
                 console.log("📈 Actualizando UI con nuevos datos (con animaciones HD)...");
                 this.updateStats();
                 this.updateKPIs();
+                await this.refreshFepDepTotals();
                 this.updateSpecialKPIs();
                 
                 // Actualizar gráficos con animaciones
@@ -2012,12 +2013,18 @@ class ANDEDashboard {
             if (wv) wv.textContent = worstAvg.toFixed(4);
         }
 
-        // --- Totales de FEP y DEP con normalización (consistente) ---
-        const totals = this.calculateFepDepTotals(this.data);
+        // --- NUEVO: Totales de FEP y DEP ---
+        const totalFep = this.data
+            .filter(d => d.tipo === 'TOTAL FEP')
+            .reduce((sum, d) => sum + d.frecuencia, 0);
+        const totalDep = this.data
+            .filter(d => d.tipo === 'ACCID.DEP')
+            .reduce((sum, d) => sum + d.frecuencia, 0);
+
         const totalFepEl = document.getElementById('totalFep');
         const totalDepEl = document.getElementById('totalDep');
-        if (totalFepEl) totalFepEl.textContent = this.safeToFixed(totals.fep, 2);
-        if (totalDepEl) totalDepEl.textContent = this.safeToFixed(totals.dep, 2);
+        if (totalFepEl) totalFepEl.textContent = this.safeToFixed(totalFep, 2);
+        if (totalDepEl) totalDepEl.textContent = this.safeToFixed(totalDep, 2);
     }
     
     updateComparisonTags() {
