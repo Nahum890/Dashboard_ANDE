@@ -1959,7 +1959,9 @@ class ANDEDashboard {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             const data = await res.json();
+            console.log(`📊 refreshFepDepTotals: ${data.length} registros recibidos`);
             const totals = this.calculateFepDepTotals(data);
+            console.log('🧮 Totales calculados:', totals);
             this.renderFepDepTotals(totals.fep, totals.dep);
         } catch (error) {
             console.warn('⚠️ No se pudieron refrescar totales FEP/DEP con consulta global, usando datos actuales.', error);
@@ -2013,18 +2015,6 @@ class ANDEDashboard {
             if (wv) wv.textContent = worstAvg.toFixed(4);
         }
 
-        // --- NUEVO: Totales de FEP y DEP ---
-        const totalFep = this.data
-            .filter(d => d.tipo === 'TOTAL FEP')
-            .reduce((sum, d) => sum + d.frecuencia, 0);
-        const totalDep = this.data
-            .filter(d => d.tipo === 'ACCID.DEP')
-            .reduce((sum, d) => sum + d.frecuencia, 0);
-
-        const totalFepEl = document.getElementById('totalFep');
-        const totalDepEl = document.getElementById('totalDep');
-        if (totalFepEl) totalFepEl.textContent = this.safeToFixed(totalFep, 2);
-        if (totalDepEl) totalDepEl.textContent = this.safeToFixed(totalDep, 2);
     }
     
     updateComparisonTags() {
