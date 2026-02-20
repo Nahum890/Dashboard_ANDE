@@ -324,9 +324,10 @@ app.get("/api/datos", async (req, res) => {
         anio = '2024'; // Año por defecto seguro
     }
     
-    if (!tipo_medicion || tipo_medicion === '' || tipo_medicion === 'all') {
+    if (!tipo_medicion || tipo_medicion === '') {
         tipo_medicion = 'ACCID.DEP'; // Tipo por defecto seguro
     }
+    // Si tipo_medicion es 'all', lo dejamos como 'all' para no filtrar
     
     // Log de parámetros ajustados
     console.log("📊 Parámetros ajustados:", { seccion, anio, mes, tipo_medicion, estacion, periodo });
