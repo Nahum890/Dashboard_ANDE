@@ -16,6 +16,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 console.log("🚀 Inicializando servidor ANDE Dashboard...");
 
 const dbPath = path.resolve(__dirname, "ANDE.db");
+const adminMigrationToken = process.env.ADMIN_MIGRATION_TOKEN || "";
 
 const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE, (err) => {
     if (err) {
@@ -33,11 +34,107 @@ function verificarTablas() {
             console.error(err);
         } else if (row) {
             console.log("✅ Tabla 'mediciones_completas' encontrada y lista.");
+            validarEsquemaMediciones().catch((schemaErr) => {
+                console.error("❌ No se pudo validar el esquema de 'mediciones_completas':", schemaErr.message);
+            });
         } else {
             console.warn("⚠️ ALERTA: No se encontró la tabla 'mediciones_completas'.");
             console.warn("   Es posible que el archivo ANDE.db esté vacío o tenga otro nombre de tabla.");
         }
     });
+}
+
+const COLUMNAS_ESPERADAS_MEDICIONES = [
+    "id",
+    "seccion",
+    "anio",
+    "mes",
+    "departamento",
+    "local",
+    "tipo_medicion",
+    "valor",
+    "carga_id"
+];
+
+async function obtenerColumnasTabla(nombreTabla) {
+    const estructura = await ejecutarConsulta(`PRAGMA table_info(${nombreTabla})`);
+    return estructura.map((c) => c.name);
+}
+
+async function validarEsquemaMediciones() {
+    const columnasActuales = await obtenerColumnasTabla("mediciones_completas");
+    const faltantes = COLUMNAS_ESPERADAS_MEDICIONES.filter((col) => !columnasActuales.includes(col));
+    const extras = columnasActuales.filter((col) => !COLUMNAS_ESPERADAS_MEDICIONES.includes(col));
+
+    if (faltantes.length || extras.length) {
+        console.error("❌ Desalineación detectada en esquema de 'mediciones_completas'.");
+        if (faltantes.length) {
+            console.error("   - Columnas faltantes:", faltantes.join(", "));
+        }
+        if (extras.length) {
+            console.error("   - Columnas no esperadas:", extras.join(", "));
+        }
+        console.error("   - Columnas esperadas:", COLUMNAS_ESPERADAS_MEDICIONES.join(", "));
+        console.error("   - Columnas actuales:", columnasActuales.join(", "));
+    } else {
+        console.log("✅ Esquema de 'mediciones_completas' validado correctamente.");
+    }
+}
+
+async function ejecutarMigracionMedicionesV2() {
+    const tablas = await ejecutarConsulta("SELECT name FROM sqlite_master WHERE type='table' AND name='mediciones_completas'");
+    if (tablas.length === 0) {
+        throw new Error("No existe la tabla 'mediciones_completas' para migrar");
+    }
+
+    const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
+    const tablaBackup = `mediciones_completas_backup_${timestamp}`;
+
+    const columnasActuales = await obtenerColumnasTabla("mediciones_completas");
+    const expresionLocal = columnasActuales.includes("local") ? "TRIM(local)" : "NULL";
+
+    await ejecutarComando("BEGIN TRANSACTION");
+    try {
+        await ejecutarComando("DROP TABLE IF EXISTS mediciones_completas_v2");
+        await ejecutarComando(`
+            CREATE TABLE mediciones_completas_v2 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                seccion TEXT,
+                anio INTEGER,
+                mes INTEGER,
+                departamento TEXT,
+                local TEXT,
+                tipo_medicion TEXT,
+                valor REAL,
+                carga_id INTEGER,
+                UNIQUE(seccion, anio, mes, tipo_medicion)
+            )
+        `);
+
+        await ejecutarComando(`
+            INSERT INTO mediciones_completas_v2 (id, seccion, anio, mes, departamento, local, tipo_medicion, valor, carga_id)
+            SELECT
+                id,
+                TRIM(seccion),
+                anio,
+                mes,
+                departamento,
+                ${expresionLocal},
+                TRIM(tipo_medicion),
+                valor,
+                carga_id
+            FROM mediciones_completas
+        `);
+
+        await ejecutarComando(`ALTER TABLE mediciones_completas RENAME TO ${tablaBackup}`);
+        await ejecutarComando("ALTER TABLE mediciones_completas_v2 RENAME TO mediciones_completas");
+        await ejecutarComando("COMMIT");
+
+        return { tabla_backup: tablaBackup };
+    } catch (error) {
+        await ejecutarComando("ROLLBACK");
+        throw error;
+    }
 }
 
 function ejecutarConsulta(sql, params = []) {
@@ -565,6 +662,7 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
                 anio INTEGER,
                 mes INTEGER,
                 departamento TEXT,
+                local TEXT,
                 tipo_medicion TEXT,
                 valor REAL,
                 carga_id INTEGER,
@@ -591,8 +689,8 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
         // Preparar statement para inserción
         const stmt = db.prepare(`
             INSERT OR REPLACE INTO mediciones_completas 
-            (seccion, anio, mes, departamento, tipo_medicion, valor, carga_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (seccion, anio, mes, departamento, local, tipo_medicion, valor, carga_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         // Procesar filas
@@ -638,6 +736,7 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
                         parseInt(row.anio),
                         parseInt(row.mes),
                         row.departamento ? String(row.departamento).trim() : null,
+                        row.local ? String(row.local).trim() : null,
                         String(row.tipo_medicion).trim(),
                         parseFloat(row.valor),
                         carga.id
@@ -677,6 +776,31 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
         res.status(500).json({ 
             error: "Error procesando el archivo Excel",
             detalles: error.message 
+        });
+    }
+});
+
+// ==================== ADMIN: Migración controlada a esquema v2 ====================
+app.post("/api/admin/migrar-mediciones-v2", async (req, res) => {
+    const tokenHeader = req.headers["x-admin-token"];
+
+    if (!adminMigrationToken || tokenHeader !== adminMigrationToken) {
+        return res.status(403).json({ error: "No autorizado para ejecutar migraciones" });
+    }
+
+    try {
+        const resultado = await ejecutarMigracionMedicionesV2();
+        await validarEsquemaMediciones();
+        res.json({
+            success: true,
+            mensaje: "Migración completada",
+            tabla_backup: resultado.tabla_backup
+        });
+    } catch (error) {
+        console.error("❌ Error en migración v2:", error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
         });
     }
 });
