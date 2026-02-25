@@ -409,22 +409,11 @@ app.get("/api/datos", async (req, res) => {
     console.log("📥 Petición a /api/datos recibida con parámetros:", req.query);
     
     let { seccion, anio, mes, tipo_medicion, estacion, periodo } = req.query;
-    
-    // VALORES POR DEFECTO SEGUROS
-    if (!seccion || seccion === '') {
-        seccion = 'ACY1'; // Si no se envía, usar ACY1
-    }
-    // Si seccion es 'all', lo dejamos como 'all' para que no se filtre
-    // No reasignamos 'all' a 'ACY1'
-    
-    if (!anio || anio === '' || anio === 'all') {
-        anio = '2024'; // Año por defecto seguro
-    }
-    
-    if (!tipo_medicion || tipo_medicion === '') {
-        tipo_medicion = 'ACCID.DEP'; // Tipo por defecto seguro
-    }
-    // Si tipo_medicion es 'all', lo dejamos como 'all' para no filtrar
+
+    // Si no se reciben filtros explícitos, tratar como "sin filtro"
+    if (!seccion || seccion === '') seccion = 'all';
+    if (!anio || anio === '') anio = 'all';
+    if (!tipo_medicion || tipo_medicion === '') tipo_medicion = 'all';
     
     // Log de parámetros ajustados
     console.log("📊 Parámetros ajustados:", { seccion, anio, mes, tipo_medicion, estacion, periodo });
@@ -565,32 +554,7 @@ app.get("/api/datos", async (req, res) => {
         
         if (rows.length === 0) {
             console.log("⚠️ No se encontraron registros con los filtros proporcionados");
-            console.log("   Intentando con valores más amplios...");
-            
-            // Intentar con valores más amplios
-            const fallbackSql = `SELECT seccion, anio, mes, departamento, tipo_medicion, valor 
-                                FROM mediciones_completas 
-                                WHERE seccion LIKE ? 
-                                ORDER BY anio DESC, mes ASC, seccion ASC 
-                                LIMIT 50`;
-            const fallbackParams = [seccion + '%'];
-            
-            const fallbackRows = await ejecutarConsulta(fallbackSql, fallbackParams);
-            console.log(`🔄 Registros con búsqueda ampliada: ${fallbackRows.length}`);
-            
-            const datos = fallbackRows.map(row => ({
-                transformador: row.seccion,
-                frecuencia: parseFloat(row.valor) || 0,
-                fecha: `${row.anio}-${String(row.mes).padStart(2, "0")}-01`,
-                tipo: row.tipo_medicion,
-                departamento: row.departamento || 'N/A',
-                year: row.anio,
-                month: row.mes,
-                combinationKey: `${row.seccion}-${row.anio}-${row.tipo_medicion}`,
-                combinationLabel: `${row.seccion} (${row.anio})`
-            }));
-            
-            return res.json(datos);
+            return res.json([]);
         }
         
         const datos = rows.map(row => ({

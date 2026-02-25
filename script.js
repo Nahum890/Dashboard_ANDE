@@ -1633,7 +1633,7 @@ class ANDEDashboard {
             
             const yearSel = document.getElementById('filterYear');
             const years = this.getSelectedValues('filterYear');
-            const anioVal = years.length ? years.join(',') : (yearSel?.value || '2024');
+            const anioVal = years.length ? years.join(',') : (yearSel?.value || 'all');
             params.append('anio', anioVal);
             console.log("📅 Años:", years);
             
@@ -1650,7 +1650,7 @@ class ANDEDashboard {
             
             const tipoSel = document.getElementById('filterTipoMedicion');
             const tipos = this.getSelectedValues('filterTipoMedicion');
-            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'TOTAL FEP');
+            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'all');
             params.append('tipo_medicion', tipoVal);
             console.log("📊 Tipos:", tipos);
             
@@ -1670,10 +1670,7 @@ class ANDEDashboard {
             if (this.data.length === 0) {
                 this.showNotification("No hay datos con los filtros actuales", "warning");
                 this.clearChartsAndTable();
-                if (this.isInitialLoad) { 
-                    console.log("⚠️ Generando datos de ejemplo..."); 
-                    this.generateSampleData(); 
-                }
+                await this.refreshFepDepTotals();
             } else {
                 console.log("📈 Actualizando UI con nuevos datos (con animaciones HD)...");
                 this.updateStats();
@@ -1695,10 +1692,8 @@ class ANDEDashboard {
         } catch (error) {
             console.error("❌ Error cargando datos:", error);
             this.showNotification(`Error: ${error.message}`, "error");
-            if (this.isInitialLoad) { 
-                console.log("⚠️ Generando datos de ejemplo..."); 
-                this.generateSampleData(); 
-            }
+            this.clearChartsAndTable();
+            this.renderFepDepTotals(0, 0);
         } finally { 
             this.showLoading(false); 
         }
@@ -1941,7 +1936,7 @@ class ANDEDashboard {
 
             const yearSel = document.getElementById('filterYear');
             const years = this.getSelectedValues('filterYear');
-            const anioVal = years.length ? years.join(',') : (yearSel?.value || '2024');
+            const anioVal = years.length ? years.join(',') : (yearSel?.value || 'all');
             params.append('anio', anioVal);
 
             if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
