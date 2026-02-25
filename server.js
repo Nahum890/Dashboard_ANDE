@@ -66,6 +66,18 @@ function ejecutarComando(sql, params = []) {
     });
 }
 
+async function obtenerReporteDuplicados() {
+    const sql = `
+        SELECT seccion, anio, mes, tipo_medicion, COUNT(*) as cantidad
+        FROM mediciones_completas
+        GROUP BY seccion, anio, mes, tipo_medicion
+        HAVING COUNT(*) > 1
+        ORDER BY cantidad DESC, seccion, anio, mes, tipo_medicion
+    `;
+
+    return ejecutarConsulta(sql);
+}
+
 // ========================
 // 2. MIDDLEWARES
 // ========================
@@ -590,69 +602,99 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
 
         // Preparar statement para inserción
         const stmt = db.prepare(`
-            INSERT OR REPLACE INTO mediciones_completas 
+            INSERT INTO mediciones_completas 
             (seccion, anio, mes, departamento, tipo_medicion, valor, carga_id)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
 
-        // Procesar filas
-        db.serialize(() => {
-            db.run("BEGIN TRANSACTION");
-            
-            rows.forEach((row, index) => {
-                try {
-                    // Validar datos mínimos
-                    if (!row.seccion || row.seccion === '') {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: Falta 'seccion'`);
+        // Procesar filas dentro de una transacción y esperar su finalización
+        await new Promise((resolve, reject) => {
+            db.serialize(() => {
+                db.run("BEGIN TRANSACTION", (beginError) => {
+                    if (beginError) {
+                        reject(beginError);
                         return;
                     }
-                    
-                    if (!row.anio || isNaN(row.anio)) {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: 'anio' inválido: ${row.anio}`);
-                        return;
-                    }
-                    
-                    if (!row.mes || isNaN(row.mes) || row.mes < 1 || row.mes > 12) {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: 'mes' inválido: ${row.mes}`);
-                        return;
-                    }
-                    
-                    if (!row.tipo_medicion || row.tipo_medicion === '') {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: Falta 'tipo_medicion'`);
-                        return;
-                    }
-                    
-                    if (row.valor === undefined || row.valor === null || isNaN(row.valor)) {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: 'valor' inválido: ${row.valor}`);
-                        return;
-                    }
-                    
-                    // Insertar datos
-                    stmt.run(
-                        String(row.seccion).trim(),
-                        parseInt(row.anio),
-                        parseInt(row.mes),
-                        row.departamento ? String(row.departamento).trim() : null,
-                        String(row.tipo_medicion).trim(),
-                        parseFloat(row.valor),
-                        carga.id
-                    );
-                    insertadas++;
-                    
-                } catch (e) {
-                    errores++;
-                    erroresDetalle.push(`Fila ${index + 2}: Error - ${e.message}`);
-                }
+
+                    rows.forEach((row, index) => {
+                        try {
+                            // Validar datos mínimos
+                            if (!row.seccion || row.seccion === '') {
+                                errores++;
+                                erroresDetalle.push(`Fila ${index + 2}: Falta 'seccion'`);
+                                return;
+                            }
+
+                            if (!row.anio || isNaN(row.anio)) {
+                                errores++;
+                                erroresDetalle.push(`Fila ${index + 2}: 'anio' inválido: ${row.anio}`);
+                                return;
+                            }
+
+                            if (!row.mes || isNaN(row.mes) || row.mes < 1 || row.mes > 12) {
+                                errores++;
+                                erroresDetalle.push(`Fila ${index + 2}: 'mes' inválido: ${row.mes}`);
+                                return;
+                            }
+
+                            if (!row.tipo_medicion || row.tipo_medicion === '') {
+                                errores++;
+                                erroresDetalle.push(`Fila ${index + 2}: Falta 'tipo_medicion'`);
+                                return;
+                            }
+
+                            if (row.valor === undefined || row.valor === null || isNaN(row.valor)) {
+                                errores++;
+                                erroresDetalle.push(`Fila ${index + 2}: 'valor' inválido: ${row.valor}`);
+                                return;
+                            }
+
+                            stmt.run(
+                                String(row.seccion).trim(),
+                                parseInt(row.anio),
+                                parseInt(row.mes),
+                                row.departamento ? String(row.departamento).trim() : null,
+                                String(row.tipo_medicion).trim(),
+                                parseFloat(row.valor),
+                                carga.id,
+                                function (runError) {
+                                    if (runError) {
+                                        errores++;
+                                        if (runError.code === "SQLITE_CONSTRAINT" || runError.code === "SQLITE_CONSTRAINT_UNIQUE") {
+                                            erroresDetalle.push(
+                                                `Fila ${index + 2}: Conflicto de unicidad en (${String(row.seccion).trim()}, ${parseInt(row.anio)}, ${parseInt(row.mes)}, ${String(row.tipo_medicion).trim()})`
+                                            );
+                                        } else {
+                                            erroresDetalle.push(`Fila ${index + 2}: Error SQL - ${runError.message}`);
+                                        }
+                                        return;
+                                    }
+                                    insertadas++;
+                                }
+                            );
+                        } catch (e) {
+                            errores++;
+                            erroresDetalle.push(`Fila ${index + 2}: Error - ${e.message}`);
+                        }
+                    });
+
+                    stmt.finalize((finalizeError) => {
+                        if (finalizeError) {
+                            db.run("ROLLBACK", () => reject(finalizeError));
+                            return;
+                        }
+
+                        db.run("COMMIT", (commitError) => {
+                            if (commitError) {
+                                db.run("ROLLBACK", () => reject(commitError));
+                                return;
+                            }
+                            resolve();
+                        });
+                    });
+                });
             });
-            
-            db.run("COMMIT");
         });
-        stmt.finalize();
 
         // Actualizar estado de la carga
         await ejecutarComando(
@@ -662,14 +704,18 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
 
         console.log(`✅ Procesamiento completado: ${insertadas} insertadas, ${errores} errores`);
 
+        const conflictosUnicidad = erroresDetalle.filter((detalle) => detalle.includes("Conflicto de unicidad"));
+
         res.json({ 
             success: true,
             message: "Archivo procesado correctamente", 
             carga_id: carga.id, 
             insertadas: insertadas,
             errores: errores,
+            conflictos_unicidad: conflictosUnicidad.length,
             total_filas: rows.length,
-            detalles_errores: erroresDetalle.slice(0, 10) // Mostrar solo primeros 10 errores
+            detalles_errores: erroresDetalle.slice(0, 10), // Mostrar solo primeros 10 errores
+            detalles_conflictos_unicidad: conflictosUnicidad.slice(0, 10)
         });
 
     } catch (error) {
@@ -710,15 +756,9 @@ app.get("/api/admin/alimentadores-lista", async (req, res) => {
 // 2. Detectar duplicados exactos (misma fecha, sección y tipo)
 app.get("/api/admin/ver-duplicados", async (req, res) => {
     try {
-        const sql = `
-            SELECT seccion, anio, mes, tipo_medicion, COUNT(*) as cantidad
-            FROM mediciones_completas
-            GROUP BY seccion, anio, mes, tipo_medicion
-            HAVING COUNT(*) > 1
-            ORDER BY cantidad DESC
-        `;
-        const rows = await ejecutarConsulta(sql);
+        const rows = await obtenerReporteDuplicados();
         res.json({
+            consulta: "SELECT seccion, anio, mes, tipo_medicion, COUNT(*) ... HAVING COUNT(*)>1",
             mensaje: rows.length > 0 ? "⚠️ Se encontraron duplicados" : "✅ No hay duplicados exactos",
             total_casos: rows.length,
             detalle: rows
@@ -728,29 +768,62 @@ app.get("/api/admin/ver-duplicados", async (req, res) => {
     }
 });
 
-// 3. LIMPIEZA DE DUPLICADOS (Deja solo el registro más reciente ingresado)
+// 3. LIMPIEZA DE DUPLICADOS (conserva registro con carga_id más alto y luego id más alto)
 app.post("/api/admin/eliminar-duplicados", async (req, res) => {
     try {
-        // Esta consulta mantiene el ID más alto (el último insertado) y borra el resto
-        const sql = `
+        const reporteAntes = await obtenerReporteDuplicados();
+
+        if (reporteAntes.length === 0) {
+            return res.json({
+                success: true,
+                mensaje: "✅ No se encontraron duplicados para limpiar.",
+                reporte_duplicados_antes: reporteAntes,
+                filas_eliminadas: 0,
+                reporte_duplicados_despues: []
+            });
+        }
+
+        await ejecutarComando("BEGIN TRANSACTION");
+
+        const resultado = await ejecutarComando(`
             DELETE FROM mediciones_completas
-            WHERE id NOT IN (
-                SELECT MAX(id)
-                FROM mediciones_completas
-                GROUP BY seccion, anio, mes, tipo_medicion
+            WHERE id IN (
+                SELECT id FROM (
+                    SELECT id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY seccion, anio, mes, tipo_medicion
+                               ORDER BY COALESCE(carga_id, 0) DESC, id DESC
+                           ) AS rn
+                    FROM mediciones_completas
+                )
+                WHERE rn > 1
             )
-        `;
-        const resultado = await ejecutarComando(sql);
-        
-        // También hacemos un TRIM para quitar espacios en blanco de los nombres
+        `);
+
         await ejecutarComando("UPDATE mediciones_completas SET seccion = TRIM(seccion)");
+        await ejecutarComando("COMMIT");
+
+        await ejecutarComando(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mediciones_unique_seccion_anio_mes_tipo
+            ON mediciones_completas(seccion, anio, mes, tipo_medicion)
+        `);
+
+        const reporteDespues = await obtenerReporteDuplicados();
 
         res.json({
             success: true,
+            mensaje: "Limpieza ejecutada. Se conservaron registros por carga_id más alto (o id más reciente).",
+            reporte_duplicados_antes: reporteAntes,
             filas_eliminadas: resultado.changes,
-            mensaje: "Base de datos optimizada y espacios en blanco eliminados."
+            reporte_duplicados_despues: reporteDespues,
+            restriccion_unica: "UNIQUE(seccion, anio, mes, tipo_medicion)"
         });
     } catch (e) {
+        try {
+            await ejecutarComando("ROLLBACK");
+        } catch (rollbackError) {
+            console.error("Error en rollback eliminar duplicados:", rollbackError.message);
+        }
         res.status(500).json({ error: e.message });
     }
 });
