@@ -163,6 +163,161 @@ function ejecutarComando(sql, params = []) {
     });
 }
 
+function normalizarHeader(valor) {
+    if (valor === undefined || valor === null) return "";
+    return String(valor)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase();
+}
+
+function normalizarTexto(valor) {
+    if (valor === undefined || valor === null) return "";
+    return String(valor).trim();
+}
+
+function mapearHeadersFila(row) {
+    const alias = {
+        seccion: "seccion",
+        alimentador: "seccion",
+        anio: "anio",
+        ano: "anio",
+        mes: "mes",
+        tipo_medicion: "tipo_medicion",
+        tipo: "tipo_medicion",
+        valor: "valor",
+        departamento: "departamento"
+    };
+
+    const filaMapeada = {};
+    const columnasOriginales = {};
+
+    Object.keys(row).forEach((key) => {
+        const normalizado = normalizarHeader(key);
+        const destino = alias[normalizado] || normalizado;
+        filaMapeada[destino] = row[key];
+        columnasOriginales[destino] = key;
+    });
+
+    return { filaMapeada, columnasOriginales };
+}
+
+function detectarHojaValida(workbook) {
+    const hojas = workbook.SheetNames || [];
+
+    for (const nombreHoja of hojas) {
+        const hoja = workbook.Sheets[nombreHoja];
+        const rows = XLSX.utils.sheet_to_json(hoja, { defval: null });
+        if (!rows.length) continue;
+
+        const headersOriginales = Object.keys(rows[0] || {});
+        const headersNormalizados = headersOriginales.map(normalizarHeader);
+        const headersSet = new Set(headersNormalizados);
+
+        const tieneBase = headersSet.has("mes") && (headersSet.has("seccion") || headersSet.has("alimentador")) && (headersSet.has("anio") || headersSet.has("ano"));
+        const formatoLargo = headersSet.has("tipo_medicion") && headersSet.has("valor");
+        const formatoPivote = headersOriginales.some((h) => !["seccion", "seccion", "alimentador", "anio", "ano", "mes", "departamento"].includes(normalizarHeader(h)));
+
+        if (tieneBase && (formatoLargo || formatoPivote)) {
+            return { nombreHoja, rows, headersOriginales };
+        }
+    }
+
+    return null;
+}
+
+function transformarFilas(rows) {
+    const registros = [];
+    const rechazos = {
+        header_faltante: 0,
+        seccion_faltante: 0,
+        anio_invalido: 0,
+        mes_invalido: 0,
+        tipo_medicion_faltante: 0,
+        valor_invalido: 0,
+        error_fila: 0
+    };
+    const detalles = [];
+
+    rows.forEach((row, index) => {
+        const filaNumero = index + 2;
+        try {
+            const { filaMapeada } = mapearHeadersFila(row);
+
+            const seccion = normalizarTexto(filaMapeada.seccion);
+            const anio = parseInt(filaMapeada.anio, 10);
+            const mes = parseInt(filaMapeada.mes, 10);
+            const departamento = filaMapeada.departamento ? normalizarTexto(filaMapeada.departamento) : null;
+
+            if (!seccion) {
+                rechazos.seccion_faltante++;
+                detalles.push(`Fila ${filaNumero}: Falta 'seccion'`);
+                return;
+            }
+            if (Number.isNaN(anio)) {
+                rechazos.anio_invalido++;
+                detalles.push(`Fila ${filaNumero}: 'anio' inválido: ${filaMapeada.anio}`);
+                return;
+            }
+            if (Number.isNaN(mes) || mes < 1 || mes > 12) {
+                rechazos.mes_invalido++;
+                detalles.push(`Fila ${filaNumero}: 'mes' inválido: ${filaMapeada.mes}`);
+                return;
+            }
+
+            const tipoDirecto = filaMapeada.tipo_medicion !== undefined && filaMapeada.valor !== undefined;
+
+            if (tipoDirecto) {
+                const tipoMedicion = normalizarTexto(filaMapeada.tipo_medicion);
+                const valor = parseFloat(filaMapeada.valor);
+
+                if (!tipoMedicion) {
+                    rechazos.tipo_medicion_faltante++;
+                    detalles.push(`Fila ${filaNumero}: Falta 'tipo_medicion'`);
+                    return;
+                }
+                if (Number.isNaN(valor)) {
+                    rechazos.valor_invalido++;
+                    detalles.push(`Fila ${filaNumero}: 'valor' inválido: ${filaMapeada.valor}`);
+                    return;
+                }
+
+                registros.push({ seccion, anio, mes, departamento, tipo_medicion: tipoMedicion, valor });
+                return;
+            }
+
+            // Formato pivote: cada columna de medición se transforma a formato largo
+            Object.keys(filaMapeada).forEach((key) => {
+                if (["seccion", "anio", "mes", "departamento"].includes(key)) return;
+                const rawValor = filaMapeada[key];
+                if (rawValor === undefined || rawValor === null || String(rawValor).trim() === "") return;
+
+                const valor = parseFloat(rawValor);
+                if (Number.isNaN(valor)) {
+                    rechazos.valor_invalido++;
+                    detalles.push(`Fila ${filaNumero}: valor inválido en '${key}': ${rawValor}`);
+                    return;
+                }
+
+                const tipoMedicion = normalizarTexto(key).toUpperCase();
+                if (!tipoMedicion) {
+                    rechazos.tipo_medicion_faltante++;
+                    detalles.push(`Fila ${filaNumero}: tipo de medición vacío en pivote`);
+                    return;
+                }
+
+                registros.push({ seccion, anio, mes, departamento, tipo_medicion: tipoMedicion, valor });
+            });
+        } catch (e) {
+            rechazos.error_fila++;
+            detalles.push(`Fila ${filaNumero}: Error - ${e.message}`);
+        }
+    });
+
+    return { registros, rechazos, detalles };
+}
+
 // ========================
 // 2. MIDDLEWARES
 // ========================
@@ -635,10 +790,19 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
         `);
 
         const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet);
+        const hojaValida = detectarHojaValida(workbook);
 
-        console.log(`📄 Archivo '${req.file.originalname}' cargado: ${rows.length} filas`);
+        if (!hojaValida) {
+            return res.status(400).json({
+                error: "No se encontró una hoja válida con headers requeridos",
+                resumen_rechazos: { header_faltante: 1 },
+                total_procesado: 0
+            });
+        }
+
+        const rows = hojaValida.rows;
+
+        console.log(`📄 Archivo '${req.file.originalname}' cargado desde hoja '${hojaValida.nombreHoja}': ${rows.length} filas`);
 
         // Insertar registro de carga
         const carga = await ejecutarComando(
@@ -648,7 +812,6 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
 
         let insertadas = 0;
         let errores = 0;
-        const erroresDetalle = [];
 
         // Preparar statement para inserción
         const stmt = db.prepare(`
@@ -657,44 +820,15 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        // Procesar filas
+        const { registros, rechazos, detalles } = transformarFilas(rows);
+        errores = Object.values(rechazos).reduce((acc, n) => acc + n, 0);
+
+        // Procesar filas válidas
         db.serialize(() => {
             db.run("BEGIN TRANSACTION");
             
-            rows.forEach((row, index) => {
+            registros.forEach((row) => {
                 try {
-                    // Validar datos mínimos
-                    if (!row.seccion || row.seccion === '') {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: Falta 'seccion'`);
-                        return;
-                    }
-                    
-                    if (!row.anio || isNaN(row.anio)) {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: 'anio' inválido: ${row.anio}`);
-                        return;
-                    }
-                    
-                    if (!row.mes || isNaN(row.mes) || row.mes < 1 || row.mes > 12) {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: 'mes' inválido: ${row.mes}`);
-                        return;
-                    }
-                    
-                    if (!row.tipo_medicion || row.tipo_medicion === '') {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: Falta 'tipo_medicion'`);
-                        return;
-                    }
-                    
-                    if (row.valor === undefined || row.valor === null || isNaN(row.valor)) {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: 'valor' inválido: ${row.valor}`);
-                        return;
-                    }
-                    
-                    // Insertar datos
                     stmt.run(
                         String(row.seccion).trim(),
                         parseInt(row.anio),
@@ -709,7 +843,8 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
                     
                 } catch (e) {
                     errores++;
-                    erroresDetalle.push(`Fila ${index + 2}: Error - ${e.message}`);
+                    rechazos.error_fila++;
+                    detalles.push(`Error al insertar registro: ${e.message}`);
                 }
             });
             
@@ -731,8 +866,12 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
             carga_id: carga.id, 
             insertadas: insertadas,
             errores: errores,
+            hoja_usada: hojaValida.nombreHoja,
+            total_procesado: rows.length,
+            total_registros_largos: registros.length,
+            resumen_rechazos: rechazos,
             total_filas: rows.length,
-            detalles_errores: erroresDetalle.slice(0, 10) // Mostrar solo primeros 10 errores
+            detalles_errores: detalles.slice(0, 20) // Mostrar primeros 20 errores
         });
 
     } catch (error) {
