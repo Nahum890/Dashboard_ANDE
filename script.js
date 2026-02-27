@@ -31,8 +31,8 @@ class ANDEDashboard {
         
         this.defaultFilters = {
             tipoMedicion: ['TOTAL FEP'],
-            transformador: ['ACY1'],
-            year: ['2024'],
+            transformador: [],
+            year: [],
             month: [1,2,3,4,5,6,7,8,9,10,11,12],
             estacion: '',
             periodo: 'select_months'
@@ -1405,14 +1405,22 @@ class ANDEDashboard {
         this.filters.periodo = 'select_months';
         
         setTimeout(() => {
-            const setSelect = (id, defaultValue) => {
+            const setSelect = (id, defaultValue = null) => {
                 const el = document.getElementById(id);
                 if (el && el.options.length) {
-                    if (Array.from(el.options).find(opt => opt.value === defaultValue)) el.value = defaultValue;
+                    if (defaultValue && Array.from(el.options).find(opt => opt.value === defaultValue)) el.value = defaultValue;
                     else if (el.options.length > 0) el.value = el.options[0].value;
                 }
             };
-            setSelect('filterYear', '2024');
+
+            const yearSelect = document.getElementById('filterYear');
+            if (yearSelect && yearSelect.options.length > 0) {
+                const yearValues = Array.from(yearSelect.options)
+                    .map(opt => Number(opt.value))
+                    .filter(Number.isFinite);
+                const latestYear = yearValues.length ? String(Math.max(...yearValues)) : null;
+                setSelect('filterYear', latestYear);
+            }
             setSelect('filterTipoMedicion', 'TOTAL FEP');
             
             const feedSel = document.getElementById('filterTransformador');
@@ -1422,14 +1430,12 @@ class ANDEDashboard {
                 const estCompareSel = document.getElementById('filterEstacionCompare');
                 if (estCompareSel) estCompareSel.value = '';
                 this.filterFeedersByStation('');
-                const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
-                if (option) option.selected = true;
-                else if (feedSel.options.length > 0) feedSel.options[0].selected = true;
+                Array.from(feedSel.options).forEach(opt => opt.selected = true);
                 this.updateFeederCount();
             }
             
             this.filters = {
-                year: [document.getElementById('filterYear')?.value || '2024'],
+                year: [document.getElementById('filterYear')?.value || 'all'],
                 tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'TOTAL FEP'],
                 transformador: this.getSelectedValues('filterTransformador'),
                 month: Array.from(this.selectedMonths),
@@ -1523,17 +1529,22 @@ class ANDEDashboard {
         const estCompareSel = document.getElementById('filterEstacionCompare');
         if (estCompareSel) estCompareSel.value = '';
         this.filterFeedersByStation('');
-        this.clearFeeders();
-        
+
         const feedSel = document.getElementById('filterTransformador');
         if (feedSel) {
-            const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
-            if (option) option.selected = true;
+            Array.from(feedSel.options).forEach(opt => opt.selected = true);
             this.updateFeederCount();
         }
-        
+
         const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-        setVal('filterYear', '2024');
+        const yearSelect = document.getElementById('filterYear');
+        if (yearSelect && yearSelect.options.length) {
+            const yearValues = Array.from(yearSelect.options)
+                .map(opt => Number(opt.value))
+                .filter(Number.isFinite);
+            const latestYear = yearValues.length ? String(Math.max(...yearValues)) : yearSelect.options[0].value;
+            setVal('filterYear', latestYear);
+        }
         setVal('filterTipoMedicion', 'TOTAL FEP');
         
         document.querySelectorAll('.period-tab').forEach(tab => {
@@ -1915,8 +1926,8 @@ class ANDEDashboard {
             if (!Number.isFinite(freq)) return acc;
 
             const tipoNorm = this.normalizeTipo(row.tipo);
-            if (tipoNorm.includes('FEP')) acc.fep += freq;
-            if (tipoNorm.includes('DEP')) acc.dep += freq;
+            if (tipoNorm === 'TOTALFEP') acc.fep += freq;
+            if (tipoNorm === 'TOTALDEP') acc.dep += freq;
             return acc;
         }, { fep: 0, dep: 0 });
     }
