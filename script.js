@@ -2257,11 +2257,12 @@ class ANDEDashboard {
     }
 
     openFullRankingTab() {
+        const source = Array.isArray(this.latestRankingData) ? this.latestRankingData : (this.rankingItems || []);
         const payload = {
-            labels: this.latestRankingData.map(item => item.label),
-            data: this.latestRankingData.map(item => item.avg),
+            labels: source.map(item => item.label),
+            data: source.map(item => item.avg),
             title: 'Ranking completo',
-            subtitle: `Total de elementos: ${this.latestRankingData.length}`,
+            subtitle: `Total de elementos: ${source.length}`,
             palette: this.chartPalette
         };
         localStorage.setItem('ande_ranking_full_data', JSON.stringify(payload));
