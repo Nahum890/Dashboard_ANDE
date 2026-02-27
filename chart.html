@@ -973,6 +973,7 @@
             const rankingTableWrapper = document.getElementById('rankingTableWrapper');
             let rankingChart = null;
             let currentRankingView = 'chart'; // 'chart' o 'table'
+            const rankingInitialMeta = rawData.rankingMeta || {};
 
             // Función para calcular métricas
             function calculateMetric(values, metric) {
@@ -1002,8 +1003,8 @@
             // Función para agrupar datos según el grupo seleccionado
             function groupDataForRanking(groupBy) {
                 const groups = {};
-                // Si no hay datos completos, intentar usar rankingChartAll o rankingChart
-                if (!rawData.rankingFullData || !rawData.rankingFullData.series) {
+                // Preferir siempre las series completas; usar fallback solo si no existen
+                if (!rawData.rankingFullData?.series) {
                     // Fallback: usar los datos del ranking simple (solo promedios)
                     const fallback = rawData.rankingChartAll || rawData.rankingChart;
                     if (fallback && fallback.labels && fallback.data) {
@@ -1132,8 +1133,19 @@
                     updateRanking();
                 });
 
+                // Aplicar metadatos iniciales si existen
+                if (rankingInitialMeta.group && rankingGroupSelect.querySelector(`option[value="${rankingInitialMeta.group}"]`)) {
+                    rankingGroupSelect.value = rankingInitialMeta.group;
+                }
+                if (rankingInitialMeta.sort && rankingMetricSelect.querySelector(`option[value="${rankingInitialMeta.sort}"]`)) {
+                    rankingMetricSelect.value = rankingInitialMeta.sort;
+                }
+                if (rankingInitialMeta.limit && rankingLimitSelect.querySelector(`option[value="${rankingInitialMeta.limit}"]`)) {
+                    rankingLimitSelect.value = rankingInitialMeta.limit;
+                }
+
                 // Inicializar ranking
-                if (rawData.rankingFullData || rawData.rankingChartAll || rawData.rankingChart) {
+                if (rawData.rankingFullData?.series || rawData.rankingChartAll || rawData.rankingChart) {
                     updateRanking();
                 }
             }

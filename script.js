@@ -16,6 +16,8 @@ class ANDEDashboard {
         this.pieChartByType = null;
         this.stationSummaryChart = null;
         this.sortConfig = { column: null, direction: 'asc' };
+        this.latestRankingData = [];
+        this.rankingItems = [];
         
         this.chartPalette = [
             '#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0', '#118AB2', 
@@ -2162,11 +2164,23 @@ class ANDEDashboard {
             console.warn("rankingChart no inicializado");
             return;
         }
+
+        const displayMode = document.getElementById('rankingDisplayMode')?.value || 'chart';
+        const rankingChartWrapper = document.getElementById('rankingChartWrapper');
+        const rankingListWrapper = document.getElementById('rankingListWrapper');
+        const showChart = displayMode === 'chart' || displayMode === 'both';
+        const showList = displayMode === 'list' || displayMode === 'both';
+
+        if (rankingChartWrapper) rankingChartWrapper.style.display = showChart ? '' : 'none';
+        if (rankingListWrapper) rankingListWrapper.style.display = showList ? '' : 'none';
+
         if (!this.data.length) {
             this.latestRankingData = [];
+            this.rankingItems = [];
             this.rankingChart.data.labels = [];
             this.rankingChart.data.datasets[0].data = [];
             this.rankingChart.update('none');
+            if (showList) this.renderRankingList([]);
             return;
         }
 
@@ -2204,33 +2218,51 @@ class ANDEDashboard {
         });
         
         this.rankingItems = ranking;
-        this.latestRankingData = ranking;
-        const top = ranking.slice(0, 10);
-        console.log("🏆 Top 10 ranking:", top);
-        this.rankingChart.data.labels = top.map(t => t.label);
-        this.rankingChart.data.datasets[0].data = top.map(t => t.avg);
-        this.rankingChart.data.datasets[0].backgroundColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
-        this.rankingChart.data.datasets[0].borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        const displayedRanking = viewMode === 'all' ? ranking : ranking.slice(0, 10);
+        this.latestRankingData = displayedRanking;
+
+        console.log(`🏆 Ranking mostrado (${viewMode}):`, displayedRanking);
+        this.rankingChart.data.labels = displayedRanking.map(t => t.label);
+        this.rankingChart.data.datasets[0].data = displayedRanking.map(t => t.avg);
+        this.rankingChart.data.datasets[0].backgroundColor = displayedRanking.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
+        this.rankingChart.data.datasets[0].borderColor = displayedRanking.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
 
         // ✨ Actualizar con animación
         this.rankingChart.update();
+        if (showList) this.renderRankingList(displayedRanking);
         console.log("✅ Ranking HD actualizado con animaciones");
     }
 
-    openFullRankingTab() {
-        const rawSeries = {};
-        this.data.forEach((item) => {
-            const key = item.combinationLabel || `${item.transformador} (${item.year || 'N/A'}, ${item.tipo || 'N/A'})`;
-            if (!rawSeries[key]) rawSeries[key] = [];
-            rawSeries[key].push(item.frecuencia);
-        });
+    renderRankingList(items) {
+        const rankingListWrapper = document.getElementById('rankingListWrapper');
+        if (!rankingListWrapper) return;
 
+        if (!items.length) {
+            rankingListWrapper.innerHTML = '<div class="legend-empty">Sin datos para mostrar</div>';
+            return;
+        }
+
+        rankingListWrapper.innerHTML = items.map((item, index) => `
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; padding:0.5rem 0.35rem; border-bottom:${index === items.length - 1 ? 'none' : '1px solid rgba(148,163,184,0.18)'};">
+                <div style="display:flex; align-items:center; gap:0.5rem; min-width:0;">
+                    <span style="display:inline-flex; width:1.4rem; height:1.4rem; border-radius:999px; align-items:center; justify-content:center; font-weight:700; color:#0f172a; background:${this.chartPalette[index % this.chartPalette.length]}80;">${index + 1}</span>
+                    <span style="font-weight:600; color:#e2e8f0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.label}</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; line-height:1.15; flex-shrink:0;">
+                    <span style="font-weight:700; color:#f8fafc;">${this.safeToFixed(item.avg, 4)} Hz</span>
+                    <span style="font-size:0.8rem; color:#94a3b8;">Rango: ${this.safeToFixed(item.range, 4)} · Último: ${this.safeToFixed(item.last, 4)}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    openFullRankingTab() {
+        const source = Array.isArray(this.latestRankingData) ? this.latestRankingData : (this.rankingItems || []);
         const payload = {
-            labels: this.latestRankingData.map(item => item.label),
-            data: this.latestRankingData.map(item => item.avg),
-            series: rawSeries,
+            labels: source.map(item => item.label),
+            data: source.map(item => item.avg),
             title: 'Ranking completo',
-            subtitle: `Total de elementos: ${this.latestRankingData.length}`,
+            subtitle: `Total de elementos: ${source.length}`,
             palette: this.chartPalette
         };
         localStorage.setItem('ande_ranking_full_data', JSON.stringify(payload));
@@ -2480,6 +2512,19 @@ class ANDEDashboard {
     
     expandRankingChart() {
         console.log("🖥️ Abriendo ranking completo en nueva pestaña");
+        const selectedGroup = document.getElementById('rankingGroup')?.value || 'alimentador';
+        const selectedSort = document.getElementById('rankingSort')?.value || 'avg';
+        const selectedLimit = document.getElementById('rankingViewMode')?.value || 'top10';
+
+        const rankingSeries = {};
+        this.data.forEach(d => {
+            const key = selectedGroup === 'estacion'
+                ? d.transformador.substring(0, 3)
+                : d.combinationLabel;
+            if (!rankingSeries[key]) rankingSeries[key] = [];
+            rankingSeries[key].push(d.frecuencia);
+        });
+
         const rankingAll = this.rankingItems?.length ? this.rankingItems : [];
         const chartData = {
             rankingOnly: true,
@@ -2488,11 +2533,20 @@ class ANDEDashboard {
                 data: rankingAll.map(r => r.avg),
                 colors: rankingAll.map((_,i) => this.chartPalette[i % this.chartPalette.length] + '80')
             },
+            rankingChartAll: {
+                labels: rankingAll.map(r => r.label),
+                data: rankingAll.map(r => r.avg),
+                colors: rankingAll.map((_,i) => this.chartPalette[i % this.chartPalette.length] + '80')
+            },
+            rankingFullData: {
+                series: rankingSeries
+            },
             palette: this.chartPalette,
             rankingMeta: {
                 totalItems: rankingAll.length,
-                sort: document.getElementById('rankingSort')?.value || 'avg',
-                group: document.getElementById('rankingGroup')?.value || 'alimentador'
+                sort: selectedSort,
+                group: selectedGroup,
+                limit: selectedLimit
             }
         };
         localStorage.setItem('ande_chart_data', JSON.stringify(chartData));
