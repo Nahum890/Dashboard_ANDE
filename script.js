@@ -2204,6 +2204,7 @@ class ANDEDashboard {
         });
         
         this.rankingItems = ranking;
+        this.latestRankingData = ranking;
         const top = ranking.slice(0, 10);
         console.log("🏆 Top 10 ranking:", top);
         this.rankingChart.data.labels = top.map(t => t.label);
@@ -2217,9 +2218,17 @@ class ANDEDashboard {
     }
 
     openFullRankingTab() {
+        const rawSeries = {};
+        this.data.forEach((item) => {
+            const key = item.combinationLabel || `${item.transformador} (${item.year || 'N/A'}, ${item.tipo || 'N/A'})`;
+            if (!rawSeries[key]) rawSeries[key] = [];
+            rawSeries[key].push(item.frecuencia);
+        });
+
         const payload = {
             labels: this.latestRankingData.map(item => item.label),
             data: this.latestRankingData.map(item => item.avg),
+            series: rawSeries,
             title: 'Ranking completo',
             subtitle: `Total de elementos: ${this.latestRankingData.length}`,
             palette: this.chartPalette
