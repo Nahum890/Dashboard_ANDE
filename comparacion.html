@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparador DEP/FEP</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        body{font-family:Inter,system-ui,-apple-system,sans-serif;background:#f8fafc;margin:0;color:#0f172a}
+        .container{max-width:1280px;margin:0 auto;padding:1rem}
+        .topbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
+        .btn{background:#2563eb;color:#fff;border:none;border-radius:10px;padding:.55rem .9rem;cursor:pointer;text-decoration:none;display:inline-block}
+        .btn.secondary{background:#334155}
+        .btn.ghost{background:#fff;color:#334155;border:1px solid #cbd5e1}
+        .panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem;margin-top:1rem}
+        .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1rem}
+        h3{margin:.2rem 0 1rem}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+        label{font-size:.8rem;color:#475569;font-weight:600;display:block;margin-bottom:.25rem}
+        select,input{width:100%;padding:.45rem;border:1px solid #cbd5e1;border-radius:8px;background:white}
+        .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem;margin-top:1rem}
+        .kpi{background:#fff;border:1px solid #e2e8f0;padding:.8rem;border-radius:10px}
+        .kpi h4{margin:0;font-size:.8rem;color:#64748b}
+        .kpi strong{font-size:1.2rem}
+        .charts{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}
+        .charts .card{min-height:320px}
+        .table-wrap{overflow:auto;max-height:380px}
+        table{width:100%;border-collapse:collapse;font-size:.9rem}
+        th,td{border-bottom:1px solid #e2e8f0;padding:.45rem;text-align:right}
+        th:first-child,td:first-child{text-align:left}
+        .presets{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem}
+        @media (max-width:900px){.charts{grid-template-columns:1fr}.grid{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <h2>Comparador DEP/FEP</h2>
+        <div>
+            <a class="btn ghost" href="/index.html">Volver al dashboard</a>
+            <button class="btn secondary" id="exportCsv">Exportar tabla CSV</button>
+            <button class="btn" id="compararBtn">Comparar períodos</button>
+        </div>
+    </div>
+
+    <div class="presets">
+        <button class="btn ghost preset" data-preset="year_vs_prev">Año actual vs anterior</button>
+        <button class="btn ghost preset" data-preset="same_month_years">Mismo mes años distintos</button>
+        <button class="btn ghost preset" data-preset="last12_vs_prev12">Últimos 12 meses vs 12 previos</button>
+    </div>
+
+    <div class="panels">
+        <section class="card" id="panelA">
+            <h3>Período A</h3>
+            <div class="grid"></div>
+        </section>
+        <section class="card" id="panelB">
+            <h3>Período B</h3>
+            <div class="grid"></div>
+        </section>
+    </div>
+
+    <div class="kpi-grid" id="kpis"></div>
+
+    <div class="charts">
+        <div class="card"><canvas id="barChart"></canvas></div>
+        <div class="card"><canvas id="lineChart"></canvas></div>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+        <h3>Detalle mensual comparado</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Período</th><th>Valor A</th><th>Valor B</th><th>Delta</th><th>Delta %</th></tr></thead>
+                <tbody id="detalleBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+const state = { options:null, result:null, charts:{} };
+
+function fmt(num){
+    if(num===null || num===undefined || Number.isNaN(num)) return '-';
+    return Number(num).toLocaleString('es-PY',{maximumFractionDigits:2});
+}
+
+function createPanel(panelId){
+    const panel = document.querySelector(`#${panelId} .grid`);
+    panel.innerHTML = `
+        <div><label>Métrica</label><select data-field="metric">
+            <option value="dep_todos">DEP (total+componentes)</option>
+            <option value="dep_total">DEP (total)</option>
+            <option value="dep_componentes">DEP (componentes)</option>
+            <option value="fep_todos">FEP (total+componentes)</option>
+            <option value="fep_total">FEP (total)</option>
+            <option value="fep_componentes">FEP (componentes)</option>
+        </select></div>
+        <div><label>Alcance temporal</label><select data-field="scope">
+            <option value="year">Año completo</option>
+            <option value="month">Mes puntual</option>
+            <option value="range">Rango de meses</option>
+        </select></div>
+        <div><label>Año</label><select data-field="year"></select></div>
+        <div><label>Mes</label><select data-field="month">${Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('')}</select></div>
+        <div><label>Mes inicio</label><select data-field="startMonth">${Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('')}</select></div>
+        <div><label>Mes fin</label><select data-field="endMonth">${Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i===11?'selected':''}>${i+1}</option>`).join('')}</select></div>
+        <div><label>Sección</label><select data-field="seccion"><option value="all">Todas</option></select></div>
+        <div><label>Departamento</label><select data-field="departamento"><option value="all">Todos</option></select></div>
+        <div><label>Local</label><select data-field="local"><option value="all">Todos</option></select></div>
+    `;
+}
+
+function fillOptions(){
+    ['panelA','panelB'].forEach(id=>{
+        const el=document.getElementById(id);
+        const byField=(f)=>el.querySelector(`[data-field="${f}"]`);
+        byField('year').innerHTML = state.options.anios.map(y=>`<option value="${y}">${y}</option>`).join('');
+        state.options.secciones.forEach(v=>byField('seccion').insertAdjacentHTML('beforeend',`<option value="${v}">${v}</option>`));
+        state.options.departamentos.forEach(v=>byField('departamento').insertAdjacentHTML('beforeend',`<option value="${v}">${v}</option>`));
+        state.options.locales.forEach(v=>byField('local').insertAdjacentHTML('beforeend',`<option value="${v}">${v}</option>`));
+    });
+}
+
+function getPeriod(panelId){
+    const root=document.getElementById(panelId);
+    const val=(f)=>root.querySelector(`[data-field="${f}"]`).value;
+    return {
+        metric: val('metric'),
+        scope: val('scope'),
+        year: Number(val('year')),
+        month: Number(val('month')),
+        startMonth: Number(val('startMonth')),
+        endMonth: Number(val('endMonth')),
+        seccion: val('seccion'),
+        departamento: val('departamento'),
+        local: val('local')
+    };
+}
+
+function renderKpis(data){
+    document.getElementById('kpis').innerHTML = `
+        <div class="kpi"><h4>Suma A</h4><strong>${fmt(data.periodoA.suma)}</strong></div>
+        <div class="kpi"><h4>Suma B</h4><strong>${fmt(data.periodoB.suma)}</strong></div>
+        <div class="kpi"><h4>Delta absoluto</h4><strong>${fmt(data.diferencias.absoluta)}</strong></div>
+        <div class="kpi"><h4>Delta %</h4><strong>${fmt(data.diferencias.porcentual)}%</strong></div>
+        <div class="kpi"><h4>Promedio A / B</h4><strong>${fmt(data.periodoA.promedio)} / ${fmt(data.periodoB.promedio)}</strong></div>
+        <div class="kpi"><h4>Min/Max A</h4><strong>${fmt(data.periodoA.min)} / ${fmt(data.periodoA.max)}</strong></div>
+        <div class="kpi"><h4>Min/Max B</h4><strong>${fmt(data.periodoB.min)} / ${fmt(data.periodoB.max)}</strong></div>
+    `;
+}
+
+function renderTable(detalle){
+    document.getElementById('detalleBody').innerHTML = detalle.map(r=>`<tr>
+        <td>${r.periodo}</td><td>${fmt(r.valorA)}</td><td>${fmt(r.valorB)}</td><td>${fmt(r.diferencia)}</td><td>${fmt(r.diferencia_pct)}%</td>
+    </tr>`).join('');
+}
+
+function renderCharts(data){
+    const labels=data.series_mensuales.labels;
+    const a=data.series_mensuales.periodoA;
+    const b=data.series_mensuales.periodoB;
+
+    Object.values(state.charts).forEach(c=>c.destroy());
+    state.charts.bar = new Chart(document.getElementById('barChart'),{
+        type:'bar',
+        data:{labels,datasets:[{label:'Período A',data:a,backgroundColor:'#2563ebaa'},{label:'Período B',data:b,backgroundColor:'#ea580caa'}]}
+    });
+    state.charts.line = new Chart(document.getElementById('lineChart'),{
+        type:'line',
+        data:{labels,datasets:[{label:'Período A',data:a,borderColor:'#2563eb',backgroundColor:'#2563eb22'},{label:'Período B',data:b,borderColor:'#ea580c',backgroundColor:'#ea580c22'}]},
+        options:{responsive:true,interaction:{mode:'index',intersect:false}}
+    });
+}
+
+async function comparar(){
+    const resp = await fetch('/api/comparar-periodos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({periodoA:getPeriod('panelA'), periodoB:getPeriod('panelB')})});
+    const data = await resp.json();
+    if(!resp.ok){ alert(data.error || 'Error en comparación'); return; }
+    state.result=data;
+    renderKpis(data);
+    renderCharts(data);
+    renderTable(data.detalle);
+}
+
+function aplicarPreset(tipo){
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    const set=(panel,field,val)=>document.getElementById(panel).querySelector(`[data-field="${field}"]`).value=String(val);
+
+    if(tipo==='year_vs_prev'){
+        set('panelA','scope','year'); set('panelA','year',currentYear-1);
+        set('panelB','scope','year'); set('panelB','year',currentYear);
+    } else if(tipo==='same_month_years'){
+        set('panelA','scope','month'); set('panelA','month',currentMonth); set('panelA','year',currentYear-1);
+        set('panelB','scope','month'); set('panelB','month',currentMonth); set('panelB','year',currentYear);
+    } else if(tipo==='last12_vs_prev12'){
+        set('panelA','scope','range'); set('panelA','year',currentYear-1); set('panelA','startMonth',1); set('panelA','endMonth',12);
+        set('panelB','scope','range'); set('panelB','year',currentYear); set('panelB','startMonth',1); set('panelB','endMonth',Math.max(currentMonth,1));
+    }
+}
+
+function exportCsv(){
+    if(!state.result?.detalle?.length){ alert('No hay detalle para exportar'); return; }
+    const header=['Periodo','ValorA','ValorB','Delta','DeltaPct'];
+    const rows=state.result.detalle.map(r=>[r.periodo,r.valorA,r.valorB,r.diferencia,r.diferencia_pct]);
+    const csv=[header,...rows].map(r=>r.join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='comparacion_dep_fep.csv'; a.click();
+}
+
+(async function init(){
+    createPanel('panelA'); createPanel('panelB');
+    const r = await fetch('/api/comparacion-opciones');
+    state.options = await r.json();
+    fillOptions();
+    document.querySelectorAll('.preset').forEach(btn=>btn.addEventListener('click',()=>aplicarPreset(btn.dataset.preset)));
+    document.getElementById('compararBtn').addEventListener('click', comparar);
+    document.getElementById('exportCsv').addEventListener('click', exportCsv);
+    aplicarPreset('year_vs_prev');
+})();
+</script>
+</body>
+</html>
