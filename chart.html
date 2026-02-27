@@ -1108,16 +1108,44 @@
             }
 
             function renderRankingTable(items) {
+                const escapeHtml = (value) => String(value ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+
                 let html = '<table class="ranking-table"><thead><tr><th>Elemento</th><th>Valor</th><th>Acción</th></tr></thead><tbody>';
                 items.forEach(item => {
-                    html += `<tr data-label="${item.label}">
-                        <td>${item.label}</td>
+                    const safeLabel = escapeHtml(item.label);
+                    html += `<tr>
+                        <td>${safeLabel}</td>
                         <td><span class="badge primary">${formatNumber(item.value)}</span></td>
-                        <td><button class="btn-icon small" onclick="alert('Detalles de ${item.label} (pendiente)')" title="Ver detalles"><i class="fas fa-eye"></i></button></td>
+                        <td><button class="btn-icon small" data-action="detail" data-label="${safeLabel}" title="Ver detalles"><i class="fas fa-eye"></i></button></td>
                     </tr>`;
                 });
                 html += '</tbody></table>';
                 rankingTableWrapper.innerHTML = html;
+            }
+
+            if (rankingTableWrapper) {
+                rankingTableWrapper.addEventListener('click', (event) => {
+                    const button = event.target.closest('.btn-icon');
+                    if (!button || !rankingTableWrapper.contains(button)) return;
+
+                    const action = button.dataset.action;
+                    const safeLabel = button.dataset.label || 'Elemento';
+
+                    switch (action) {
+                        case 'alert':
+                        case 'modal':
+                        case 'detail':
+                            alert(`Detalles de ${safeLabel} (pendiente)`);
+                            break;
+                        default:
+                            break;
+                    }
+                });
             }
 
             // Event listeners para ranking
