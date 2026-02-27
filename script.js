@@ -16,6 +16,8 @@ class ANDEDashboard {
         this.pieChartByType = null;
         this.stationSummaryChart = null;
         this.sortConfig = { column: null, direction: 'asc' };
+        this.latestRankingData = [];
+        this.rankingItems = [];
         
         this.chartPalette = [
             '#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0', '#118AB2', 
@@ -2162,11 +2164,23 @@ class ANDEDashboard {
             console.warn("rankingChart no inicializado");
             return;
         }
+
+        const displayMode = document.getElementById('rankingDisplayMode')?.value || 'chart';
+        const rankingChartWrapper = document.getElementById('rankingChartWrapper');
+        const rankingListWrapper = document.getElementById('rankingListWrapper');
+        const showChart = displayMode === 'chart' || displayMode === 'both';
+        const showList = displayMode === 'list' || displayMode === 'both';
+
+        if (rankingChartWrapper) rankingChartWrapper.style.display = showChart ? '' : 'none';
+        if (rankingListWrapper) rankingListWrapper.style.display = showList ? '' : 'none';
+
         if (!this.data.length) {
             this.latestRankingData = [];
+            this.rankingItems = [];
             this.rankingChart.data.labels = [];
             this.rankingChart.data.datasets[0].data = [];
             this.rankingChart.update('none');
+            if (showList) this.renderRankingList([]);
             return;
         }
 
@@ -2204,18 +2218,42 @@ class ANDEDashboard {
         });
         
         this.rankingItems = ranking;
-        const itemsMostrados = viewMode === 'all' ? ranking : ranking.slice(0, 10);
-        this.latestRankingData = itemsMostrados;
+        const displayedRanking = viewMode === 'all' ? ranking : ranking.slice(0, 10);
+        this.latestRankingData = displayedRanking;
 
-        console.log("🏆 Ranking mostrado:", itemsMostrados);
-        this.rankingChart.data.labels = itemsMostrados.map(t => t.label);
-        this.rankingChart.data.datasets[0].data = itemsMostrados.map(t => t.avg);
-        this.rankingChart.data.datasets[0].backgroundColor = itemsMostrados.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
-        this.rankingChart.data.datasets[0].borderColor = itemsMostrados.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        console.log(`🏆 Ranking mostrado (${viewMode}):`, displayedRanking);
+        this.rankingChart.data.labels = displayedRanking.map(t => t.label);
+        this.rankingChart.data.datasets[0].data = displayedRanking.map(t => t.avg);
+        this.rankingChart.data.datasets[0].backgroundColor = displayedRanking.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
+        this.rankingChart.data.datasets[0].borderColor = displayedRanking.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
 
         // ✨ Actualizar con animación
         this.rankingChart.update();
+        if (showList) this.renderRankingList(displayedRanking);
         console.log("✅ Ranking HD actualizado con animaciones");
+    }
+
+    renderRankingList(items) {
+        const rankingListWrapper = document.getElementById('rankingListWrapper');
+        if (!rankingListWrapper) return;
+
+        if (!items.length) {
+            rankingListWrapper.innerHTML = '<div class="legend-empty">Sin datos para mostrar</div>';
+            return;
+        }
+
+        rankingListWrapper.innerHTML = items.map((item, index) => `
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; padding:0.5rem 0.35rem; border-bottom:${index === items.length - 1 ? 'none' : '1px solid rgba(148,163,184,0.18)'};">
+                <div style="display:flex; align-items:center; gap:0.5rem; min-width:0;">
+                    <span style="display:inline-flex; width:1.4rem; height:1.4rem; border-radius:999px; align-items:center; justify-content:center; font-weight:700; color:#0f172a; background:${this.chartPalette[index % this.chartPalette.length]}80;">${index + 1}</span>
+                    <span style="font-weight:600; color:#e2e8f0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.label}</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; line-height:1.15; flex-shrink:0;">
+                    <span style="font-weight:700; color:#f8fafc;">${this.safeToFixed(item.avg, 4)} Hz</span>
+                    <span style="font-size:0.8rem; color:#94a3b8;">Rango: ${this.safeToFixed(item.range, 4)} · Último: ${this.safeToFixed(item.last, 4)}</span>
+                </div>
+            </div>
+        `).join('');
     }
 
     openFullRankingTab() {
