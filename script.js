@@ -2512,6 +2512,19 @@ class ANDEDashboard {
     
     expandRankingChart() {
         console.log("🖥️ Abriendo ranking completo en nueva pestaña");
+        const selectedGroup = document.getElementById('rankingGroup')?.value || 'alimentador';
+        const selectedSort = document.getElementById('rankingSort')?.value || 'avg';
+        const selectedLimit = document.getElementById('rankingViewMode')?.value || 'top10';
+
+        const rankingSeries = {};
+        this.data.forEach(d => {
+            const key = selectedGroup === 'estacion'
+                ? d.transformador.substring(0, 3)
+                : d.combinationLabel;
+            if (!rankingSeries[key]) rankingSeries[key] = [];
+            rankingSeries[key].push(d.frecuencia);
+        });
+
         const rankingAll = this.rankingItems?.length ? this.rankingItems : [];
         const chartData = {
             rankingOnly: true,
@@ -2520,11 +2533,20 @@ class ANDEDashboard {
                 data: rankingAll.map(r => r.avg),
                 colors: rankingAll.map((_,i) => this.chartPalette[i % this.chartPalette.length] + '80')
             },
+            rankingChartAll: {
+                labels: rankingAll.map(r => r.label),
+                data: rankingAll.map(r => r.avg),
+                colors: rankingAll.map((_,i) => this.chartPalette[i % this.chartPalette.length] + '80')
+            },
+            rankingFullData: {
+                series: rankingSeries
+            },
             palette: this.chartPalette,
             rankingMeta: {
                 totalItems: rankingAll.length,
-                sort: document.getElementById('rankingSort')?.value || 'avg',
-                group: document.getElementById('rankingGroup')?.value || 'alimentador'
+                sort: selectedSort,
+                group: selectedGroup,
+                limit: selectedLimit
             }
         };
         localStorage.setItem('ande_chart_data', JSON.stringify(chartData));
