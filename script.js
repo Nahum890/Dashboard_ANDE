@@ -2204,12 +2204,14 @@ class ANDEDashboard {
         });
         
         this.rankingItems = ranking;
-        const top = ranking.slice(0, 10);
-        console.log("🏆 Top 10 ranking:", top);
-        this.rankingChart.data.labels = top.map(t => t.label);
-        this.rankingChart.data.datasets[0].data = top.map(t => t.avg);
-        this.rankingChart.data.datasets[0].backgroundColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
-        this.rankingChart.data.datasets[0].borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        const itemsMostrados = viewMode === 'all' ? ranking : ranking.slice(0, 10);
+        this.latestRankingData = itemsMostrados;
+
+        console.log("🏆 Ranking mostrado:", itemsMostrados);
+        this.rankingChart.data.labels = itemsMostrados.map(t => t.label);
+        this.rankingChart.data.datasets[0].data = itemsMostrados.map(t => t.avg);
+        this.rankingChart.data.datasets[0].backgroundColor = itemsMostrados.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
+        this.rankingChart.data.datasets[0].borderColor = itemsMostrados.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
 
         // ✨ Actualizar con animación
         this.rankingChart.update();
@@ -2217,11 +2219,12 @@ class ANDEDashboard {
     }
 
     openFullRankingTab() {
+        const source = Array.isArray(this.latestRankingData) ? this.latestRankingData : (this.rankingItems || []);
         const payload = {
-            labels: this.latestRankingData.map(item => item.label),
-            data: this.latestRankingData.map(item => item.avg),
+            labels: source.map(item => item.label),
+            data: source.map(item => item.avg),
             title: 'Ranking completo',
-            subtitle: `Total de elementos: ${this.latestRankingData.length}`,
+            subtitle: `Total de elementos: ${source.length}`,
             palette: this.chartPalette
         };
         localStorage.setItem('ande_ranking_full_data', JSON.stringify(payload));
