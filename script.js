@@ -1405,44 +1405,46 @@ class ANDEDashboard {
         });
         this.filters.periodo = 'select_months';
         
-        const setSelect = (id, defaultValue = null) => {
+        setTimeout(() => {
+            const setSelect = (id, defaultValue = null) => {
                 const el = document.getElementById(id);
                 if (el && el.options.length) {
                     if (defaultValue && Array.from(el.options).find(opt => opt.value === defaultValue)) el.value = defaultValue;
                     else if (el.options.length > 0) el.value = el.options[0].value;
                 }
-        };
+            };
 
-        const yearSelect = document.getElementById('filterYear');
-        if (yearSelect && yearSelect.options.length > 0) {
-            const yearValues = Array.from(yearSelect.options)
-                .map(opt => Number(opt.value))
-                .filter(Number.isFinite);
-            const latestYear = yearValues.length ? String(Math.max(...yearValues)) : null;
-            setSelect('filterYear', latestYear);
-        }
-        setSelect('filterTipoMedicion', 'TOTAL FEP');
+            const yearSelect = document.getElementById('filterYear');
+            if (yearSelect && yearSelect.options.length > 0) {
+                const yearValues = Array.from(yearSelect.options)
+                    .map(opt => Number(opt.value))
+                    .filter(Number.isFinite);
+                const latestYear = yearValues.length ? String(Math.max(...yearValues)) : null;
+                setSelect('filterYear', latestYear);
+            }
+            setSelect('filterTipoMedicion', 'TOTAL FEP');
             
-        const feedSel = document.getElementById('filterTransformador');
-        if (feedSel) {
-            const estSel = document.getElementById('filterEstacion');
-            if (estSel) estSel.value = '';
-            const estCompareSel = document.getElementById('filterEstacionCompare');
-            if (estCompareSel) estCompareSel.value = '';
-            this.filterFeedersByStation('');
-            Array.from(feedSel.options).forEach(opt => opt.selected = true);
-            this.updateFeederCount();
-        }
+            const feedSel = document.getElementById('filterTransformador');
+            if (feedSel) {
+                const estSel = document.getElementById('filterEstacion');
+                if (estSel) estSel.value = '';
+                const estCompareSel = document.getElementById('filterEstacionCompare');
+                if (estCompareSel) estCompareSel.value = '';
+                this.filterFeedersByStation('');
+                Array.from(feedSel.options).forEach(opt => opt.selected = true);
+                this.updateFeederCount();
+            }
             
-        this.filters = {
-            year: [document.getElementById('filterYear')?.value || 'all'],
-            tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'TOTAL FEP'],
-            transformador: this.getSelectedValues('filterTransformador'),
-            month: Array.from(this.selectedMonths),
-            estacion: '',
-            periodo: 'select_months'
-        };
-        console.log("⚙️ Filtros por defecto establecidos:", this.filters);
+            this.filters = {
+                year: [document.getElementById('filterYear')?.value || 'all'],
+                tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'TOTAL FEP'],
+                transformador: this.getSelectedValues('filterTransformador'),
+                month: Array.from(this.selectedMonths),
+                estacion: '',
+                periodo: 'select_months'
+            };
+            console.log("⚙️ Filtros por defecto establecidos:", this.filters);
+        }, 500);
     }
     
     // ========== MANEJO DE FILTROS GLOBALES ==========

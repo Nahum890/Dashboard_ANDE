@@ -559,6 +559,232 @@ app.get("/api/anios", async (req, res) => {
     }
 });
 
+function construirFiltroMetrica(metrica) {
+    const valor = String(metrica || "").toLowerCase();
+    switch (valor) {
+        case "dep_total":
+            return { sql: "UPPER(tipo_medicion) LIKE '%DEP%' AND UPPER(tipo_medicion) LIKE '%TOTAL%'" };
+        case "dep_componentes":
+            return { sql: "UPPER(tipo_medicion) LIKE '%DEP%' AND UPPER(tipo_medicion) NOT LIKE '%TOTAL%'" };
+        case "dep_todos":
+            return { sql: "UPPER(tipo_medicion) LIKE '%DEP%'" };
+        case "fep_total":
+            return { sql: "UPPER(tipo_medicion) LIKE '%FEP%' AND UPPER(tipo_medicion) LIKE '%TOTAL%'" };
+        case "fep_componentes":
+            return { sql: "UPPER(tipo_medicion) LIKE '%FEP%' AND UPPER(tipo_medicion) NOT LIKE '%TOTAL%'" };
+        case "fep_todos":
+            return { sql: "UPPER(tipo_medicion) LIKE '%FEP%'" };
+        default:
+            return null;
+    }
+}
+
+function parseLista(valor) {
+    if (Array.isArray(valor)) return valor.map((v) => String(v || '').trim()).filter(Boolean);
+    if (valor === undefined || valor === null) return [];
+    return String(valor).split(',').map((v) => v.trim()).filter(Boolean);
+}
+
+function generarMesesDesdeScope(scope, month, startMonth, endMonth, months) {
+    const meses = parseLista(months).map((m) => parseInt(m, 10)).filter((m) => m >= 1 && m <= 12);
+    if (scope === 'month') {
+        if (meses.length) return [...new Set(meses)];
+        const m = parseInt(month, 10);
+        return (m >= 1 && m <= 12) ? [m] : [];
+    }
+
+    if (scope === 'range') {
+        const inicio = parseInt(startMonth, 10);
+        const fin = parseInt(endMonth, 10);
+        if (Number.isInteger(inicio) && Number.isInteger(fin)) {
+            const desde = Math.min(inicio, fin);
+            const hasta = Math.max(inicio, fin);
+            const rango = [];
+            for (let m = desde; m <= hasta; m++) if (m >= 1 && m <= 12) rango.push(m);
+            return rango;
+        }
+    }
+
+    return Array.from({ length: 12 }, (_, i) => i + 1);
+}
+
+function resumirPeriodo(rows) {
+    const valores = rows.map((r) => parseFloat(r.valor)).filter((v) => Number.isFinite(v));
+    if (!valores.length) return { suma: 0, promedio: 0, min: 0, max: 0, cantidad: 0 };
+
+    const suma = valores.reduce((acc, v) => acc + v, 0);
+    return {
+        suma,
+        promedio: suma / valores.length,
+        min: Math.min(...valores),
+        max: Math.max(...valores),
+        cantidad: valores.length
+    };
+}
+
+async function obtenerDatosPeriodo(periodo) {
+    const where = ['valor IS NOT NULL'];
+    const params = [];
+
+    const years = parseLista(periodo.years).map((y) => parseInt(y, 10)).filter(Number.isInteger);
+    const singleYear = parseInt(periodo.year, 10);
+    const anios = years.length ? years : (Number.isInteger(singleYear) ? [singleYear] : []);
+    if (!anios.length) throw new Error('Debe seleccionar al menos un año en cada período');
+
+    const meses = generarMesesDesdeScope(periodo.scope, periodo.month, periodo.startMonth, periodo.endMonth, periodo.months);
+    if (!meses.length) throw new Error('Debe seleccionar al menos un mes válido');
+
+    where.push(`anio IN (${anios.map(() => '?').join(',')})`);
+    params.push(...anios);
+    where.push(`mes IN (${meses.map(() => '?').join(',')})`);
+    params.push(...meses);
+
+    const metrica = construirFiltroMetrica(periodo.metric);
+    if (metrica) where.push(metrica.sql);
+
+    const tipos = parseLista(periodo.metricTypes);
+    if (tipos.length) {
+        where.push(`tipo_medicion IN (${tipos.map(() => '?').join(',')})`);
+        params.push(...tipos);
+    }
+
+    const secciones = parseLista(periodo.secciones || periodo.seccion);
+    const estaciones = parseLista(periodo.estaciones || periodo.estacion);
+    const filtrosSeccion = [];
+    if (secciones.length) {
+        filtrosSeccion.push(`seccion IN (${secciones.map(() => '?').join(',')})`);
+        params.push(...secciones);
+    }
+    if (estaciones.length) {
+        filtrosSeccion.push(`(${estaciones.map(() => 'seccion LIKE ?').join(' OR ')})`);
+        params.push(...estaciones.map((est) => `${est}%`));
+    }
+    if (filtrosSeccion.length) where.push(`(${filtrosSeccion.join(' OR ')})`);
+
+    const departamentos = parseLista(periodo.departamentos || periodo.departamento);
+    if (departamentos.length) {
+        where.push(`departamento IN (${departamentos.map(() => '?').join(',')})`);
+        params.push(...departamentos);
+    }
+
+    const locales = parseLista(periodo.locales || periodo.local);
+    if (locales.length) {
+        where.push(`local IN (${locales.map(() => '?').join(',')})`);
+        params.push(...locales);
+    }
+
+    const sql = `
+        SELECT anio, mes, tipo_medicion, seccion, departamento, local, valor
+        FROM mediciones_completas
+        WHERE ${where.join(' AND ')}
+        ORDER BY anio ASC, mes ASC
+    `;
+
+    const rows = await ejecutarConsulta(sql, params);
+    return { rows, anios, meses };
+}
+
+function agregarSeries(rows) {
+    const continuo = new Map();
+    const porMes = new Map();
+
+    rows.forEach((row) => {
+        const valor = parseFloat(row.valor) || 0;
+        const key = `${row.anio}-${String(row.mes).padStart(2, '0')}`;
+        continuo.set(key, (continuo.get(key) || 0) + valor);
+        porMes.set(row.mes, (porMes.get(row.mes) || 0) + valor);
+    });
+
+    const labelsContinuo = Array.from(continuo.keys()).sort();
+    return {
+        continuo: {
+            labels: labelsContinuo,
+            valores: labelsContinuo.map((k) => continuo.get(k) || 0)
+        },
+        superpuesto: {
+            labels: Array.from({ length: 12 }, (_, i) => `M${String(i + 1).padStart(2, '0')}`),
+            valores: Array.from({ length: 12 }, (_, i) => porMes.get(i + 1) || 0)
+        }
+    };
+}
+
+app.get('/api/comparacion-opciones', async (req, res) => {
+    try {
+        const [secciones, departamentos, locales, tipos, anios] = await Promise.all([
+            ejecutarConsulta("SELECT DISTINCT seccion FROM mediciones_completas WHERE seccion IS NOT NULL AND TRIM(seccion) != '' ORDER BY seccion"),
+            ejecutarConsulta("SELECT DISTINCT departamento FROM mediciones_completas WHERE departamento IS NOT NULL AND TRIM(departamento) != '' ORDER BY departamento"),
+            ejecutarConsulta("SELECT DISTINCT local FROM mediciones_completas WHERE local IS NOT NULL AND TRIM(local) != '' ORDER BY local"),
+            ejecutarConsulta("SELECT DISTINCT tipo_medicion FROM mediciones_completas WHERE tipo_medicion IS NOT NULL AND TRIM(tipo_medicion) != '' ORDER BY tipo_medicion"),
+            ejecutarConsulta('SELECT DISTINCT anio FROM mediciones_completas WHERE anio IS NOT NULL ORDER BY anio DESC')
+        ]);
+
+        res.json({
+            secciones: secciones.map((r) => r.seccion),
+            departamentos: departamentos.map((r) => r.departamento),
+            locales: locales.map((r) => r.local),
+            tipos_medicion: tipos.map((r) => r.tipo_medicion),
+            anios: anios.map((r) => r.anio)
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/comparar-periodos', async (req, res) => {
+    try {
+        const { periodoA, periodoB } = req.body || {};
+        if (!periodoA || !periodoB) return res.status(400).json({ error: 'Debe enviar periodoA y periodoB' });
+
+        const [datosA, datosB] = await Promise.all([obtenerDatosPeriodo(periodoA), obtenerDatosPeriodo(periodoB)]);
+        const resumenA = resumirPeriodo(datosA.rows);
+        const resumenB = resumirPeriodo(datosB.rows);
+
+        const serieA = agregarSeries(datosA.rows);
+        const serieB = agregarSeries(datosB.rows);
+
+        const labelsContinuos = Array.from(new Set([...serieA.continuo.labels, ...serieB.continuo.labels])).sort();
+        const mapA = new Map(serieA.continuo.labels.map((l, i) => [l, serieA.continuo.valores[i]]));
+        const mapB = new Map(serieB.continuo.labels.map((l, i) => [l, serieB.continuo.valores[i]]));
+
+        const detalle = labelsContinuos.map((label) => {
+            const a = mapA.get(label) || 0;
+            const b = mapB.get(label) || 0;
+            const diff = b - a;
+            return {
+                periodo: label,
+                valorA: a,
+                valorB: b,
+                diferencia: diff,
+                diferencia_pct: a !== 0 ? (diff / a) * 100 : null
+            };
+        });
+
+        const deltaSuma = resumenB.suma - resumenA.suma;
+        const deltaPct = resumenA.suma !== 0 ? (deltaSuma / resumenA.suma) * 100 : null;
+
+        res.json({
+            periodoA: resumenA,
+            periodoB: resumenB,
+            diferencias: { absoluta: deltaSuma, porcentual: deltaPct },
+            series_mensuales: {
+                continuo: {
+                    labels: labelsContinuos,
+                    periodoA: labelsContinuos.map((l) => mapA.get(l) || 0),
+                    periodoB: labelsContinuos.map((l) => mapB.get(l) || 0)
+                },
+                superpuesto: {
+                    labels: serieA.superpuesto.labels,
+                    periodoA: serieA.superpuesto.valores,
+                    periodoB: serieB.superpuesto.valores
+                }
+            },
+            detalle
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ==================== CORREGIDO: Endpoint de datos con manejo de errores ====================
 app.get("/api/datos", async (req, res) => {
     console.log("📥 Petición a /api/datos recibida con parámetros:", req.query);
