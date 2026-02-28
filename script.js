@@ -53,6 +53,7 @@ class ANDEDashboard {
         this.currentStationFilter = '';
         this.currentStationCompare = '';
         this.selectedStations = [];
+        this.fepDepRequestId = 0;
         
         // ---------- DEBOUNCE ----------
         this.loadDataDebounced = this.debounce(this.loadData.bind(this), 500);
@@ -1940,6 +1941,7 @@ class ANDEDashboard {
     }
 
     async refreshFepDepTotals() {
+        const requestId = ++this.fepDepRequestId;
         try {
             const params = new URLSearchParams();
 
@@ -1960,18 +1962,20 @@ class ANDEDashboard {
                 params.append('mes', 'all');
             }
 
-            params.append('tipo_medicion', 'all');
+            params.append('tipo_medicion', 'TOTAL FEP,TOTAL DEP');
 
             const url = `${this.apiBaseUrl}/api/datos?${params}`;
             const res = await fetch(url);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             const data = await res.json();
+            if (requestId !== this.fepDepRequestId) return;
             console.log(`📊 refreshFepDepTotals: ${data.length} registros recibidos`);
             const totals = this.calculateFepDepTotals(data);
             console.log('🧮 Totales calculados:', totals);
             this.renderFepDepTotals(totals.fep, totals.dep);
         } catch (error) {
+            if (requestId !== this.fepDepRequestId) return;
             console.warn('⚠️ No se pudieron refrescar totales FEP/DEP con consulta global, usando datos actuales.', error);
             const totals = this.calculateFepDepTotals(this.data);
             this.renderFepDepTotals(totals.fep, totals.dep);
