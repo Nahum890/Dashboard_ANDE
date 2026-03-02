@@ -164,6 +164,16 @@ npm run dev
 npm start
 ```
 
+### Reimportación masiva desde `datos.xlsx` (eficiente)
+```bash
+# Validar conversión sin tocar DB
+npm run reimport:xlsx:dry
+
+# Reimportar todo (borra y vuelve a cargar mediciones_completas)
+npm run reimport:xlsx
+```
+
+
 ---
 
 ## ⚙️ Variables de entorno

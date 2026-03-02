@@ -9,7 +9,9 @@
     "setup": "npm install",
     "reset-db": "rm -f ande_database.db && node server.js",
     "insert-ejemplo": "curl -X POST http://localhost:10000/api/insertar-ejemplo-inicial",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "reimport:xlsx": "node scripts/reimport_from_xlsx.js --xlsx datos.xlsx --db ANDE.db --truncate",
+    "reimport:xlsx:dry": "node scripts/reimport_from_xlsx.js --xlsx datos.xlsx --db ANDE.db --dry-run"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -21,7 +23,13 @@
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
-  "keywords": ["ande", "dashboard", "monitoring", "energy", "paraguay"],
+  "keywords": [
+    "ande",
+    "dashboard",
+    "monitoring",
+    "energy",
+    "paraguay"
+  ],
   "author": "Nahum Velazquez",
   "license": "MIT"
 }
