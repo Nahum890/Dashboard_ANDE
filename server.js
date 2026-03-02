@@ -177,6 +177,63 @@ function normalizarTexto(valor) {
     return String(valor).trim();
 }
 
+function convertirMesANumero(valor) {
+    if (valor === undefined || valor === null) return null;
+
+    if (typeof valor === "number" && Number.isFinite(valor)) {
+        const entero = Math.trunc(valor);
+        if (entero >= 1 && entero <= 12) return entero;
+        if (entero >= 190001 && entero <= 299912) {
+            const m = entero % 100;
+            return m >= 1 && m <= 12 ? m : null;
+        }
+        return null;
+    }
+
+    const raw = String(valor).trim();
+    if (!raw) return null;
+
+    const directo = parseInt(raw, 10);
+    if (!Number.isNaN(directo)) {
+        if (directo >= 1 && directo <= 12) return directo;
+        if (directo >= 190001 && directo <= 299912) {
+            const m = directo % 100;
+            return m >= 1 && m <= 12 ? m : null;
+        }
+    }
+
+    const normalizado = normalizarHeader(raw);
+    const meses = {
+        enero: 1,
+        febrero: 2,
+        marzo: 3,
+        abril: 4,
+        mayo: 5,
+        junio: 6,
+        julio: 7,
+        agosto: 8,
+        septiembre: 9,
+        setiembre: 9,
+        octubre: 10,
+        noviembre: 11,
+        diciembre: 12,
+        jan: 1,
+        feb: 2,
+        mar: 3,
+        apr: 4,
+        may: 5,
+        jun: 6,
+        jul: 7,
+        aug: 8,
+        sep: 9,
+        oct: 10,
+        nov: 11,
+        dec: 12
+    };
+
+    return meses[normalizado] || null;
+}
+
 function mapearHeadersFila(row) {
     const alias = {
         seccion: "seccion",
@@ -187,7 +244,10 @@ function mapearHeadersFila(row) {
         tipo_medicion: "tipo_medicion",
         tipo: "tipo_medicion",
         valor: "valor",
-        departamento: "departamento"
+        departamento: "departamento",
+        local: "local",
+        axumes: "axumes",
+        periodo: "periodo"
     };
 
     const filaMapeada = {};
@@ -247,8 +307,12 @@ function transformarFilas(rows) {
 
             const seccion = normalizarTexto(filaMapeada.seccion);
             const anio = parseInt(filaMapeada.anio, 10);
-            const mes = parseInt(filaMapeada.mes, 10);
+            const mes =
+                convertirMesANumero(filaMapeada.mes) ||
+                convertirMesANumero(filaMapeada.axumes) ||
+                convertirMesANumero(filaMapeada.periodo);
             const departamento = filaMapeada.departamento ? normalizarTexto(filaMapeada.departamento) : null;
+            const local = filaMapeada.local ? normalizarTexto(filaMapeada.local) : null;
 
             if (!seccion) {
                 rechazos.seccion_faltante++;
@@ -260,9 +324,9 @@ function transformarFilas(rows) {
                 detalles.push(`Fila ${filaNumero}: 'anio' inválido: ${filaMapeada.anio}`);
                 return;
             }
-            if (Number.isNaN(mes) || mes < 1 || mes > 12) {
+            if (!mes || mes < 1 || mes > 12) {
                 rechazos.mes_invalido++;
-                detalles.push(`Fila ${filaNumero}: 'mes' inválido: ${filaMapeada.mes}`);
+                detalles.push(`Fila ${filaNumero}: 'mes' inválido: ${filaMapeada.mes ?? filaMapeada.axumes ?? filaMapeada.periodo}`);
                 return;
             }
 
@@ -283,7 +347,7 @@ function transformarFilas(rows) {
                     return;
                 }
 
-                registros.push({ seccion, anio, mes, departamento, tipo_medicion: tipoMedicion, valor });
+                registros.push({ seccion, anio, mes, departamento, local, tipo_medicion: tipoMedicion, valor });
                 return;
             }
 
@@ -307,7 +371,7 @@ function transformarFilas(rows) {
                     return;
                 }
 
-                registros.push({ seccion, anio, mes, departamento, tipo_medicion: tipoMedicion, valor });
+                registros.push({ seccion, anio, mes, departamento, local, tipo_medicion: tipoMedicion, valor });
             });
         } catch (e) {
             rechazos.error_fila++;
