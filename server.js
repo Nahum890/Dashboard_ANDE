@@ -184,10 +184,12 @@ function mapearHeadersFila(row) {
         anio: "anio",
         ano: "anio",
         mes: "mes",
+        axumes: "mes",
         tipo_medicion: "tipo_medicion",
         tipo: "tipo_medicion",
         valor: "valor",
-        departamento: "departamento"
+        departamento: "departamento",
+        local: "local"
     };
 
     const filaMapeada = {};
@@ -201,6 +203,47 @@ function mapearHeadersFila(row) {
     });
 
     return { filaMapeada, columnasOriginales };
+}
+
+function convertirMesANumero(valor) {
+    const texto = normalizarHeader(valor);
+    const mesesTexto = {
+        enero: 1,
+        febrero: 2,
+        marzo: 3,
+        abril: 4,
+        mayo: 5,
+        junio: 6,
+        julio: 7,
+        agosto: 8,
+        septiembre: 9,
+        setiembre: 9,
+        octubre: 10,
+        noviembre: 11,
+        diciembre: 12
+    };
+
+    if (texto === "") return null;
+
+    // 1) Mantener prioridad para mes numérico válido (incluyendo texto numérico: "03")
+    if (/^\d{1,2}$/.test(texto)) {
+        const mesNumerico = parseInt(texto, 10);
+        return mesNumerico >= 1 && mesNumerico <= 12 ? mesNumerico : null;
+    }
+
+    // Soportar textos mixtos como "10 octubre" o "10-octubre" conservando el número
+    const matchNumero = texto.match(/\b(\d{1,2})\b/);
+    if (matchNumero) {
+        const mesNumerico = parseInt(matchNumero[1], 10);
+        if (mesNumerico >= 1 && mesNumerico <= 12) return mesNumerico;
+    }
+
+    // 2) Convertir nombres de mes en español
+    if (Object.prototype.hasOwnProperty.call(mesesTexto, texto)) {
+        return mesesTexto[texto];
+    }
+
+    return null;
 }
 
 function detectarHojaValida(workbook) {
@@ -234,6 +277,7 @@ function transformarFilas(rows) {
         seccion_faltante: 0,
         anio_invalido: 0,
         mes_invalido: 0,
+        mes_no_convertible: 0,
         tipo_medicion_faltante: 0,
         valor_invalido: 0,
         error_fila: 0
@@ -247,8 +291,17 @@ function transformarFilas(rows) {
 
             const seccion = normalizarTexto(filaMapeada.seccion);
             const anio = parseInt(filaMapeada.anio, 10);
-            const mes = parseInt(filaMapeada.mes, 10);
+            const local = filaMapeada.local ? normalizarTexto(filaMapeada.local) : null;
             const departamento = filaMapeada.departamento ? normalizarTexto(filaMapeada.departamento) : null;
+            const mes = convertirMesANumero(filaMapeada.mes);
+
+            const axuMesRaw = Object.keys(row).reduce((valor, key) => {
+                if (valor !== null && valor !== undefined) return valor;
+                return normalizarHeader(key) === "axumes" ? row[key] : valor;
+            }, null);
+
+            // 3) Fallback explícito para axuMES cuando mes no sea convertible
+            const mesConFallback = mes ?? convertirMesANumero(axuMesRaw);
 
             if (!seccion) {
                 rechazos.seccion_faltante++;
@@ -260,9 +313,10 @@ function transformarFilas(rows) {
                 detalles.push(`Fila ${filaNumero}: 'anio' inválido: ${filaMapeada.anio}`);
                 return;
             }
-            if (Number.isNaN(mes) || mes < 1 || mes > 12) {
+            if (mesConFallback === null) {
+                rechazos.mes_no_convertible++;
                 rechazos.mes_invalido++;
-                detalles.push(`Fila ${filaNumero}: 'mes' inválido: ${filaMapeada.mes}`);
+                detalles.push(`Fila ${filaNumero}: 'mes' no convertible: ${filaMapeada.mes ?? row.axuMES}`);
                 return;
             }
 
@@ -283,7 +337,7 @@ function transformarFilas(rows) {
                     return;
                 }
 
-                registros.push({ seccion, anio, mes, departamento, tipo_medicion: tipoMedicion, valor });
+                registros.push({ seccion, anio, mes: mesConFallback, departamento, local, tipo_medicion: tipoMedicion, valor });
                 return;
             }
 
@@ -307,7 +361,7 @@ function transformarFilas(rows) {
                     return;
                 }
 
-                registros.push({ seccion, anio, mes, departamento, tipo_medicion: tipoMedicion, valor });
+                registros.push({ seccion, anio, mes: mesConFallback, departamento, local, tipo_medicion: tipoMedicion, valor });
             });
         } catch (e) {
             rechazos.error_fila++;
