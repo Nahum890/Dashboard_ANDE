@@ -1627,7 +1627,7 @@ class ANDEDashboard {
             const params = new URLSearchParams();
             
             const selectedFeed = this.getSelectedValues('filterTransformador');
-            let seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'ACY1';
+            let seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'all';
             params.append('seccion', seccionVal);
             console.log("🔌 Alimentadores:", selectedFeed);
             
@@ -1678,6 +1678,7 @@ class ANDEDashboard {
                 console.log("📈 Actualizando UI con nuevos datos (con animaciones HD)...");
                 this.updateStats();
                 this.updateKPIs();
+                await this.refreshFepDepTotals();
                 this.updateSpecialKPIs();
                 
                 // Actualizar gráficos con animaciones
@@ -1882,11 +1883,109 @@ class ANDEDashboard {
         });
     }
     
+    parseNumericValue(value) {
+        if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+        if (value === null || value === undefined) return NaN;
+
+        let str = String(value).trim();
+        if (!str) return NaN;
+
+        if (str.includes(',') && str.includes('.')) {
+            if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+                str = str.replace(/\./g, '').replace(',', '.');
+            } else {
+                str = str.replace(/,/g, '');
+            }
+        } else if (str.includes(',')) {
+            str = str.replace(',', '.');
+        }
+
+        const parsed = Number(str);
+        return Number.isFinite(parsed) ? parsed : NaN;
+    }
+
+    normalizeTipo(tipo) {
+        return String(tipo || '')
+            .toUpperCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^A-Z0-9]/g, '');
+    }
+
+    calculateFepDepTotals(dataset = []) {
+        return dataset.reduce((acc, row) => {
+            const freq = this.parseNumericValue(row.frecuencia);
+            if (!Number.isFinite(freq)) return acc;
+
+            const tipoNorm = this.normalizeTipo(row.tipo);
+            if (tipoNorm.includes('FEP')) acc.fep += freq;
+            if (tipoNorm.includes('DEP')) acc.dep += freq;
+            return acc;
+        }, { fep: 0, dep: 0 });
+    }
+
+    renderFepDepTotals(totalFep, totalDep) {
+        const totalFepEl = document.getElementById('totalFep');
+        const totalDepEl = document.getElementById('totalDep');
+        if (totalFepEl) totalFepEl.textContent = this.safeToFixed(totalFep, 2);
+        if (totalDepEl) totalDepEl.textContent = this.safeToFixed(totalDep, 2);
+        console.log(`📊 Totales calculados - FEP: ${totalFep}, DEP: ${totalDep}`);
+    }
+
+    async refreshFepDepTotals() {
+        try {
+            const params = new URLSearchParams();
+
+            const selectedFeed = this.getSelectedValues('filterTransformador');
+            const seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'all';
+            params.append('seccion', seccionVal);
+
+            const yearSel = document.getElementById('filterYear');
+            const years = this.getSelectedValues('filterYear');
+            const anioVal = years.length ? years.join(',') : (yearSel?.value || '2024');
+            params.append('anio', anioVal);
+
+            if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
+                params.append('mes', Array.from(this.selectedMonths).join(','));
+            } else if (this.filters.periodo && this.filters.periodo !== 'select_months') {
+                params.append('periodo', this.filters.periodo);
+            } else {
+                params.append('mes', 'all');
+            }
+
+            params.append('tipo_medicion', 'all');
+
+            const url = `${this.apiBaseUrl}/api/datos?${params}`;
+            console.log('🌐 Solicitando totales FEP/DEP:', url);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const data = await res.json();
+            console.log(`📊 refreshFepDepTotals: ${data.length} registros recibidos`);
+            const totals = this.calculateFepDepTotals(data);
+            this.renderFepDepTotals(totals.fep, totals.dep);
+        } catch (error) {
+            console.warn('⚠️ No se pudieron refrescar totales FEP/DEP con consulta global, usando datos actuales.', error);
+            const totals = this.calculateFepDepTotals(this.data);
+            this.renderFepDepTotals(totals.fep, totals.dep);
+        }
+    }
+
     updateKPIs() {
         if (!this.data.length) return;
-        const values = this.data.map(d => d.frecuencia).filter(v => !isNaN(v));
+        const values = this.data
+            .map(d => this.parseNumericValue(d.frecuencia))
+            .filter(v => Number.isFinite(v));
         if (!values.length) return;
-        const min = Math.min(...values), max = Math.max(...values);
+
+        let min = values[0];
+        let max = values[0];
+        let sum = 0;
+        for (const value of values) {
+            if (value < min) min = value;
+            if (value > max) max = value;
+            sum += value;
+        }
         const range = max - min;
         const rangeVal = document.getElementById('rangeValue');
         if (rangeVal) rangeVal.textContent = range.toFixed(4);
@@ -1908,8 +2007,10 @@ class ANDEDashboard {
         
         const series = {};
         this.data.forEach(d => {
+            const value = this.parseNumericValue(d.frecuencia);
+            if (!Number.isFinite(value)) return;
             if (!series[d.combinationKey]) series[d.combinationKey] = { label: d.combinationLabel, vals: [] };
-            series[d.combinationKey].vals.push(d.frecuencia);
+            series[d.combinationKey].vals.push(value);
         });
         let worstKey = null, worstAvg = -Infinity;
         Object.entries(series).forEach(([k, v]) => {
