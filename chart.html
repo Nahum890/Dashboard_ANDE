@@ -973,6 +973,7 @@
             const rankingTableWrapper = document.getElementById('rankingTableWrapper');
             let rankingChart = null;
             let currentRankingView = 'chart'; // 'chart' o 'table'
+            const rankingInitialMeta = rawData.rankingMeta || {};
 
             // Función para calcular métricas
             function calculateMetric(values, metric) {
@@ -1002,8 +1003,8 @@
             // Función para agrupar datos según el grupo seleccionado
             function groupDataForRanking(groupBy) {
                 const groups = {};
-                // Si no hay datos completos, intentar usar rankingChartAll o rankingChart
-                if (!rawData.rankingFullData || !rawData.rankingFullData.series) {
+                // Preferir siempre las series completas; usar fallback solo si no existen
+                if (!rawData.rankingFullData?.series) {
                     // Fallback: usar los datos del ranking simple (solo promedios)
                     const fallback = rawData.rankingChartAll || rawData.rankingChart;
                     if (fallback && fallback.labels && fallback.data) {
@@ -1108,16 +1109,44 @@
             }
 
             function renderRankingTable(items) {
+                const escapeHtml = (value) => String(value ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+
                 let html = '<table class="ranking-table"><thead><tr><th>Elemento</th><th>Valor</th><th>Acción</th></tr></thead><tbody>';
                 items.forEach(item => {
-                    html += `<tr data-label="${item.label}">
-                        <td>${item.label}</td>
+                    const safeLabel = escapeHtml(item.label);
+                    html += `<tr>
+                        <td>${safeLabel}</td>
                         <td><span class="badge primary">${formatNumber(item.value)}</span></td>
-                        <td><button class="btn-icon small" onclick="alert('Detalles de ${item.label} (pendiente)')" title="Ver detalles"><i class="fas fa-eye"></i></button></td>
+                        <td><button class="btn-icon small" data-action="detail" data-label="${safeLabel}" title="Ver detalles"><i class="fas fa-eye"></i></button></td>
                     </tr>`;
                 });
                 html += '</tbody></table>';
                 rankingTableWrapper.innerHTML = html;
+            }
+
+            if (rankingTableWrapper) {
+                rankingTableWrapper.addEventListener('click', (event) => {
+                    const button = event.target.closest('.btn-icon');
+                    if (!button || !rankingTableWrapper.contains(button)) return;
+
+                    const action = button.dataset.action;
+                    const safeLabel = button.dataset.label || 'Elemento';
+
+                    switch (action) {
+                        case 'alert':
+                        case 'modal':
+                        case 'detail':
+                            alert(`Detalles de ${safeLabel} (pendiente)`);
+                            break;
+                        default:
+                            break;
+                    }
+                });
             }
 
             // Event listeners para ranking
@@ -1132,8 +1161,19 @@
                     updateRanking();
                 });
 
+                // Aplicar metadatos iniciales si existen
+                if (rankingInitialMeta.group && rankingGroupSelect.querySelector(`option[value="${rankingInitialMeta.group}"]`)) {
+                    rankingGroupSelect.value = rankingInitialMeta.group;
+                }
+                if (rankingInitialMeta.sort && rankingMetricSelect.querySelector(`option[value="${rankingInitialMeta.sort}"]`)) {
+                    rankingMetricSelect.value = rankingInitialMeta.sort;
+                }
+                if (rankingInitialMeta.limit && rankingLimitSelect.querySelector(`option[value="${rankingInitialMeta.limit}"]`)) {
+                    rankingLimitSelect.value = rankingInitialMeta.limit;
+                }
+
                 // Inicializar ranking
-                if (rawData.rankingFullData || rawData.rankingChartAll || rawData.rankingChart) {
+                if (rawData.rankingFullData?.series || rawData.rankingChartAll || rawData.rankingChart) {
                     updateRanking();
                 }
             }

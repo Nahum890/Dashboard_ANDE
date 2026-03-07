@@ -16,6 +16,8 @@ class ANDEDashboard {
         this.pieChartByType = null;
         this.stationSummaryChart = null;
         this.sortConfig = { column: null, direction: 'asc' };
+        this.latestRankingData = [];
+        this.rankingItems = [];
         
         this.chartPalette = [
             '#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0', '#118AB2', 
@@ -29,8 +31,8 @@ class ANDEDashboard {
         
         this.defaultFilters = {
             tipoMedicion: ['TOTAL FEP'],
-            transformador: ['ACY1'],
-            year: ['2024'],
+            transformador: [],
+            year: [],
             month: [1,2,3,4,5,6,7,8,9,10,11,12],
             estacion: '',
             periodo: 'select_months'
@@ -51,6 +53,7 @@ class ANDEDashboard {
         this.currentStationFilter = '';
         this.currentStationCompare = '';
         this.selectedStations = [];
+        this.fepDepRequestId = 0;
         
         // ---------- DEBOUNCE ----------
         this.loadDataDebounced = this.debounce(this.loadData.bind(this), 500);
@@ -1403,14 +1406,22 @@ class ANDEDashboard {
         this.filters.periodo = 'select_months';
         
         setTimeout(() => {
-            const setSelect = (id, defaultValue) => {
+            const setSelect = (id, defaultValue = null) => {
                 const el = document.getElementById(id);
                 if (el && el.options.length) {
-                    if (Array.from(el.options).find(opt => opt.value === defaultValue)) el.value = defaultValue;
+                    if (defaultValue && Array.from(el.options).find(opt => opt.value === defaultValue)) el.value = defaultValue;
                     else if (el.options.length > 0) el.value = el.options[0].value;
                 }
             };
-            setSelect('filterYear', '2024');
+
+            const yearSelect = document.getElementById('filterYear');
+            if (yearSelect && yearSelect.options.length > 0) {
+                const yearValues = Array.from(yearSelect.options)
+                    .map(opt => Number(opt.value))
+                    .filter(Number.isFinite);
+                const latestYear = yearValues.length ? String(Math.max(...yearValues)) : null;
+                setSelect('filterYear', latestYear);
+            }
             setSelect('filterTipoMedicion', 'TOTAL FEP');
             
             const feedSel = document.getElementById('filterTransformador');
@@ -1420,14 +1431,12 @@ class ANDEDashboard {
                 const estCompareSel = document.getElementById('filterEstacionCompare');
                 if (estCompareSel) estCompareSel.value = '';
                 this.filterFeedersByStation('');
-                const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
-                if (option) option.selected = true;
-                else if (feedSel.options.length > 0) feedSel.options[0].selected = true;
+                Array.from(feedSel.options).forEach(opt => opt.selected = true);
                 this.updateFeederCount();
             }
             
             this.filters = {
-                year: [document.getElementById('filterYear')?.value || '2024'],
+                year: [document.getElementById('filterYear')?.value || 'all'],
                 tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'TOTAL FEP'],
                 transformador: this.getSelectedValues('filterTransformador'),
                 month: Array.from(this.selectedMonths),
@@ -1521,17 +1530,22 @@ class ANDEDashboard {
         const estCompareSel = document.getElementById('filterEstacionCompare');
         if (estCompareSel) estCompareSel.value = '';
         this.filterFeedersByStation('');
-        this.clearFeeders();
-        
+
         const feedSel = document.getElementById('filterTransformador');
         if (feedSel) {
-            const option = Array.from(feedSel.options).find(opt => opt.value === 'ACY1');
-            if (option) option.selected = true;
+            Array.from(feedSel.options).forEach(opt => opt.selected = true);
             this.updateFeederCount();
         }
-        
+
         const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-        setVal('filterYear', '2024');
+        const yearSelect = document.getElementById('filterYear');
+        if (yearSelect && yearSelect.options.length) {
+            const yearValues = Array.from(yearSelect.options)
+                .map(opt => Number(opt.value))
+                .filter(Number.isFinite);
+            const latestYear = yearValues.length ? String(Math.max(...yearValues)) : yearSelect.options[0].value;
+            setVal('filterYear', latestYear);
+        }
         setVal('filterTipoMedicion', 'TOTAL FEP');
         
         document.querySelectorAll('.period-tab').forEach(tab => {
@@ -1633,7 +1647,7 @@ class ANDEDashboard {
             
             const yearSel = document.getElementById('filterYear');
             const years = this.getSelectedValues('filterYear');
-            const anioVal = years.length ? years.join(',') : (yearSel?.value || '2024');
+            const anioVal = years.length ? years.join(',') : (yearSel?.value || 'all');
             params.append('anio', anioVal);
             console.log("📅 Años:", years);
             
@@ -1650,7 +1664,7 @@ class ANDEDashboard {
             
             const tipoSel = document.getElementById('filterTipoMedicion');
             const tipos = this.getSelectedValues('filterTipoMedicion');
-            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'TOTAL FEP');
+            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'all');
             params.append('tipo_medicion', tipoVal);
             console.log("📊 Tipos:", tipos);
             
@@ -1670,10 +1684,7 @@ class ANDEDashboard {
             if (this.data.length === 0) {
                 this.showNotification("No hay datos con los filtros actuales", "warning");
                 this.clearChartsAndTable();
-                if (this.isInitialLoad) { 
-                    console.log("⚠️ Generando datos de ejemplo..."); 
-                    this.generateSampleData(); 
-                }
+                await this.refreshFepDepTotals();
             } else {
                 console.log("📈 Actualizando UI con nuevos datos (con animaciones HD)...");
                 this.updateStats();
@@ -1695,10 +1706,8 @@ class ANDEDashboard {
         } catch (error) {
             console.error("❌ Error cargando datos:", error);
             this.showNotification(`Error: ${error.message}`, "error");
-            if (this.isInitialLoad) { 
-                console.log("⚠️ Generando datos de ejemplo..."); 
-                this.generateSampleData(); 
-            }
+            this.clearChartsAndTable();
+            this.renderFepDepTotals(0, 0);
         } finally { 
             this.showLoading(false); 
         }
@@ -1885,13 +1894,9 @@ class ANDEDashboard {
     
     parseNumericValue(value) {
         if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
-        if (typeof value === 'bigint') {
-            const n = Number(value);
-            return Number.isFinite(n) ? n : NaN;
-        }
-        if (typeof value !== 'string') return NaN;
+        if (value === null || value === undefined) return NaN;
 
-        let str = value.trim();
+        let str = String(value).trim();
         if (!str) return NaN;
 
         if (str.includes(',') && str.includes('.')) {
@@ -1909,8 +1914,7 @@ class ANDEDashboard {
     }
 
     normalizeTipo(tipo) {
-        if (typeof tipo !== 'string') return '';
-        return tipo
+        return String(tipo || '')
             .toUpperCase()
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
@@ -1923,8 +1927,8 @@ class ANDEDashboard {
             if (!Number.isFinite(freq)) return acc;
 
             const tipoNorm = this.normalizeTipo(row.tipo);
-            if (tipoNorm.includes('FEP')) acc.fep += freq;
-            if (tipoNorm.includes('DEP')) acc.dep += freq;
+            if (tipoNorm === 'TOTALFEP') acc.fep += freq;
+            if (tipoNorm === 'TOTALDEP') acc.dep += freq;
             return acc;
         }, { fep: 0, dep: 0 });
     }
@@ -1934,10 +1938,10 @@ class ANDEDashboard {
         const totalDepEl = document.getElementById('totalDep');
         if (totalFepEl) totalFepEl.textContent = this.safeToFixed(totalFep, 2);
         if (totalDepEl) totalDepEl.textContent = this.safeToFixed(totalDep, 2);
-        console.log(`📊 Totales calculados - FEP: ${totalFep}, DEP: ${totalDep}`);
     }
 
     async refreshFepDepTotals() {
+        const requestId = ++this.fepDepRequestId;
         try {
             const params = new URLSearchParams();
 
@@ -1947,7 +1951,7 @@ class ANDEDashboard {
 
             const yearSel = document.getElementById('filterYear');
             const years = this.getSelectedValues('filterYear');
-            const anioVal = years.length ? years.join(',') : (yearSel?.value || '2024');
+            const anioVal = years.length ? years.join(',') : (yearSel?.value || 'all');
             params.append('anio', anioVal);
 
             if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
@@ -1958,22 +1962,73 @@ class ANDEDashboard {
                 params.append('mes', 'all');
             }
 
-            params.append('tipo_medicion', 'all');
+            params.append('tipo_medicion', 'TOTAL FEP,TOTAL DEP');
 
             const url = `${this.apiBaseUrl}/api/datos?${params}`;
-            console.log('🌐 Solicitando totales FEP/DEP:', url);
             const res = await fetch(url);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             const data = await res.json();
+            if (requestId !== this.fepDepRequestId) return;
             console.log(`📊 refreshFepDepTotals: ${data.length} registros recibidos`);
             const totals = this.calculateFepDepTotals(data);
+            console.log('🧮 Totales calculados:', totals);
             this.renderFepDepTotals(totals.fep, totals.dep);
         } catch (error) {
+            if (requestId !== this.fepDepRequestId) return;
             console.warn('⚠️ No se pudieron refrescar totales FEP/DEP con consulta global, usando datos actuales.', error);
             const totals = this.calculateFepDepTotals(this.data);
             this.renderFepDepTotals(totals.fep, totals.dep);
         }
+    }
+
+    updateKPIs() {
+        if (!this.data.length) return;
+        const values = this.data
+            .map(d => this.parseNumericValue(d.frecuencia))
+            .filter(v => Number.isFinite(v));
+        if (!values.length) return;
+        const min = Math.min(...values), max = Math.max(...values);
+        const range = max - min;
+        const rangeVal = document.getElementById('rangeValue');
+        if (rangeVal) rangeVal.textContent = range.toFixed(4);
+        const rangeInfo = document.getElementById('rangeInfo');
+        if (rangeInfo) rangeInfo.textContent = `${this.safeToFixed(min)}-${this.safeToFixed(max)}`;
+        
+        if (values.length > 1) {
+            const mean = values.reduce((a,b)=>a+b,0)/values.length;
+            const variance = values.reduce((a,b)=>a+Math.pow(b-mean,2),0)/values.length;
+            const cv = (Math.sqrt(variance)/mean)*100;
+            const varVal = document.getElementById('variabilityValue');
+            if (varVal) varVal.textContent = cv.toFixed(2)+'%';
+            const varBadge = document.getElementById('variabilityBadge');
+            if (varBadge) {
+                varBadge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
+                varBadge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
+            }
+        } else if (str.includes(',')) {
+            str = str.replace(',', '.');
+        }
+        
+        const series = {};
+        this.data.forEach(d => {
+            const value = this.parseNumericValue(d.frecuencia);
+            if (!Number.isFinite(value)) return;
+            if (!series[d.combinationKey]) series[d.combinationKey] = { label: d.combinationLabel, vals: [] };
+            series[d.combinationKey].vals.push(value);
+        });
+        let worstKey = null, worstAvg = -Infinity;
+        Object.entries(series).forEach(([k, v]) => {
+            const avg = v.vals.reduce((a,b)=>a+b,0)/v.vals.length;
+            if (avg > worstAvg) { worstAvg = avg; worstKey = k; }
+        });
+        if (worstKey) {
+            const ws = document.getElementById('worstSeries');
+            if (ws) ws.textContent = series[worstKey].label;
+            const wv = document.getElementById('worstValue');
+            if (wv) wv.textContent = worstAvg.toFixed(4);
+        }
+
     }
 
     updateKPIs() {
@@ -2203,11 +2258,23 @@ class ANDEDashboard {
             console.warn("rankingChart no inicializado");
             return;
         }
+
+        const displayMode = document.getElementById('rankingDisplayMode')?.value || 'chart';
+        const rankingChartWrapper = document.getElementById('rankingChartWrapper');
+        const rankingListWrapper = document.getElementById('rankingListWrapper');
+        const showChart = displayMode === 'chart' || displayMode === 'both';
+        const showList = displayMode === 'list' || displayMode === 'both';
+
+        if (rankingChartWrapper) rankingChartWrapper.style.display = showChart ? '' : 'none';
+        if (rankingListWrapper) rankingListWrapper.style.display = showList ? '' : 'none';
+
         if (!this.data.length) {
             this.latestRankingData = [];
+            this.rankingItems = [];
             this.rankingChart.data.labels = [];
             this.rankingChart.data.datasets[0].data = [];
             this.rankingChart.update('none');
+            if (showList) this.renderRankingList([]);
             return;
         }
 
@@ -2245,24 +2312,51 @@ class ANDEDashboard {
         });
         
         this.rankingItems = ranking;
-        const top = ranking.slice(0, 10);
-        console.log("🏆 Top 10 ranking:", top);
-        this.rankingChart.data.labels = top.map(t => t.label);
-        this.rankingChart.data.datasets[0].data = top.map(t => t.avg);
-        this.rankingChart.data.datasets[0].backgroundColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
-        this.rankingChart.data.datasets[0].borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        const displayedRanking = viewMode === 'all' ? ranking : ranking.slice(0, 10);
+        this.latestRankingData = displayedRanking;
+
+        console.log(`🏆 Ranking mostrado (${viewMode}):`, displayedRanking);
+        this.rankingChart.data.labels = displayedRanking.map(t => t.label);
+        this.rankingChart.data.datasets[0].data = displayedRanking.map(t => t.avg);
+        this.rankingChart.data.datasets[0].backgroundColor = displayedRanking.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
+        this.rankingChart.data.datasets[0].borderColor = displayedRanking.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
 
         // ✨ Actualizar con animación
         this.rankingChart.update();
+        if (showList) this.renderRankingList(displayedRanking);
         console.log("✅ Ranking HD actualizado con animaciones");
     }
 
+    renderRankingList(items) {
+        const rankingListWrapper = document.getElementById('rankingListWrapper');
+        if (!rankingListWrapper) return;
+
+        if (!items.length) {
+            rankingListWrapper.innerHTML = '<div class="legend-empty">Sin datos para mostrar</div>';
+            return;
+        }
+
+        rankingListWrapper.innerHTML = items.map((item, index) => `
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; padding:0.5rem 0.35rem; border-bottom:${index === items.length - 1 ? 'none' : '1px solid rgba(148,163,184,0.18)'};">
+                <div style="display:flex; align-items:center; gap:0.5rem; min-width:0;">
+                    <span style="display:inline-flex; width:1.4rem; height:1.4rem; border-radius:999px; align-items:center; justify-content:center; font-weight:700; color:#0f172a; background:${this.chartPalette[index % this.chartPalette.length]}80;">${index + 1}</span>
+                    <span style="font-weight:600; color:#e2e8f0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.label}</span>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; line-height:1.15; flex-shrink:0;">
+                    <span style="font-weight:700; color:#f8fafc;">${this.safeToFixed(item.avg, 4)} Hz</span>
+                    <span style="font-size:0.8rem; color:#94a3b8;">Rango: ${this.safeToFixed(item.range, 4)} · Último: ${this.safeToFixed(item.last, 4)}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
     openFullRankingTab() {
+        const source = Array.isArray(this.latestRankingData) ? this.latestRankingData : (this.rankingItems || []);
         const payload = {
-            labels: this.latestRankingData.map(item => item.label),
-            data: this.latestRankingData.map(item => item.avg),
+            labels: source.map(item => item.label),
+            data: source.map(item => item.avg),
             title: 'Ranking completo',
-            subtitle: `Total de elementos: ${this.latestRankingData.length}`,
+            subtitle: `Total de elementos: ${source.length}`,
             palette: this.chartPalette
         };
         localStorage.setItem('ande_ranking_full_data', JSON.stringify(payload));
@@ -2512,6 +2606,19 @@ class ANDEDashboard {
     
     expandRankingChart() {
         console.log("🖥️ Abriendo ranking completo en nueva pestaña");
+        const selectedGroup = document.getElementById('rankingGroup')?.value || 'alimentador';
+        const selectedSort = document.getElementById('rankingSort')?.value || 'avg';
+        const selectedLimit = document.getElementById('rankingViewMode')?.value || 'top10';
+
+        const rankingSeries = {};
+        this.data.forEach(d => {
+            const key = selectedGroup === 'estacion'
+                ? d.transformador.substring(0, 3)
+                : d.combinationLabel;
+            if (!rankingSeries[key]) rankingSeries[key] = [];
+            rankingSeries[key].push(d.frecuencia);
+        });
+
         const rankingAll = this.rankingItems?.length ? this.rankingItems : [];
         const chartData = {
             rankingOnly: true,
@@ -2520,11 +2627,20 @@ class ANDEDashboard {
                 data: rankingAll.map(r => r.avg),
                 colors: rankingAll.map((_,i) => this.chartPalette[i % this.chartPalette.length] + '80')
             },
+            rankingChartAll: {
+                labels: rankingAll.map(r => r.label),
+                data: rankingAll.map(r => r.avg),
+                colors: rankingAll.map((_,i) => this.chartPalette[i % this.chartPalette.length] + '80')
+            },
+            rankingFullData: {
+                series: rankingSeries
+            },
             palette: this.chartPalette,
             rankingMeta: {
                 totalItems: rankingAll.length,
-                sort: document.getElementById('rankingSort')?.value || 'avg',
-                group: document.getElementById('rankingGroup')?.value || 'alimentador'
+                sort: selectedSort,
+                group: selectedGroup,
+                limit: selectedLimit
             }
         };
         localStorage.setItem('ande_chart_data', JSON.stringify(chartData));
