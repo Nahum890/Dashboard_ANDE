@@ -2006,6 +2006,8 @@ class ANDEDashboard {
                 varBadge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
                 varBadge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
             }
+        } else if (str.includes(',')) {
+            str = str.replace(',', '.');
         }
         
         const series = {};
@@ -2028,7 +2030,84 @@ class ANDEDashboard {
         }
 
     }
-    
+
+    updateKPIs() {
+        if (this._isUpdatingKPIs) return;
+        this._isUpdatingKPIs = true;
+        try {
+            if (!Array.isArray(this.data) || !this.data.length) return;
+
+            const values = [];
+            for (const row of this.data) {
+                const parsed = this.parseNumericValue(row.frecuencia);
+                if (Number.isFinite(parsed)) values.push(parsed);
+            }
+            if (!values.length) return;
+
+            let min = values[0];
+            let max = values[0];
+            let sum = 0;
+            for (const value of values) {
+                if (value < min) min = value;
+                if (value > max) max = value;
+                sum += value;
+            }
+
+            const range = max - min;
+            const rangeVal = document.getElementById('rangeValue');
+            if (rangeVal) rangeVal.textContent = range.toFixed(4);
+            const rangeInfo = document.getElementById('rangeInfo');
+            if (rangeInfo) rangeInfo.textContent = `${this.safeToFixed(min)}-${this.safeToFixed(max)}`;
+
+            if (values.length > 1) {
+                const mean = sum / values.length;
+                let varianceAccum = 0;
+                for (const value of values) varianceAccum += Math.pow(value - mean, 2);
+                const variance = varianceAccum / values.length;
+                const cv = mean !== 0 ? (Math.sqrt(variance) / mean) * 100 : 0;
+                const varVal = document.getElementById('variabilityValue');
+                if (varVal) varVal.textContent = cv.toFixed(2) + '%';
+                const varBadge = document.getElementById('variabilityBadge');
+                if (varBadge) {
+                    varBadge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
+                    varBadge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
+                }
+            }
+
+            const series = {};
+            for (const d of this.data) {
+                const value = this.parseNumericValue(d.frecuencia);
+                if (!Number.isFinite(value)) continue;
+                if (!series[d.combinationKey]) series[d.combinationKey] = { label: d.combinationLabel, vals: [] };
+                series[d.combinationKey].vals.push(value);
+            }
+
+            let worstKey = null;
+            let worstAvg = -Infinity;
+            for (const [k, v] of Object.entries(series)) {
+                if (!v.vals.length) continue;
+                let localSum = 0;
+                for (const x of v.vals) localSum += x;
+                const avg = localSum / v.vals.length;
+                if (avg > worstAvg) {
+                    worstAvg = avg;
+                    worstKey = k;
+                }
+            }
+
+            if (worstKey) {
+                const ws = document.getElementById('worstSeries');
+                if (ws) ws.textContent = series[worstKey].label;
+                const wv = document.getElementById('worstValue');
+                if (wv) wv.textContent = worstAvg.toFixed(4);
+            }
+        } catch (error) {
+            console.error('❌ Error en updateKPIs:', error);
+        } finally {
+            this._isUpdatingKPIs = false;
+        }
+    }
+
     updateComparisonTags() {
         const cont = document.getElementById('comparisonTags');
         if (!cont) return;
