@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparador DEP/FEP Avanzado</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        body{font-family:Inter,system-ui,sans-serif;background:#f8fafc;margin:0;color:#0f172a}
+        .container{max-width:1380px;margin:0 auto;padding:1rem}
+        .row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+        .topbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
+        .btn{background:#2563eb;color:#fff;border:none;border-radius:10px;padding:.55rem .9rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem}
+        .btn.secondary{background:#334155}.btn.ghost{background:#fff;color:#334155;border:1px solid #cbd5e1}
+        .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1rem}
+        .panels{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}
+        .grid{display:grid;grid-template-columns:repeat(2,minmax(190px,1fr));gap:.6rem}
+        select,input{width:100%;padding:.45rem;border:1px solid #cbd5e1;border-radius:8px;background:white}
+        select[multiple]{min-height:100px}
+        label{font-size:.78rem;color:#334155;font-weight:600;display:block;margin-bottom:.25rem}
+        .mode{display:flex;gap:.4rem;flex-wrap:wrap;margin:.6rem 0}
+        .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem;margin-top:1rem}
+        .kpi{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:.8rem}.kpi h4{margin:0;font-size:.8rem;color:#64748b}.kpi strong{font-size:1.2rem}
+        .charts{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}
+        .table-wrap{overflow:auto;max-height:360px}
+        table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{border-bottom:1px solid #e2e8f0;padding:.45rem;text-align:right}th:first-child,td:first-child{text-align:left}
+        .preset{margin-top:.8rem}
+        @media (max-width:980px){.panels,.charts{grid-template-columns:1fr}.grid{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <h2>Comparador DEP/FEP (Avanzado)</h2>
+        <div class="row">
+            <a class="btn ghost" href="/index.html">Volver</a>
+            <button class="btn secondary" id="exportCsv">Exportar CSV</button>
+            <button class="btn" id="compararBtn">Comparar</button>
+        </div>
+    </div>
+
+    <div class="card preset">
+        <div class="row">
+            <button class="btn ghost preset-btn" data-preset="year_vs_prev">Año actual vs anterior</button>
+            <button class="btn ghost preset-btn" data-preset="same_month_years">Mismo mes años distintos</button>
+            <button class="btn ghost preset-btn" data-preset="last12_vs_prev12">Últimos 12 meses vs 12 previos</button>
+            <div style="margin-left:auto; min-width:260px;">
+                <label>Modo de visualización</label>
+                <select id="visualMode">
+                    <option value="grouped">Barras agrupadas + línea continua</option>
+                    <option value="stacked">Barras apiladas</option>
+                    <option value="superpuesto">Línea superpuesta por mes (M01..M12)</option>
+                    <option value="continuo">Línea continua por fecha</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="panels">
+        <section class="card panel" id="panelA"><h3>Período A</h3><div class="mode"></div><div class="grid"></div></section>
+        <section class="card panel" id="panelB"><h3>Período B</h3><div class="mode"></div><div class="grid"></div></section>
+    </div>
+
+    <div class="kpi-grid" id="kpis"></div>
+    <div class="charts">
+        <div class="card"><canvas id="barChart"></canvas></div>
+        <div class="card"><canvas id="lineChart"></canvas></div>
+    </div>
+
+    <div class="card" style="margin-top:1rem;">
+        <h3>Detalle</h3>
+        <div class="table-wrap"><table><thead><tr><th>Período</th><th>A</th><th>B</th><th>Delta</th><th>Delta %</th></tr></thead><tbody id="detalleBody"></tbody></table></div>
+    </div>
+</div>
+
+<script>
+const state = {options:null, result:null, charts:{}};
+const monthOptions = Array.from({length:12},(_,i)=>`<option value="${i+1}">${String(i+1).padStart(2,'0')}</option>`).join('');
+
+const fmt = (n)=> (n===null || n===undefined || Number.isNaN(n)) ? '-' : Number(n).toLocaleString('es-PY',{maximumFractionDigits:2});
+const getSelected = (sel)=> Array.from(sel.selectedOptions || []).map(o=>o.value).filter(Boolean);
+
+function deriveStations(secciones){
+    const s = new Set();
+    secciones.forEach((v)=>{ const m = String(v||'').trim().match(/^[A-Za-z]+/); if(m && m[0].length>=2) s.add(m[0].toUpperCase());});
+    return [...s].sort();
+}
+
+function panelTemplate(){
+    return `
+    <button class="btn ghost mode-btn" data-mode="manual">Manual (alimentadores)</button>
+    <button class="btn ghost mode-btn" data-mode="estacion">Estación completa</button>
+    <button class="btn ghost mode-btn" data-mode="all">Todos</button>
+    `;
+}
+
+function fieldsTemplate(){
+    return `
+        <div><label>Métrica</label><select data-field="metric"><option value="dep_todos">DEP total+componentes</option><option value="dep_total">DEP total</option><option value="dep_componentes">DEP componentes</option><option value="fep_todos">FEP total+componentes</option><option value="fep_total">FEP total</option><option value="fep_componentes">FEP componentes</option></select></div>
+        <div><label>Alcance</label><select data-field="scope"><option value="year">Año completo</option><option value="month">Mes puntual / varios meses</option><option value="range">Rango de meses</option></select></div>
+        <div><label>Años (multi)</label><select multiple size="4" data-field="years"></select></div>
+        <div><label>Meses (multi)</label><select multiple size="4" data-field="months">${monthOptions}</select></div>
+        <div><label>Mes inicio</label><select data-field="startMonth">${monthOptions}</select></div>
+        <div><label>Mes fin</label><select data-field="endMonth">${monthOptions}</select></div>
+        <div><label>Alimentadores (multi)</label><select multiple size="6" data-field="secciones"></select></div>
+        <div><label>Estaciones (multi)</label><select multiple size="6" data-field="estaciones"></select></div>
+        <div><label>Departamentos (multi)</label><select multiple size="4" data-field="departamentos"></select></div>
+        <div><label>Locales (multi)</label><select multiple size="4" data-field="locales"></select></div>
+    `;
+}
+
+function buildPanel(id){
+    const panel = document.getElementById(id);
+    panel.querySelector('.mode').innerHTML = panelTemplate();
+    panel.querySelector('.grid').innerHTML = fieldsTemplate();
+    panel.dataset.mode = 'manual';
+    panel.querySelectorAll('.mode-btn').forEach(btn=>btn.onclick=()=>{ panel.dataset.mode = btn.dataset.mode; panel.querySelectorAll('.mode-btn').forEach(b=>b.style.opacity=(b===btn?1:0.7));});
+}
+
+function fillOptions(){
+    const estaciones = deriveStations(state.options.secciones || []);
+    ['panelA','panelB'].forEach((id)=>{
+        const p = document.getElementById(id);
+        const by=(f)=>p.querySelector(`[data-field="${f}"]`);
+        by('years').innerHTML = (state.options.anios||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+        by('secciones').innerHTML = (state.options.secciones||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+        by('estaciones').innerHTML = estaciones.map(v=>`<option value="${v}">${v}</option>`).join('');
+        by('departamentos').innerHTML = (state.options.departamentos||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+        by('locales').innerHTML = (state.options.locales||[]).map(v=>`<option value="${v}">${v}</option>`).join('');
+        if(by('years').options.length){ by('years').options[0].selected = true; }
+    });
+}
+
+function getPeriod(id){
+    const p = document.getElementById(id);
+    const by=(f)=>p.querySelector(`[data-field="${f}"]`);
+    const mode = p.dataset.mode || 'manual';
+    const years = getSelected(by('years'));
+    const months = getSelected(by('months'));
+    const payload = {
+        metric: by('metric').value,
+        scope: by('scope').value,
+        years,
+        months,
+        startMonth: by('startMonth').value,
+        endMonth: by('endMonth').value,
+        departamentos: getSelected(by('departamentos')),
+        locales: getSelected(by('locales')),
+        secciones: mode === 'manual' ? getSelected(by('secciones')) : [],
+        estaciones: mode === 'estacion' ? getSelected(by('estaciones')) : []
+    };
+    if (mode === 'all') { payload.secciones = []; payload.estaciones = []; }
+    return payload;
+}
+
+function renderKpis(data){
+    document.getElementById('kpis').innerHTML = `
+        <div class="kpi"><h4>Suma A</h4><strong>${fmt(data.periodoA.suma)}</strong></div>
+        <div class="kpi"><h4>Suma B</h4><strong>${fmt(data.periodoB.suma)}</strong></div>
+        <div class="kpi"><h4>Delta</h4><strong>${fmt(data.diferencias.absoluta)}</strong></div>
+        <div class="kpi"><h4>Delta %</h4><strong>${fmt(data.diferencias.porcentual)}%</strong></div>
+        <div class="kpi"><h4>Promedio A/B</h4><strong>${fmt(data.periodoA.promedio)} / ${fmt(data.periodoB.promedio)}</strong></div>
+        <div class="kpi"><h4>Min/Max A</h4><strong>${fmt(data.periodoA.min)} / ${fmt(data.periodoA.max)}</strong></div>
+        <div class="kpi"><h4>Min/Max B</h4><strong>${fmt(data.periodoB.min)} / ${fmt(data.periodoB.max)}</strong></div>
+    `;
+}
+
+function renderTable(detalle){
+    document.getElementById('detalleBody').innerHTML = (detalle||[]).map(r=>`<tr><td>${r.periodo}</td><td>${fmt(r.valorA)}</td><td>${fmt(r.valorB)}</td><td>${fmt(r.diferencia)}</td><td>${fmt(r.diferencia_pct)}%</td></tr>`).join('');
+}
+
+function getSeriesForMode(data){
+    const mode = document.getElementById('visualMode').value;
+    if (mode === 'superpuesto') return data.series_mensuales.superpuesto;
+    return data.series_mensuales.continuo;
+}
+
+function renderCharts(data){
+    const mode = document.getElementById('visualMode').value;
+    const series = getSeriesForMode(data);
+    const labels = series.labels;
+    const a = series.periodoA;
+    const b = series.periodoB;
+
+    Object.values(state.charts).forEach((c)=>c.destroy());
+    state.charts.bar = new Chart(document.getElementById('barChart'),{
+        type:'bar',
+        data:{labels,datasets:[{label:'Período A',data:a,backgroundColor:'#2563ebaa',stack: mode==='stacked'?'ab':undefined},{label:'Período B',data:b,backgroundColor:'#ea580caa',stack: mode==='stacked'?'ab':undefined}]},
+        options:{responsive:true,scales:{x:{stacked:mode==='stacked'},y:{stacked:mode==='stacked'}}}
+    });
+
+    state.charts.line = new Chart(document.getElementById('lineChart'),{
+        type:'line',
+        data:{labels,datasets:[{label:'Período A',data:a,borderColor:'#2563eb',backgroundColor:'#2563eb22',fill:false,tension:0.25},{label:'Período B',data:b,borderColor:'#ea580c',backgroundColor:'#ea580c22',fill:false,tension:0.25}]},
+        options:{responsive:true,interaction:{mode:'index',intersect:false}}
+    });
+}
+
+async function comparar(){
+    const resp = await fetch('/api/comparar-periodos', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({periodoA:getPeriod('panelA'),periodoB:getPeriod('panelB')})});
+    const data = await resp.json();
+    if(!resp.ok){ alert(data.error || 'Error de comparación'); return; }
+    state.result = data;
+    renderKpis(data); renderCharts(data); renderTable(data.detalle);
+}
+
+function exportCsv(){
+    if(!state.result?.detalle?.length){ alert('No hay detalle para exportar'); return; }
+    const csv = [['Periodo','A','B','Delta','DeltaPct'], ...state.result.detalle.map(r=>[r.periodo,r.valorA,r.valorB,r.diferencia,r.diferencia_pct])].map(r=>r.join(',')).join('\n');
+    const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'comparacion_dep_fep.csv'; a.click();
+}
+
+function selectByValue(select, values){
+    const set = new Set((values||[]).map(String));
+    Array.from(select.options).forEach(o=>o.selected=set.has(String(o.value)));
+}
+
+function applyPreset(type){
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth()+1;
+    const set=(id,field,vals)=>selectByValue(document.getElementById(id).querySelector(`[data-field="${field}"]`), vals);
+
+    if(type==='year_vs_prev'){
+        set('panelA','years',[y-1]); set('panelA','months',[]);
+        set('panelB','years',[y]); set('panelB','months',[]);
+        document.getElementById('panelA').querySelector('[data-field="scope"]').value='year';
+        document.getElementById('panelB').querySelector('[data-field="scope"]').value='year';
+    }
+    if(type==='same_month_years'){
+        set('panelA','years',[y-1]); set('panelA','months',[m]);
+        set('panelB','years',[y]); set('panelB','months',[m]);
+        document.getElementById('panelA').querySelector('[data-field="scope"]').value='month';
+        document.getElementById('panelB').querySelector('[data-field="scope"]').value='month';
+    }
+    if(type==='last12_vs_prev12'){
+        set('panelA','years',[y-1]); set('panelA','months',[1,2,3,4,5,6,7,8,9,10,11,12]);
+        set('panelB','years',[y]); set('panelB','months',Array.from({length:m},(_,i)=>i+1));
+        document.getElementById('panelA').querySelector('[data-field="scope"]').value='month';
+        document.getElementById('panelB').querySelector('[data-field="scope"]').value='month';
+    }
+}
+
+(async function init(){
+    buildPanel('panelA'); buildPanel('panelB');
+    const r = await fetch('/api/comparacion-opciones');
+    state.options = await r.json();
+    fillOptions();
+    document.querySelectorAll('.preset-btn').forEach((b)=>b.onclick=()=>applyPreset(b.dataset.preset));
+    document.getElementById('compararBtn').onclick = comparar;
+    document.getElementById('exportCsv').onclick = exportCsv;
+    document.getElementById('visualMode').onchange = ()=> state.result && renderCharts(state.result);
+    applyPreset('year_vs_prev');
+})();
+</script>
+</body>
+</html>

@@ -16,6 +16,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 console.log("🚀 Inicializando servidor ANDE Dashboard...");
 
 const dbPath = path.resolve(__dirname, "ANDE.db");
+const adminMigrationToken = process.env.ADMIN_MIGRATION_TOKEN || "";
 
 const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE, (err) => {
     if (err) {
@@ -33,11 +34,107 @@ function verificarTablas() {
             console.error(err);
         } else if (row) {
             console.log("✅ Tabla 'mediciones_completas' encontrada y lista.");
+            validarEsquemaMediciones().catch((schemaErr) => {
+                console.error("❌ No se pudo validar el esquema de 'mediciones_completas':", schemaErr.message);
+            });
         } else {
             console.warn("⚠️ ALERTA: No se encontró la tabla 'mediciones_completas'.");
             console.warn("   Es posible que el archivo ANDE.db esté vacío o tenga otro nombre de tabla.");
         }
     });
+}
+
+const COLUMNAS_ESPERADAS_MEDICIONES = [
+    "id",
+    "seccion",
+    "anio",
+    "mes",
+    "departamento",
+    "local",
+    "tipo_medicion",
+    "valor",
+    "carga_id"
+];
+
+async function obtenerColumnasTabla(nombreTabla) {
+    const estructura = await ejecutarConsulta(`PRAGMA table_info(${nombreTabla})`);
+    return estructura.map((c) => c.name);
+}
+
+async function validarEsquemaMediciones() {
+    const columnasActuales = await obtenerColumnasTabla("mediciones_completas");
+    const faltantes = COLUMNAS_ESPERADAS_MEDICIONES.filter((col) => !columnasActuales.includes(col));
+    const extras = columnasActuales.filter((col) => !COLUMNAS_ESPERADAS_MEDICIONES.includes(col));
+
+    if (faltantes.length || extras.length) {
+        console.error("❌ Desalineación detectada en esquema de 'mediciones_completas'.");
+        if (faltantes.length) {
+            console.error("   - Columnas faltantes:", faltantes.join(", "));
+        }
+        if (extras.length) {
+            console.error("   - Columnas no esperadas:", extras.join(", "));
+        }
+        console.error("   - Columnas esperadas:", COLUMNAS_ESPERADAS_MEDICIONES.join(", "));
+        console.error("   - Columnas actuales:", columnasActuales.join(", "));
+    } else {
+        console.log("✅ Esquema de 'mediciones_completas' validado correctamente.");
+    }
+}
+
+async function ejecutarMigracionMedicionesV2() {
+    const tablas = await ejecutarConsulta("SELECT name FROM sqlite_master WHERE type='table' AND name='mediciones_completas'");
+    if (tablas.length === 0) {
+        throw new Error("No existe la tabla 'mediciones_completas' para migrar");
+    }
+
+    const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
+    const tablaBackup = `mediciones_completas_backup_${timestamp}`;
+
+    const columnasActuales = await obtenerColumnasTabla("mediciones_completas");
+    const expresionLocal = columnasActuales.includes("local") ? "TRIM(local)" : "NULL";
+
+    await ejecutarComando("BEGIN TRANSACTION");
+    try {
+        await ejecutarComando("DROP TABLE IF EXISTS mediciones_completas_v2");
+        await ejecutarComando(`
+            CREATE TABLE mediciones_completas_v2 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                seccion TEXT,
+                anio INTEGER,
+                mes INTEGER,
+                departamento TEXT,
+                local TEXT,
+                tipo_medicion TEXT,
+                valor REAL,
+                carga_id INTEGER,
+                UNIQUE(seccion, anio, mes, tipo_medicion)
+            )
+        `);
+
+        await ejecutarComando(`
+            INSERT INTO mediciones_completas_v2 (id, seccion, anio, mes, departamento, local, tipo_medicion, valor, carga_id)
+            SELECT
+                id,
+                TRIM(seccion),
+                anio,
+                mes,
+                departamento,
+                ${expresionLocal},
+                TRIM(tipo_medicion),
+                valor,
+                carga_id
+            FROM mediciones_completas
+        `);
+
+        await ejecutarComando(`ALTER TABLE mediciones_completas RENAME TO ${tablaBackup}`);
+        await ejecutarComando("ALTER TABLE mediciones_completas_v2 RENAME TO mediciones_completas");
+        await ejecutarComando("COMMIT");
+
+        return { tabla_backup: tablaBackup };
+    } catch (error) {
+        await ejecutarComando("ROLLBACK");
+        throw error;
+    }
 }
 
 function ejecutarConsulta(sql, params = []) {
@@ -64,6 +161,225 @@ function ejecutarComando(sql, params = []) {
             }
         });
     });
+}
+
+function normalizarHeader(valor) {
+    if (valor === undefined || valor === null) return "";
+    return String(valor)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase();
+}
+
+function normalizarTexto(valor) {
+    if (valor === undefined || valor === null) return "";
+    return String(valor).trim();
+}
+
+function convertirMesANumero(valor) {
+    if (valor === undefined || valor === null) return null;
+
+    if (typeof valor === "number" && Number.isFinite(valor)) {
+        const entero = Math.trunc(valor);
+        if (entero >= 1 && entero <= 12) return entero;
+        if (entero >= 190001 && entero <= 299912) {
+            const m = entero % 100;
+            return m >= 1 && m <= 12 ? m : null;
+        }
+        return null;
+    }
+
+    const raw = String(valor).trim();
+    if (!raw) return null;
+
+    const directo = parseInt(raw, 10);
+    if (!Number.isNaN(directo)) {
+        if (directo >= 1 && directo <= 12) return directo;
+        if (directo >= 190001 && directo <= 299912) {
+            const m = directo % 100;
+            return m >= 1 && m <= 12 ? m : null;
+        }
+    }
+
+    const normalizado = normalizarHeader(raw);
+    const meses = {
+        enero: 1,
+        febrero: 2,
+        marzo: 3,
+        abril: 4,
+        mayo: 5,
+        junio: 6,
+        julio: 7,
+        agosto: 8,
+        septiembre: 9,
+        setiembre: 9,
+        octubre: 10,
+        noviembre: 11,
+        diciembre: 12,
+        jan: 1,
+        feb: 2,
+        mar: 3,
+        apr: 4,
+        may: 5,
+        jun: 6,
+        jul: 7,
+        aug: 8,
+        sep: 9,
+        oct: 10,
+        nov: 11,
+        dec: 12
+    };
+
+    return meses[normalizado] || null;
+}
+
+function mapearHeadersFila(row) {
+    const alias = {
+        seccion: "seccion",
+        alimentador: "seccion",
+        anio: "anio",
+        ano: "anio",
+        mes: "mes",
+        tipo_medicion: "tipo_medicion",
+        tipo: "tipo_medicion",
+        valor: "valor",
+        departamento: "departamento",
+        local: "local",
+        axumes: "axumes",
+        periodo: "periodo"
+    };
+
+    const filaMapeada = {};
+    const columnasOriginales = {};
+
+    Object.keys(row).forEach((key) => {
+        const normalizado = normalizarHeader(key);
+        const destino = alias[normalizado] || normalizado;
+        filaMapeada[destino] = row[key];
+        columnasOriginales[destino] = key;
+    });
+
+    return { filaMapeada, columnasOriginales };
+}
+
+function detectarHojaValida(workbook) {
+    const hojas = workbook.SheetNames || [];
+
+    for (const nombreHoja of hojas) {
+        const hoja = workbook.Sheets[nombreHoja];
+        const rows = XLSX.utils.sheet_to_json(hoja, { defval: null });
+        if (!rows.length) continue;
+
+        const headersOriginales = Object.keys(rows[0] || {});
+        const headersNormalizados = headersOriginales.map(normalizarHeader);
+        const headersSet = new Set(headersNormalizados);
+
+        const tieneBase = headersSet.has("mes") && (headersSet.has("seccion") || headersSet.has("alimentador")) && (headersSet.has("anio") || headersSet.has("ano"));
+        const formatoLargo = headersSet.has("tipo_medicion") && headersSet.has("valor");
+        const formatoPivote = headersOriginales.some((h) => !["seccion", "seccion", "alimentador", "anio", "ano", "mes", "departamento"].includes(normalizarHeader(h)));
+
+        if (tieneBase && (formatoLargo || formatoPivote)) {
+            return { nombreHoja, rows, headersOriginales };
+        }
+    }
+
+    return null;
+}
+
+function transformarFilas(rows) {
+    const registros = [];
+    const rechazos = {
+        header_faltante: 0,
+        seccion_faltante: 0,
+        anio_invalido: 0,
+        mes_invalido: 0,
+        tipo_medicion_faltante: 0,
+        valor_invalido: 0,
+        error_fila: 0
+    };
+    const detalles = [];
+
+    rows.forEach((row, index) => {
+        const filaNumero = index + 2;
+        try {
+            const { filaMapeada } = mapearHeadersFila(row);
+
+            const seccion = normalizarTexto(filaMapeada.seccion);
+            const anio = parseInt(filaMapeada.anio, 10);
+            const mes =
+                convertirMesANumero(filaMapeada.mes) ||
+                convertirMesANumero(filaMapeada.axumes) ||
+                convertirMesANumero(filaMapeada.periodo);
+            const departamento = filaMapeada.departamento ? normalizarTexto(filaMapeada.departamento) : null;
+            const local = filaMapeada.local ? normalizarTexto(filaMapeada.local) : null;
+
+            if (!seccion) {
+                rechazos.seccion_faltante++;
+                detalles.push(`Fila ${filaNumero}: Falta 'seccion'`);
+                return;
+            }
+            if (Number.isNaN(anio)) {
+                rechazos.anio_invalido++;
+                detalles.push(`Fila ${filaNumero}: 'anio' inválido: ${filaMapeada.anio}`);
+                return;
+            }
+            if (!mes || mes < 1 || mes > 12) {
+                rechazos.mes_invalido++;
+                detalles.push(`Fila ${filaNumero}: 'mes' inválido: ${filaMapeada.mes ?? filaMapeada.axumes ?? filaMapeada.periodo}`);
+                return;
+            }
+
+            const tipoDirecto = filaMapeada.tipo_medicion !== undefined && filaMapeada.valor !== undefined;
+
+            if (tipoDirecto) {
+                const tipoMedicion = normalizarTexto(filaMapeada.tipo_medicion);
+                const valor = parseFloat(filaMapeada.valor);
+
+                if (!tipoMedicion) {
+                    rechazos.tipo_medicion_faltante++;
+                    detalles.push(`Fila ${filaNumero}: Falta 'tipo_medicion'`);
+                    return;
+                }
+                if (Number.isNaN(valor)) {
+                    rechazos.valor_invalido++;
+                    detalles.push(`Fila ${filaNumero}: 'valor' inválido: ${filaMapeada.valor}`);
+                    return;
+                }
+
+                registros.push({ seccion, anio, mes, departamento, local, tipo_medicion: tipoMedicion, valor });
+                return;
+            }
+
+            // Formato pivote: cada columna de medición se transforma a formato largo
+            Object.keys(filaMapeada).forEach((key) => {
+                if (["seccion", "anio", "mes", "departamento"].includes(key)) return;
+                const rawValor = filaMapeada[key];
+                if (rawValor === undefined || rawValor === null || String(rawValor).trim() === "") return;
+
+                const valor = parseFloat(rawValor);
+                if (Number.isNaN(valor)) {
+                    rechazos.valor_invalido++;
+                    detalles.push(`Fila ${filaNumero}: valor inválido en '${key}': ${rawValor}`);
+                    return;
+                }
+
+                const tipoMedicion = normalizarTexto(key).toUpperCase();
+                if (!tipoMedicion) {
+                    rechazos.tipo_medicion_faltante++;
+                    detalles.push(`Fila ${filaNumero}: tipo de medición vacío en pivote`);
+                    return;
+                }
+
+                registros.push({ seccion, anio, mes, departamento, local, tipo_medicion: tipoMedicion, valor });
+            });
+        } catch (e) {
+            rechazos.error_fila++;
+            detalles.push(`Fila ${filaNumero}: Error - ${e.message}`);
+        }
+    });
+
+    return { registros, rechazos, detalles };
 }
 
 // ========================
@@ -307,26 +623,242 @@ app.get("/api/anios", async (req, res) => {
     }
 });
 
+function construirFiltroMetrica(metrica) {
+    const valor = String(metrica || "").toLowerCase();
+    switch (valor) {
+        case "dep_total":
+            return { sql: "UPPER(tipo_medicion) LIKE '%DEP%' AND UPPER(tipo_medicion) LIKE '%TOTAL%'" };
+        case "dep_componentes":
+            return { sql: "UPPER(tipo_medicion) LIKE '%DEP%' AND UPPER(tipo_medicion) NOT LIKE '%TOTAL%'" };
+        case "dep_todos":
+            return { sql: "UPPER(tipo_medicion) LIKE '%DEP%'" };
+        case "fep_total":
+            return { sql: "UPPER(tipo_medicion) LIKE '%FEP%' AND UPPER(tipo_medicion) LIKE '%TOTAL%'" };
+        case "fep_componentes":
+            return { sql: "UPPER(tipo_medicion) LIKE '%FEP%' AND UPPER(tipo_medicion) NOT LIKE '%TOTAL%'" };
+        case "fep_todos":
+            return { sql: "UPPER(tipo_medicion) LIKE '%FEP%'" };
+        default:
+            return null;
+    }
+}
+
+function parseLista(valor) {
+    if (Array.isArray(valor)) return valor.map((v) => String(v || '').trim()).filter(Boolean);
+    if (valor === undefined || valor === null) return [];
+    return String(valor).split(',').map((v) => v.trim()).filter(Boolean);
+}
+
+function generarMesesDesdeScope(scope, month, startMonth, endMonth, months) {
+    const meses = parseLista(months).map((m) => parseInt(m, 10)).filter((m) => m >= 1 && m <= 12);
+    if (scope === 'month') {
+        if (meses.length) return [...new Set(meses)];
+        const m = parseInt(month, 10);
+        return (m >= 1 && m <= 12) ? [m] : [];
+    }
+
+    if (scope === 'range') {
+        const inicio = parseInt(startMonth, 10);
+        const fin = parseInt(endMonth, 10);
+        if (Number.isInteger(inicio) && Number.isInteger(fin)) {
+            const desde = Math.min(inicio, fin);
+            const hasta = Math.max(inicio, fin);
+            const rango = [];
+            for (let m = desde; m <= hasta; m++) if (m >= 1 && m <= 12) rango.push(m);
+            return rango;
+        }
+    }
+
+    return Array.from({ length: 12 }, (_, i) => i + 1);
+}
+
+function resumirPeriodo(rows) {
+    const valores = rows.map((r) => parseFloat(r.valor)).filter((v) => Number.isFinite(v));
+    if (!valores.length) return { suma: 0, promedio: 0, min: 0, max: 0, cantidad: 0 };
+
+    const suma = valores.reduce((acc, v) => acc + v, 0);
+    return {
+        suma,
+        promedio: suma / valores.length,
+        min: Math.min(...valores),
+        max: Math.max(...valores),
+        cantidad: valores.length
+    };
+}
+
+async function obtenerDatosPeriodo(periodo) {
+    const where = ['valor IS NOT NULL'];
+    const params = [];
+
+    const years = parseLista(periodo.years).map((y) => parseInt(y, 10)).filter(Number.isInteger);
+    const singleYear = parseInt(periodo.year, 10);
+    const anios = years.length ? years : (Number.isInteger(singleYear) ? [singleYear] : []);
+    if (!anios.length) throw new Error('Debe seleccionar al menos un año en cada período');
+
+    const meses = generarMesesDesdeScope(periodo.scope, periodo.month, periodo.startMonth, periodo.endMonth, periodo.months);
+    if (!meses.length) throw new Error('Debe seleccionar al menos un mes válido');
+
+    where.push(`anio IN (${anios.map(() => '?').join(',')})`);
+    params.push(...anios);
+    where.push(`mes IN (${meses.map(() => '?').join(',')})`);
+    params.push(...meses);
+
+    const metrica = construirFiltroMetrica(periodo.metric);
+    if (metrica) where.push(metrica.sql);
+
+    const tipos = parseLista(periodo.metricTypes);
+    if (tipos.length) {
+        where.push(`tipo_medicion IN (${tipos.map(() => '?').join(',')})`);
+        params.push(...tipos);
+    }
+
+    const secciones = parseLista(periodo.secciones || periodo.seccion);
+    const estaciones = parseLista(periodo.estaciones || periodo.estacion);
+    const filtrosSeccion = [];
+    if (secciones.length) {
+        filtrosSeccion.push(`seccion IN (${secciones.map(() => '?').join(',')})`);
+        params.push(...secciones);
+    }
+    if (estaciones.length) {
+        filtrosSeccion.push(`(${estaciones.map(() => 'seccion LIKE ?').join(' OR ')})`);
+        params.push(...estaciones.map((est) => `${est}%`));
+    }
+    if (filtrosSeccion.length) where.push(`(${filtrosSeccion.join(' OR ')})`);
+
+    const departamentos = parseLista(periodo.departamentos || periodo.departamento);
+    if (departamentos.length) {
+        where.push(`departamento IN (${departamentos.map(() => '?').join(',')})`);
+        params.push(...departamentos);
+    }
+
+    const locales = parseLista(periodo.locales || periodo.local);
+    if (locales.length) {
+        where.push(`local IN (${locales.map(() => '?').join(',')})`);
+        params.push(...locales);
+    }
+
+    const sql = `
+        SELECT anio, mes, tipo_medicion, seccion, departamento, local, valor
+        FROM mediciones_completas
+        WHERE ${where.join(' AND ')}
+        ORDER BY anio ASC, mes ASC
+    `;
+
+    const rows = await ejecutarConsulta(sql, params);
+    return { rows, anios, meses };
+}
+
+function agregarSeries(rows) {
+    const continuo = new Map();
+    const porMes = new Map();
+
+    rows.forEach((row) => {
+        const valor = parseFloat(row.valor) || 0;
+        const key = `${row.anio}-${String(row.mes).padStart(2, '0')}`;
+        continuo.set(key, (continuo.get(key) || 0) + valor);
+        porMes.set(row.mes, (porMes.get(row.mes) || 0) + valor);
+    });
+
+    const labelsContinuo = Array.from(continuo.keys()).sort();
+    return {
+        continuo: {
+            labels: labelsContinuo,
+            valores: labelsContinuo.map((k) => continuo.get(k) || 0)
+        },
+        superpuesto: {
+            labels: Array.from({ length: 12 }, (_, i) => `M${String(i + 1).padStart(2, '0')}`),
+            valores: Array.from({ length: 12 }, (_, i) => porMes.get(i + 1) || 0)
+        }
+    };
+}
+
+app.get('/api/comparacion-opciones', async (req, res) => {
+    try {
+        const [secciones, departamentos, locales, tipos, anios] = await Promise.all([
+            ejecutarConsulta("SELECT DISTINCT seccion FROM mediciones_completas WHERE seccion IS NOT NULL AND TRIM(seccion) != '' ORDER BY seccion"),
+            ejecutarConsulta("SELECT DISTINCT departamento FROM mediciones_completas WHERE departamento IS NOT NULL AND TRIM(departamento) != '' ORDER BY departamento"),
+            ejecutarConsulta("SELECT DISTINCT local FROM mediciones_completas WHERE local IS NOT NULL AND TRIM(local) != '' ORDER BY local"),
+            ejecutarConsulta("SELECT DISTINCT tipo_medicion FROM mediciones_completas WHERE tipo_medicion IS NOT NULL AND TRIM(tipo_medicion) != '' ORDER BY tipo_medicion"),
+            ejecutarConsulta('SELECT DISTINCT anio FROM mediciones_completas WHERE anio IS NOT NULL ORDER BY anio DESC')
+        ]);
+
+        res.json({
+            secciones: secciones.map((r) => r.seccion),
+            departamentos: departamentos.map((r) => r.departamento),
+            locales: locales.map((r) => r.local),
+            tipos_medicion: tipos.map((r) => r.tipo_medicion),
+            anios: anios.map((r) => r.anio)
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/comparar-periodos', async (req, res) => {
+    try {
+        const { periodoA, periodoB } = req.body || {};
+        if (!periodoA || !periodoB) return res.status(400).json({ error: 'Debe enviar periodoA y periodoB' });
+
+        const [datosA, datosB] = await Promise.all([obtenerDatosPeriodo(periodoA), obtenerDatosPeriodo(periodoB)]);
+        const resumenA = resumirPeriodo(datosA.rows);
+        const resumenB = resumirPeriodo(datosB.rows);
+
+        const serieA = agregarSeries(datosA.rows);
+        const serieB = agregarSeries(datosB.rows);
+
+        const labelsContinuos = Array.from(new Set([...serieA.continuo.labels, ...serieB.continuo.labels])).sort();
+        const mapA = new Map(serieA.continuo.labels.map((l, i) => [l, serieA.continuo.valores[i]]));
+        const mapB = new Map(serieB.continuo.labels.map((l, i) => [l, serieB.continuo.valores[i]]));
+
+        const detalle = labelsContinuos.map((label) => {
+            const a = mapA.get(label) || 0;
+            const b = mapB.get(label) || 0;
+            const diff = b - a;
+            return {
+                periodo: label,
+                valorA: a,
+                valorB: b,
+                diferencia: diff,
+                diferencia_pct: a !== 0 ? (diff / a) * 100 : null
+            };
+        });
+
+        const deltaSuma = resumenB.suma - resumenA.suma;
+        const deltaPct = resumenA.suma !== 0 ? (deltaSuma / resumenA.suma) * 100 : null;
+
+        res.json({
+            periodoA: resumenA,
+            periodoB: resumenB,
+            diferencias: { absoluta: deltaSuma, porcentual: deltaPct },
+            series_mensuales: {
+                continuo: {
+                    labels: labelsContinuos,
+                    periodoA: labelsContinuos.map((l) => mapA.get(l) || 0),
+                    periodoB: labelsContinuos.map((l) => mapB.get(l) || 0)
+                },
+                superpuesto: {
+                    labels: serieA.superpuesto.labels,
+                    periodoA: serieA.superpuesto.valores,
+                    periodoB: serieB.superpuesto.valores
+                }
+            },
+            detalle
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ==================== CORREGIDO: Endpoint de datos con manejo de errores ====================
 app.get("/api/datos", async (req, res) => {
     console.log("📥 Petición a /api/datos recibida con parámetros:", req.query);
     
     let { seccion, anio, mes, tipo_medicion, estacion, periodo } = req.query;
-    
-    // VALORES POR DEFECTO SEGUROS
-    if (!seccion || seccion === '') {
-        seccion = 'ACY1'; // Si no se envía, usar ACY1
-    }
-    // Si seccion es 'all', lo dejamos como 'all' para que no se filtre
-    // No reasignamos 'all' a 'ACY1'
-    
-    if (!anio || anio === '' || anio === 'all') {
-        anio = '2024'; // Año por defecto seguro
-    }
-    
-    if (!tipo_medicion || tipo_medicion === '' || tipo_medicion === 'all') {
-        tipo_medicion = 'ACCID.DEP'; // Tipo por defecto seguro
-    }
+
+    // Si no se reciben filtros explícitos, tratar como "sin filtro"
+    if (!seccion || seccion === '') seccion = 'all';
+    if (!anio || anio === '') anio = 'all';
+    if (!tipo_medicion || tipo_medicion === '') tipo_medicion = 'all';
     
     // Log de parámetros ajustados
     console.log("📊 Parámetros ajustados:", { seccion, anio, mes, tipo_medicion, estacion, periodo });
@@ -467,32 +999,7 @@ app.get("/api/datos", async (req, res) => {
         
         if (rows.length === 0) {
             console.log("⚠️ No se encontraron registros con los filtros proporcionados");
-            console.log("   Intentando con valores más amplios...");
-            
-            // Intentar con valores más amplios
-            const fallbackSql = `SELECT seccion, anio, mes, departamento, tipo_medicion, valor 
-                                FROM mediciones_completas 
-                                WHERE seccion LIKE ? 
-                                ORDER BY anio DESC, mes ASC, seccion ASC 
-                                LIMIT 50`;
-            const fallbackParams = [seccion + '%'];
-            
-            const fallbackRows = await ejecutarConsulta(fallbackSql, fallbackParams);
-            console.log(`🔄 Registros con búsqueda ampliada: ${fallbackRows.length}`);
-            
-            const datos = fallbackRows.map(row => ({
-                transformador: row.seccion,
-                frecuencia: parseFloat(row.valor) || 0,
-                fecha: `${row.anio}-${String(row.mes).padStart(2, "0")}-01`,
-                tipo: row.tipo_medicion,
-                departamento: row.departamento || 'N/A',
-                year: row.anio,
-                month: row.mes,
-                combinationKey: `${row.seccion}-${row.anio}-${row.tipo_medicion}`,
-                combinationLabel: `${row.seccion} (${row.anio})`
-            }));
-            
-            return res.json(datos);
+            return res.json([]);
         }
         
         const datos = rows.map(row => ({
@@ -564,6 +1071,7 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
                 anio INTEGER,
                 mes INTEGER,
                 departamento TEXT,
+                local TEXT,
                 tipo_medicion TEXT,
                 valor REAL,
                 carga_id INTEGER,
@@ -572,10 +1080,19 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
         `);
 
         const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet);
+        const hojaValida = detectarHojaValida(workbook);
 
-        console.log(`📄 Archivo '${req.file.originalname}' cargado: ${rows.length} filas`);
+        if (!hojaValida) {
+            return res.status(400).json({
+                error: "No se encontró una hoja válida con headers requeridos",
+                resumen_rechazos: { header_faltante: 1 },
+                total_procesado: 0
+            });
+        }
+
+        const rows = hojaValida.rows;
+
+        console.log(`📄 Archivo '${req.file.originalname}' cargado desde hoja '${hojaValida.nombreHoja}': ${rows.length} filas`);
 
         // Insertar registro de carga
         const carga = await ejecutarComando(
@@ -585,58 +1102,29 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
 
         let insertadas = 0;
         let errores = 0;
-        const erroresDetalle = [];
 
         // Preparar statement para inserción
         const stmt = db.prepare(`
             INSERT OR REPLACE INTO mediciones_completas 
-            (seccion, anio, mes, departamento, tipo_medicion, valor, carga_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (seccion, anio, mes, departamento, local, tipo_medicion, valor, carga_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        // Procesar filas
+        const { registros, rechazos, detalles } = transformarFilas(rows);
+        errores = Object.values(rechazos).reduce((acc, n) => acc + n, 0);
+
+        // Procesar filas válidas
         db.serialize(() => {
             db.run("BEGIN TRANSACTION");
             
-            rows.forEach((row, index) => {
+            registros.forEach((row) => {
                 try {
-                    // Validar datos mínimos
-                    if (!row.seccion || row.seccion === '') {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: Falta 'seccion'`);
-                        return;
-                    }
-                    
-                    if (!row.anio || isNaN(row.anio)) {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: 'anio' inválido: ${row.anio}`);
-                        return;
-                    }
-                    
-                    if (!row.mes || isNaN(row.mes) || row.mes < 1 || row.mes > 12) {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: 'mes' inválido: ${row.mes}`);
-                        return;
-                    }
-                    
-                    if (!row.tipo_medicion || row.tipo_medicion === '') {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: Falta 'tipo_medicion'`);
-                        return;
-                    }
-                    
-                    if (row.valor === undefined || row.valor === null || isNaN(row.valor)) {
-                        errores++;
-                        erroresDetalle.push(`Fila ${index + 2}: 'valor' inválido: ${row.valor}`);
-                        return;
-                    }
-                    
-                    // Insertar datos
                     stmt.run(
                         String(row.seccion).trim(),
                         parseInt(row.anio),
                         parseInt(row.mes),
                         row.departamento ? String(row.departamento).trim() : null,
+                        row.local ? String(row.local).trim() : null,
                         String(row.tipo_medicion).trim(),
                         parseFloat(row.valor),
                         carga.id
@@ -645,7 +1133,8 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
                     
                 } catch (e) {
                     errores++;
-                    erroresDetalle.push(`Fila ${index + 2}: Error - ${e.message}`);
+                    rechazos.error_fila++;
+                    detalles.push(`Error al insertar registro: ${e.message}`);
                 }
             });
             
@@ -667,8 +1156,12 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
             carga_id: carga.id, 
             insertadas: insertadas,
             errores: errores,
+            hoja_usada: hojaValida.nombreHoja,
+            total_procesado: rows.length,
+            total_registros_largos: registros.length,
+            resumen_rechazos: rechazos,
             total_filas: rows.length,
-            detalles_errores: erroresDetalle.slice(0, 10) // Mostrar solo primeros 10 errores
+            detalles_errores: detalles.slice(0, 20) // Mostrar primeros 20 errores
         });
 
     } catch (error) {
@@ -676,6 +1169,31 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
         res.status(500).json({ 
             error: "Error procesando el archivo Excel",
             detalles: error.message 
+        });
+    }
+});
+
+// ==================== ADMIN: Migración controlada a esquema v2 ====================
+app.post("/api/admin/migrar-mediciones-v2", async (req, res) => {
+    const tokenHeader = req.headers["x-admin-token"];
+
+    if (!adminMigrationToken || tokenHeader !== adminMigrationToken) {
+        return res.status(403).json({ error: "No autorizado para ejecutar migraciones" });
+    }
+
+    try {
+        const resultado = await ejecutarMigracionMedicionesV2();
+        await validarEsquemaMediciones();
+        res.json({
+            success: true,
+            mensaje: "Migración completada",
+            tabla_backup: resultado.tabla_backup
+        });
+    } catch (error) {
+        console.error("❌ Error en migración v2:", error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
         });
     }
 });
