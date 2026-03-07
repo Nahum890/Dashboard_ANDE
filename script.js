@@ -2254,7 +2254,7 @@ class ANDEDashboard {
     
     updateRankingChart() {
         console.log("📊 Actualizando ranking HD...");
-        if (!this.rankingChart) {
+        if (!this.rankingChart?.data) {
             console.warn("rankingChart no inicializado");
             return;
         }
@@ -2272,7 +2272,9 @@ class ANDEDashboard {
             this.latestRankingData = [];
             this.rankingItems = [];
             this.rankingChart.data.labels = [];
-            this.rankingChart.data.datasets[0].data = [];
+            rankingDataset.data = [];
+            rankingDataset.backgroundColor = [];
+            rankingDataset.borderColor = [];
             this.rankingChart.update('none');
             if (showList) this.renderRankingList([]);
             return;
@@ -2310,7 +2312,9 @@ class ANDEDashboard {
             if (sortBy === 'trend') return b.last - a.last;
             return b.avg - a.avg;
         });
-        
+
+        const top = viewMode === 'all' ? ranking : ranking.slice(0, 10);
+        this.latestRankingData = ranking;
         this.rankingItems = ranking;
         const displayedRanking = viewMode === 'all' ? ranking : ranking.slice(0, 10);
         this.latestRankingData = displayedRanking;
