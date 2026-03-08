@@ -96,6 +96,24 @@ class ANDEDashboard {
         }
         return false;
     }
+
+
+    resolveSeccionParam(selectedFeed = []) {
+        const normalized = Array.isArray(selectedFeed)
+            ? selectedFeed.map(v => String(v || '').trim()).filter(Boolean)
+            : [];
+
+        const unique = Array.from(new Set(normalized));
+        const totalFeeders = Array.isArray(this.allSecciones) ? this.allSecciones.length : 0;
+        const allSelected = totalFeeders > 0 && unique.length >= totalFeeders;
+
+        if (!unique.length || allSelected) return 'all';
+
+        const joined = unique.join(',');
+        // Evitar URLs enormes que provocan fallos de red en navegador/proxy
+        if (joined.length > 1200) return 'all';
+        return joined;
+    }
     
     showNotification(message, type = "info") {
         const notification = document.getElementById('notification');
@@ -1624,40 +1642,71 @@ class ANDEDashboard {
         console.log("📥 Iniciando carga de datos...");
         this.showLoading(true, "Cargando datos desde el servidor...", null);
         try {
+            // Compatibilidad defensiva: mantenemos params para evitar ReferenceError en rutas legacy/caché
             const params = new URLSearchParams();
-            
+
             const selectedFeed = this.getSelectedValues('filterTransformador');
-            let seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'ACY1';
-            params.append('seccion', seccionVal);
-            console.log("🔌 Alimentadores:", selectedFeed);
-            
+            const seccionVal = this.resolveSeccionParam(selectedFeed);
+            console.log("🔌 Alimentadores:", selectedFeed, "=> seccion:", seccionVal);
+
             const yearSel = document.getElementById('filterYear');
             const years = this.getSelectedValues('filterYear');
             const anioVal = years.length ? years.join(',') : (yearSel?.value || '2024');
-            params.append('anio', anioVal);
             console.log("📅 Años:", years);
-            
+
+            let mesVal = 'all';
+            let periodoVal = null;
             if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
-                params.append('mes', Array.from(this.selectedMonths).join(','));
+                mesVal = Array.from(this.selectedMonths).join(',');
                 console.log("📆 Meses seleccionados:", Array.from(this.selectedMonths));
             } else if (this.filters.periodo && this.filters.periodo !== 'select_months') {
-                params.append('periodo', this.filters.periodo);
+                periodoVal = this.filters.periodo;
                 console.log("📆 Período:", this.filters.periodo);
             } else {
-                params.append('mes', 'all');
                 console.log("📆 Meses: todos");
             }
-            
+
             const tipoSel = document.getElementById('filterTipoMedicion');
             const tipos = this.getSelectedValues('filterTipoMedicion');
             const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'TOTAL FEP');
-            params.append('tipo_medicion', tipoVal);
             console.log("📊 Tipos:", tipos);
-            
-            const url = `${this.apiBaseUrl}/api/datos?${params}`;
-            console.log("🌐 URL:", url);
-            
-            const res = await fetch(url);
+
+            const payload = {
+                seccion: seccionVal,
+                anio: anioVal,
+                tipo_medicion: tipoVal,
+                mes: mesVal,
+                periodo: periodoVal
+            };
+
+            params.set('seccion', payload.seccion || 'all');
+            params.set('anio', payload.anio || '2024');
+            params.set('tipo_medicion', payload.tipo_medicion || 'TOTAL FEP');
+            params.set('mes', payload.mes || 'all');
+            if (payload.periodo) params.set('periodo', payload.periodo);
+            console.log("🌐 POST /api/datos payload:", payload);
+
+            let res;
+            try {
+                res = await fetch(`${this.apiBaseUrl}/api/datos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (fetchErr) {
+                const isNetworkSuspended = String(fetchErr?.message || '').includes('Failed to fetch');
+                if (isNetworkSuspended && seccionVal !== 'all') {
+                    console.warn('⚠️ Reintentando carga con seccion=all por posible saturación de red');
+                    payload.seccion = 'all';
+                    res = await fetch(`${this.apiBaseUrl}/api/datos`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    throw fetchErr;
+                }
+            }
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             console.log(`✅ Datos recibidos: ${data.length} registros`);
@@ -1678,6 +1727,7 @@ class ANDEDashboard {
                 console.log("📈 Actualizando UI con nuevos datos (con animaciones HD)...");
                 this.updateStats();
                 this.updateKPIs();
+                await this.refreshFepDepTotals();
                 this.updateSpecialKPIs();
                 
                 // Actualizar gráficos con animaciones
@@ -1882,48 +1932,183 @@ class ANDEDashboard {
         });
     }
     
-    updateKPIs() {
-        if (!this.data.length) return;
-        const values = this.data.map(d => d.frecuencia).filter(v => !isNaN(v));
-        if (!values.length) return;
-        const min = Math.min(...values), max = Math.max(...values);
-        const range = max - min;
-        const rangeVal = document.getElementById('rangeValue');
-        if (rangeVal) rangeVal.textContent = range.toFixed(4);
-        const rangeInfo = document.getElementById('rangeInfo');
-        if (rangeInfo) rangeInfo.textContent = `${this.safeToFixed(min)}-${this.safeToFixed(max)}`;
-        
-        if (values.length > 1) {
-            const mean = values.reduce((a,b)=>a+b,0)/values.length;
-            const variance = values.reduce((a,b)=>a+Math.pow(b-mean,2),0)/values.length;
-            const cv = (Math.sqrt(variance)/mean)*100;
-            const varVal = document.getElementById('variabilityValue');
-            if (varVal) varVal.textContent = cv.toFixed(2)+'%';
-            const varBadge = document.getElementById('variabilityBadge');
-            if (varBadge) {
-                varBadge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
-                varBadge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
-            }
+    parseNumericValue(value) {
+        if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+        if (typeof value === 'bigint') {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : NaN;
         }
-        
-        const series = {};
-        this.data.forEach(d => {
-            if (!series[d.combinationKey]) series[d.combinationKey] = { label: d.combinationLabel, vals: [] };
-            series[d.combinationKey].vals.push(d.frecuencia);
-        });
-        let worstKey = null, worstAvg = -Infinity;
-        Object.entries(series).forEach(([k, v]) => {
-            const avg = v.vals.reduce((a,b)=>a+b,0)/v.vals.length;
-            if (avg > worstAvg) { worstAvg = avg; worstKey = k; }
-        });
-        if (worstKey) {
-            const ws = document.getElementById('worstSeries');
-            if (ws) ws.textContent = series[worstKey].label;
-            const wv = document.getElementById('worstValue');
-            if (wv) wv.textContent = worstAvg.toFixed(4);
+        if (typeof value !== 'string') return NaN;
+
+        let str = value.trim();
+        if (!str) return NaN;
+
+        if (str.includes(',') && str.includes('.')) {
+            if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+                str = str.replace(/\./g, '').replace(',', '.');
+            } else {
+                str = str.replace(/,/g, '');
+            }
+        } else if (str.includes(',')) {
+            str = str.replace(',', '.');
+        }
+
+        const parsed = Number(str);
+        return Number.isFinite(parsed) ? parsed : NaN;
+    }
+
+    normalizeTipo(tipo) {
+        if (typeof tipo !== 'string') return '';
+        return tipo
+            .toUpperCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^A-Z0-9]/g, '');
+    }
+
+    calculateFepDepTotals(dataset = []) {
+        return dataset.reduce((acc, row) => {
+            const freq = this.parseNumericValue(row.frecuencia);
+            if (!Number.isFinite(freq)) return acc;
+
+            const tipoNorm = this.normalizeTipo(row.tipo);
+            if (tipoNorm.includes('FEP')) acc.fep += freq;
+            if (tipoNorm.includes('DEP')) acc.dep += freq;
+            return acc;
+        }, { fep: 0, dep: 0 });
+    }
+
+    renderFepDepTotals(totalFep, totalDep) {
+        const totalFepEl = document.getElementById('totalFep');
+        const totalDepEl = document.getElementById('totalDep');
+        if (totalFepEl) totalFepEl.textContent = this.safeToFixed(totalFep, 2);
+        if (totalDepEl) totalDepEl.textContent = this.safeToFixed(totalDep, 2);
+        console.log(`📊 Totales calculados - FEP: ${totalFep}, DEP: ${totalDep}`);
+    }
+
+    async refreshFepDepTotals() {
+        try {
+            // Compatibilidad defensiva: mantenemos params para evitar ReferenceError en rutas legacy/caché
+            const params = new URLSearchParams();
+
+            const selectedFeed = this.getSelectedValues('filterTransformador');
+            const seccionVal = this.resolveSeccionParam(selectedFeed);
+
+            const yearSel = document.getElementById('filterYear');
+            const years = this.getSelectedValues('filterYear');
+            const anioVal = years.length ? years.join(',') : (yearSel?.value || '2024');
+
+            let mesVal = 'all';
+            let periodoVal = null;
+            if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
+                mesVal = Array.from(this.selectedMonths).join(',');
+            } else if (this.filters.periodo && this.filters.periodo !== 'select_months') {
+                periodoVal = this.filters.periodo;
+            }
+
+            const payload = {
+                seccion: seccionVal,
+                anio: anioVal,
+                mes: mesVal,
+                periodo: periodoVal,
+                tipo_medicion: 'all'
+            };
+            console.log('🌐 Solicitando totales FEP/DEP (POST):', payload);
+            const res = await fetch(`${this.apiBaseUrl}/api/datos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const data = await res.json();
+            console.log(`📊 refreshFepDepTotals: ${data.length} registros recibidos`);
+            const totals = this.calculateFepDepTotals(data);
+            this.renderFepDepTotals(totals.fep, totals.dep);
+        } catch (error) {
+            console.warn('⚠️ No se pudieron refrescar totales FEP/DEP con consulta global, usando datos actuales.', error);
+            const totals = this.calculateFepDepTotals(this.data);
+            this.renderFepDepTotals(totals.fep, totals.dep);
         }
     }
-    
+
+    updateKPIs() {
+        if (this._isUpdatingKPIs) return;
+        this._isUpdatingKPIs = true;
+        try {
+            if (!Array.isArray(this.data) || !this.data.length) return;
+
+            const values = [];
+            for (const row of this.data) {
+                const parsed = this.parseNumericValue(row.frecuencia);
+                if (Number.isFinite(parsed)) values.push(parsed);
+            }
+            if (!values.length) return;
+
+            let min = values[0];
+            let max = values[0];
+            let sum = 0;
+            for (const value of values) {
+                if (value < min) min = value;
+                if (value > max) max = value;
+                sum += value;
+            }
+
+            const range = max - min;
+            const rangeVal = document.getElementById('rangeValue');
+            if (rangeVal) rangeVal.textContent = range.toFixed(4);
+            const rangeInfo = document.getElementById('rangeInfo');
+            if (rangeInfo) rangeInfo.textContent = `${this.safeToFixed(min)}-${this.safeToFixed(max)}`;
+
+            if (values.length > 1) {
+                const mean = sum / values.length;
+                let varianceAccum = 0;
+                for (const value of values) varianceAccum += Math.pow(value - mean, 2);
+                const variance = varianceAccum / values.length;
+                const cv = mean !== 0 ? (Math.sqrt(variance) / mean) * 100 : 0;
+                const varVal = document.getElementById('variabilityValue');
+                if (varVal) varVal.textContent = cv.toFixed(2) + '%';
+                const varBadge = document.getElementById('variabilityBadge');
+                if (varBadge) {
+                    varBadge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
+                    varBadge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
+                }
+            }
+
+            const series = {};
+            for (const d of this.data) {
+                const value = this.parseNumericValue(d.frecuencia);
+                if (!Number.isFinite(value)) continue;
+                if (!series[d.combinationKey]) series[d.combinationKey] = { label: d.combinationLabel, vals: [] };
+                series[d.combinationKey].vals.push(value);
+            }
+
+            let worstKey = null;
+            let worstAvg = -Infinity;
+            for (const [k, v] of Object.entries(series)) {
+                if (!v.vals.length) continue;
+                let localSum = 0;
+                for (const x of v.vals) localSum += x;
+                const avg = localSum / v.vals.length;
+                if (avg > worstAvg) {
+                    worstAvg = avg;
+                    worstKey = k;
+                }
+            }
+
+            if (worstKey) {
+                const ws = document.getElementById('worstSeries');
+                if (ws) ws.textContent = series[worstKey].label;
+                const wv = document.getElementById('worstValue');
+                if (wv) wv.textContent = worstAvg.toFixed(4);
+            }
+        } catch (error) {
+            console.error('❌ Error en updateKPIs:', error);
+        } finally {
+            this._isUpdatingKPIs = false;
+        }
+    }
+
     updateComparisonTags() {
         const cont = document.getElementById('comparisonTags');
         if (!cont) return;
@@ -2070,14 +2255,31 @@ class ANDEDashboard {
     
     updateRankingChart() {
         console.log("📊 Actualizando ranking HD...");
-        if (!this.rankingChart) {
+        if (!this.rankingChart?.data) {
             console.warn("rankingChart no inicializado");
             return;
         }
+
+        if (!Array.isArray(this.rankingChart.data.datasets) || !this.rankingChart.data.datasets.length) {
+            this.rankingChart.data.datasets = [{
+                label: 'Promedio',
+                data: [],
+                backgroundColor: [],
+                borderColor: [],
+                borderWidth: 1.5,
+                borderRadius: 6,
+                borderSkipped: false
+            }];
+        }
+        const rankingDataset = this.rankingChart.data.datasets[0];
+
         if (!this.data.length) {
             this.latestRankingData = [];
+            this.rankingItems = [];
             this.rankingChart.data.labels = [];
-            this.rankingChart.data.datasets[0].data = [];
+            rankingDataset.data = [];
+            rankingDataset.backgroundColor = [];
+            rankingDataset.borderColor = [];
             this.rankingChart.update('none');
             return;
         }
@@ -2114,14 +2316,16 @@ class ANDEDashboard {
             if (sortBy === 'trend') return b.last - a.last;
             return b.avg - a.avg;
         });
-        
+
+        const top = viewMode === 'all' ? ranking : ranking.slice(0, 10);
+        this.latestRankingData = ranking;
         this.rankingItems = ranking;
-        const top = ranking.slice(0, 10);
-        console.log("🏆 Top 10 ranking:", top);
+
+        console.log("🏆 Ranking mostrado (top10):", top);
         this.rankingChart.data.labels = top.map(t => t.label);
-        this.rankingChart.data.datasets[0].data = top.map(t => t.avg);
-        this.rankingChart.data.datasets[0].backgroundColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
-        this.rankingChart.data.datasets[0].borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
+        rankingDataset.data = top.map(t => t.avg);
+        rankingDataset.backgroundColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length] + '80');
+        rankingDataset.borderColor = top.map((_,i) => this.chartPalette[i%this.chartPalette.length]);
 
         // ✨ Actualizar con animación
         this.rankingChart.update();
