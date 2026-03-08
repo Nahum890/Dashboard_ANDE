@@ -10,47 +10,232 @@
     .wrap{padding:16px}
     h1{margin:0 0 6px;font-size:1.2rem}
     p{margin:0 0 14px;color:#94a3b8}
+    .controls{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .control{display:flex;align-items:center;gap:6px;background:#111827;border:1px solid #334155;border-radius:10px;padding:8px 10px}
+    label{font-size:.82rem;color:#94a3b8}
+    select,button{background:#0b1220;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:6px 8px}
+    button{cursor:pointer}
     .panel{background:#111827;border:1px solid #334155;border-radius:12px;padding:12px}
     #rankingCanvas{width:100%;}
+    #rankingChartWrapper{height:calc(100vh - 250px);min-height:560px}
+    #rankingTableWrapper{display:none;max-height:calc(100vh - 250px);overflow:auto}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px 10px;border-bottom:1px solid rgba(148,163,184,.25);text-align:left}
+    th{position:sticky;top:0;background:#0b1220}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1 id="title">Ranking completo</h1>
     <p id="subtitle">--</p>
-    <div class="panel"><canvas id="rankingCanvas"></canvas></div>
+
+    <div class="controls">
+      <div class="control">
+        <label for="groupBy">Agrupar por</label>
+        <select id="groupBy">
+          <option value="alimentador">Alimentador</option>
+          <option value="estacion">Estación</option>
+          <option value="tipo">Tipo</option>
+          <option value="year">Año</option>
+        </select>
+      </div>
+      <div class="control">
+        <label for="metric">Métrica</label>
+        <select id="metric">
+          <option value="avg">Promedio</option>
+          <option value="median">Mediana</option>
+          <option value="max">Máximo</option>
+          <option value="min">Mínimo</option>
+          <option value="std">Desv. estándar</option>
+          <option value="cv">Coef. variación (%)</option>
+        </select>
+      </div>
+      <div class="control">
+        <label for="limit">Límite</label>
+        <select id="limit">
+          <option value="10">Top 10</option>
+          <option value="20">Top 20</option>
+          <option value="50">Top 50</option>
+          <option value="all">Todos</option>
+        </select>
+      </div>
+      <div class="control">
+        <button id="toggleViewBtn" type="button">Ver tabla</button>
+      </div>
+    </div>
+
+    <div class="panel" id="rankingChartWrapper"><canvas id="rankingCanvas"></canvas></div>
+    <div class="panel" id="rankingTableWrapper"></div>
   </div>
+
   <script>
     const raw = localStorage.getItem('ande_ranking_full_data');
-    const data = raw ? JSON.parse(raw) : {labels:[],data:[],palette:[]};
-    document.getElementById('title').textContent = data.title || 'Ranking completo';
-    document.getElementById('subtitle').textContent = data.subtitle || `Total de elementos: ${data.labels.length}`;
-    const canvas = document.getElementById('rankingCanvas');
-    canvas.height = Math.max(600, data.labels.length * 28);
-    new Chart(canvas.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: data.labels,
-        datasets: [{
-          label: 'Promedio',
-          data: data.data,
-          backgroundColor: data.labels.map((_,i)=>(data.palette?.[i % (data.palette?.length || 1)] || '#60a5fa') + '99'),
-          borderColor: data.labels.map((_,i)=>data.palette?.[i % (data.palette?.length || 1)] || '#60a5fa'),
-          borderWidth: 1,
-          borderRadius: 4
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(148,163,184,0.2)' } },
-          y: { ticks: { color: '#cbd5e1' }, grid: { display: false } }
-        }
+    const data = raw ? JSON.parse(raw) : { labels: [], data: [], series: {}, palette: [] };
+    const palette = data.palette?.length ? data.palette : ['#60a5fa'];
+
+    const titleEl = document.getElementById('title');
+    const subtitleEl = document.getElementById('subtitle');
+    const groupByEl = document.getElementById('groupBy');
+    const metricEl = document.getElementById('metric');
+    const limitEl = document.getElementById('limit');
+    const toggleViewBtn = document.getElementById('toggleViewBtn');
+    const rankingCanvas = document.getElementById('rankingCanvas');
+    const rankingChartWrapper = document.getElementById('rankingChartWrapper');
+    const rankingTableWrapper = document.getElementById('rankingTableWrapper');
+
+    titleEl.textContent = data.title || 'Ranking completo';
+
+    let rankingChart = null;
+    let currentRankingView = 'chart';
+
+    function formatNumber(value) {
+      return Number(value || 0).toLocaleString('es-PY', { maximumFractionDigits: 4 });
+    }
+
+    function calculateMetric(values, metric) {
+      if (!values || values.length === 0) return 0;
+      const sorted = [...values].sort((a, b) => a - b);
+      const sum = values.reduce((a, b) => a + b, 0);
+      const avg = sum / values.length;
+
+      if (metric === 'avg') return avg;
+      if (metric === 'median') {
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
       }
+      if (metric === 'max') return Math.max(...values);
+      if (metric === 'min') return Math.min(...values);
+      if (metric === 'std') {
+        const variance = values.reduce((acc, value) => acc + Math.pow(value - avg, 2), 0) / values.length;
+        return Math.sqrt(variance);
+      }
+      if (metric === 'cv') {
+        if (avg === 0) return 0;
+        const std = Math.sqrt(values.reduce((acc, value) => acc + Math.pow(value - avg, 2), 0) / values.length);
+        return (std / avg) * 100;
+      }
+      return avg;
+    }
+
+    function parseSeriesKey(key) {
+      const match = String(key).match(/^(.+?)\s*\((\d{4})\s*,\s*(.+)\)$/);
+      if (match) {
+        return {
+          alimentador: match[1].trim(),
+          year: match[2],
+          tipo: match[3].trim(),
+          estacion: match[1].trim().substring(0, 3)
+        };
+      }
+
+      const fallbackYear = String(key).match(/(\d{4})/);
+      return {
+        alimentador: String(key).split(' ')[0],
+        year: fallbackYear ? fallbackYear[1] : 'Desconocido',
+        tipo: 'Otro',
+        estacion: String(key).substring(0, 3)
+      };
+    }
+
+    function groupDataForRanking(groupBy) {
+      const groups = {};
+
+      if (data.series && Object.keys(data.series).length) {
+        Object.entries(data.series).forEach(([key, values]) => {
+          const parsed = parseSeriesKey(key);
+          const groupKey = parsed[groupBy] || key;
+          if (!groups[groupKey]) groups[groupKey] = [];
+          groups[groupKey] = groups[groupKey].concat(values || []);
+        });
+        return groups;
+      }
+
+      // Compatibilidad histórica: usar labels/data ya agregados
+      (data.labels || []).forEach((label, i) => {
+        groups[label] = [Number(data.data?.[i] || 0)];
+      });
+      return groups;
+    }
+
+    function renderRankingChart(items, metric) {
+      if (rankingChart) rankingChart.destroy();
+      rankingCanvas.height = Math.max(600, items.length * 28);
+
+      rankingChart = new Chart(rankingCanvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: items.map(item => item.label),
+          datasets: [{
+            label: metric.toUpperCase(),
+            data: items.map(item => item.value),
+            backgroundColor: items.map((_, i) => (palette[i % palette.length] || '#60a5fa') + '99'),
+            borderColor: items.map((_, i) => palette[i % palette.length] || '#60a5fa'),
+            borderWidth: 1,
+            borderRadius: 4
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(148,163,184,0.2)' } },
+            y: { ticks: { color: '#cbd5e1' }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    function renderRankingTable(items) {
+      const rows = items.map((item, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${item.label}</td>
+          <td>${formatNumber(item.value)}</td>
+        </tr>
+      `).join('');
+
+      rankingTableWrapper.innerHTML = `
+        <table>
+          <thead><tr><th>#</th><th>Grupo</th><th>Valor</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function updateRanking() {
+      const groupBy = groupByEl.value;
+      const metric = metricEl.value;
+      const limit = limitEl.value;
+      const grouped = groupDataForRanking(groupBy);
+
+      const items = Object.entries(grouped)
+        .map(([label, values]) => ({ label, value: calculateMetric(values, metric) }))
+        .sort((a, b) => b.value - a.value);
+
+      const displayItems = limit === 'all' ? items : items.slice(0, parseInt(limit, 10));
+      subtitleEl.textContent = data.subtitle || `Total de elementos: ${items.length}`;
+
+      if (currentRankingView === 'chart') {
+        renderRankingChart(displayItems, metric);
+      } else {
+        renderRankingTable(displayItems);
+      }
+    }
+
+    groupByEl.addEventListener('change', updateRanking);
+    metricEl.addEventListener('change', updateRanking);
+    limitEl.addEventListener('change', updateRanking);
+    toggleViewBtn.addEventListener('click', () => {
+      currentRankingView = currentRankingView === 'chart' ? 'table' : 'chart';
+      rankingChartWrapper.style.display = currentRankingView === 'chart' ? 'block' : 'none';
+      rankingTableWrapper.style.display = currentRankingView === 'table' ? 'block' : 'none';
+      toggleViewBtn.textContent = currentRankingView === 'chart' ? 'Ver tabla' : 'Ver gráfico';
+      updateRanking();
     });
+
+    updateRanking();
   </script>
 </body>
 </html>
