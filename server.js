@@ -863,8 +863,16 @@ app.get("/api/datos", async (req, res) => {
     // Log de parámetros ajustados
     console.log("📊 Parámetros ajustados:", { seccion, anio, mes, tipo_medicion, estacion, periodo });
     
-    let sql = `SELECT seccion, anio, mes, departamento, tipo_medicion, valor 
-               FROM mediciones_completas WHERE 1=1`;
+    let sql = `SELECT mc.seccion, mc.anio, mc.mes, mc.departamento, mc.tipo_medicion, mc.valor
+               FROM mediciones_completas mc
+               WHERE mc.id = (
+                   SELECT MAX(m2.id)
+                   FROM mediciones_completas m2
+                   WHERE UPPER(TRIM(m2.seccion)) = UPPER(TRIM(mc.seccion))
+                     AND m2.anio = mc.anio
+                     AND m2.mes = mc.mes
+                     AND UPPER(TRIM(m2.tipo_medicion)) = UPPER(TRIM(mc.tipo_medicion))
+               )`;
     const params = [];
 
     // 1. Filtrar por Secciones - CORREGIDO
@@ -873,18 +881,18 @@ app.get("/api/datos", async (req, res) => {
         if (seccion.includes(',')) {
             const seccionesArray = seccion.split(',').map(s => s.trim());
             const placeholders = seccionesArray.map(() => '?').join(',');
-            sql += ` AND seccion IN (${placeholders})`;
-            params.push(...seccionesArray);
+            sql += ` AND UPPER(TRIM(mc.seccion)) IN (${placeholders})`;
+            params.push(...seccionesArray.map(s => s.toUpperCase()));
         } else {
-            sql += " AND seccion = ?";
-            params.push(seccion);
+            sql += " AND UPPER(TRIM(mc.seccion)) = ?";
+            params.push(seccion.toUpperCase());
         }
     }
 
     // 2. Filtrar por Estación (si se proporciona y es diferente de seccion)
     if (estacion && estacion !== '' && estacion !== seccion) {
-        sql += " AND seccion LIKE ?";
-        params.push(`${estacion}%`);
+        sql += " AND UPPER(TRIM(mc.seccion)) LIKE ?";
+        params.push(`${estacion.toUpperCase()}%`);
     }
 
     // 3. Filtrar por Años - CORREGIDO
@@ -895,7 +903,7 @@ app.get("/api/datos", async (req, res) => {
             sql += ` AND anio IN (${placeholders})`;
             params.push(...aniosArray);
         } else {
-            sql += " AND anio = ?";
+            sql += " AND mc.anio = ?";
             params.push(anio);
         }
     }
@@ -905,10 +913,10 @@ app.get("/api/datos", async (req, res) => {
         if (mes.includes(',')) {
             const mesesArray = mes.split(',').map(m => m.trim());
             const placeholders = mesesArray.map(() => '?').join(',');
-            sql += ` AND mes IN (${placeholders})`;
+            sql += ` AND mc.mes IN (${placeholders})`;
             params.push(...mesesArray);
         } else {
-            sql += " AND mes = ?";
+            sql += " AND mc.mes = ?";
             params.push(mes);
         }
     } else if (periodo && periodo !== 'select_months') {
@@ -955,13 +963,13 @@ app.get("/api/datos", async (req, res) => {
             for (let i = 1; i <= 12; i++) {
                 mesesArray.push(i);
             }
-            sql += " AND anio = ?";
+            sql += " AND mc.anio = ?";
             params.push(currentYear - 1);
         }
         
         if (mesesArray.length > 0 && periodo !== 'lastYear') {
             const placeholders = mesesArray.map(() => '?').join(',');
-            sql += ` AND mes IN (${placeholders})`;
+            sql += ` AND mc.mes IN (${placeholders})`;
             params.push(...mesesArray);
         }
     }
@@ -971,15 +979,15 @@ app.get("/api/datos", async (req, res) => {
         if (tipo_medicion.includes(',')) {
             const tiposArray = tipo_medicion.split(',').map(t => t.trim());
             const placeholders = tiposArray.map(() => '?').join(',');
-            sql += ` AND tipo_medicion IN (${placeholders})`;
-            params.push(...tiposArray);
+            sql += ` AND UPPER(TRIM(mc.tipo_medicion)) IN (${placeholders})`;
+            params.push(...tiposArray.map(t => t.toUpperCase()));
         } else {
-            sql += " AND tipo_medicion = ?";
-            params.push(tipo_medicion);
+            sql += " AND UPPER(TRIM(mc.tipo_medicion)) = ?";
+            params.push(tipo_medicion.toUpperCase());
         }
     }
 
-    sql += " ORDER BY anio DESC, mes ASC, seccion ASC";
+    sql += " ORDER BY mc.anio DESC, mc.mes ASC, mc.seccion ASC";
     
     console.log("🔧 SQL final:", sql);
     console.log("📊 Parámetros:", params);
@@ -1228,9 +1236,9 @@ app.get("/api/admin/alimentadores-lista", async (req, res) => {
 app.get("/api/admin/ver-duplicados", async (req, res) => {
     try {
         const sql = `
-            SELECT seccion, anio, mes, tipo_medicion, COUNT(*) as cantidad
+            SELECT UPPER(TRIM(seccion)) as seccion, anio, mes, UPPER(TRIM(tipo_medicion)) as tipo_medicion, COUNT(*) as cantidad
             FROM mediciones_completas
-            GROUP BY seccion, anio, mes, tipo_medicion
+            GROUP BY UPPER(TRIM(seccion)), anio, mes, UPPER(TRIM(tipo_medicion))
             HAVING COUNT(*) > 1
             ORDER BY cantidad DESC
         `;
@@ -1254,7 +1262,7 @@ app.post("/api/admin/eliminar-duplicados", async (req, res) => {
             WHERE id NOT IN (
                 SELECT MAX(id)
                 FROM mediciones_completas
-                GROUP BY seccion, anio, mes, tipo_medicion
+                GROUP BY UPPER(TRIM(seccion)), anio, mes, UPPER(TRIM(tipo_medicion))
             )
         `;
         const resultado = await ejecutarComando(sql);
