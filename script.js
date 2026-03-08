@@ -1706,7 +1706,7 @@ class ANDEDashboard {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             console.log(`✅ Datos recibidos: ${data.length} registros`);
-            
+
             this.data = data;
             this.filteredData = [...this.data];
             
@@ -1743,6 +1743,7 @@ class ANDEDashboard {
             this.showLoading(false); 
         }
     }
+
     
     // ========== KPIS ESPECIALES ==========
     updateSpecialKPIs() {
