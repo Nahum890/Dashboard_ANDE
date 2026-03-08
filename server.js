@@ -2,6 +2,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const fs = require("fs");
 const sqlite3 = require("sqlite3").verbose();
 const multer = require("multer");
 const XLSX = require("xlsx");
@@ -38,6 +39,110 @@ function verificarTablas() {
             console.warn("   Es posible que el archivo ANDE.db esté vacío o tenga otro nombre de tabla.");
         }
     });
+}
+
+async function normalizarYEliminarDuplicados() {
+    try {
+        // Normaliza textos para evitar falsos duplicados por espacios/mayúsculas
+        await ejecutarComando("UPDATE mediciones_completas SET seccion = UPPER(TRIM(seccion)), tipo_medicion = UPPER(TRIM(tipo_medicion))");
+
+        // Elimina duplicados lógicos conservando el registro más reciente
+        const resultado = await ejecutarComando(`
+            DELETE FROM mediciones_completas
+            WHERE id NOT IN (
+                SELECT MAX(id)
+                FROM mediciones_completas
+                GROUP BY UPPER(TRIM(seccion)), anio, mes, UPPER(TRIM(tipo_medicion))
+            )
+        `);
+
+        // Evita que vuelvan a insertarse duplicados lógicos
+        await ejecutarComando(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mediciones_unique_norm
+            ON mediciones_completas (UPPER(TRIM(seccion)), anio, mes, UPPER(TRIM(tipo_medicion)))
+        `);
+
+        if (resultado.changes > 0) {
+            console.log(`🧹 Duplicados normalizados eliminados: ${resultado.changes}`);
+        }
+    } catch (error) {
+        console.warn('⚠️ No se pudo ejecutar limpieza automática de duplicados:', error.message);
+    }
+}
+
+async function sincronizarConExcelPrueba() {
+    try {
+        const excelPath = path.resolve(__dirname, 'datos.xlsx');
+        if (!fs.existsSync(excelPath)) {
+            console.warn('⚠️ No se encontró datos.xlsx para sincronización fina contra hoja de prueba.');
+            return;
+        }
+
+        const wb = XLSX.readFile(excelPath);
+        const targetSheetName = wb.SheetNames.find(name =>
+            String(name || '').toUpperCase().includes('FEP') &&
+            String(name || '').toUpperCase().includes('DEP') &&
+            String(name || '').toUpperCase().includes('PRUEBA')
+        );
+
+        if (!targetSheetName || !wb.Sheets[targetSheetName]) {
+            console.warn('⚠️ No se encontró la hoja "FEP DEP ... Datos de Prueba" en datos.xlsx.');
+            return;
+        }
+
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[targetSheetName], { defval: null });
+        const claves = [];
+        for (const row of rows) {
+            const seccion = String(row.seccion || '').trim().toUpperCase();
+            const anio = parseInt(row.anio, 10);
+            const mes = parseInt(row.mes, 10);
+            const tipo = String(row.tipo_medicion || '').trim().toUpperCase();
+            if (!seccion || !Number.isFinite(anio) || !Number.isFinite(mes) || !tipo) continue;
+            claves.push([seccion, anio, mes, tipo]);
+        }
+
+        if (!claves.length) {
+            console.warn('⚠️ La hoja de prueba no contiene claves válidas para sincronizar.');
+            return;
+        }
+
+        await ejecutarComando('DROP TABLE IF EXISTS temp_claves_validas');
+        await ejecutarComando(`
+            CREATE TEMP TABLE temp_claves_validas (
+                seccion TEXT,
+                anio INTEGER,
+                mes INTEGER,
+                tipo_medicion TEXT,
+                UNIQUE(seccion, anio, mes, tipo_medicion)
+            )
+        `);
+
+        await new Promise((resolve, reject) => {
+            db.serialize(() => {
+                db.run('BEGIN TRANSACTION');
+                const stmt = db.prepare('INSERT OR IGNORE INTO temp_claves_validas (seccion, anio, mes, tipo_medicion) VALUES (?, ?, ?, ?)');
+                for (const key of claves) stmt.run(key);
+                stmt.finalize((err) => {
+                    if (err) return reject(err);
+                    db.run('COMMIT', (e) => (e ? reject(e) : resolve()));
+                });
+            });
+        });
+
+        const before = await ejecutarConsulta('SELECT COUNT(*) as total FROM mediciones_completas');
+        await ejecutarComando(`
+            DELETE FROM mediciones_completas
+            WHERE (UPPER(TRIM(seccion)), anio, mes, UPPER(TRIM(tipo_medicion))) NOT IN (
+                SELECT seccion, anio, mes, tipo_medicion FROM temp_claves_validas
+            )
+        `);
+        const after = await ejecutarConsulta('SELECT COUNT(*) as total FROM mediciones_completas');
+
+        console.log(`🧾 Sincronización con Excel prueba completada: ${before[0].total} -> ${after[0].total}`);
+        await ejecutarComando('DROP TABLE IF EXISTS temp_claves_validas');
+    } catch (error) {
+        console.warn('⚠️ Error sincronizando DB contra Excel de prueba:', error.message);
+    }
 }
 
 function ejecutarConsulta(sql, params = []) {
@@ -308,15 +413,17 @@ app.get("/api/anios", async (req, res) => {
 });
 
 // ==================== CORREGIDO: Endpoint de datos con manejo de errores ====================
-app.get("/api/datos", async (req, res) => {
-    console.log("📥 Petición a /api/datos recibida con parámetros:", req.query);
+async function handleDatosRequest(req, res, source = {}) {
+    console.log("📥 Petición a /api/datos recibida con parámetros:", source);
     
-    let { seccion, anio, mes, tipo_medicion, estacion, periodo } = req.query;
+    let { seccion, anio, mes, tipo_medicion, estacion, periodo } = source;
     
     // VALORES POR DEFECTO SEGUROS
-    if (!seccion || seccion === '' || seccion === 'all') {
-        seccion = 'ACY1'; // Valor por defecto seguro
+    if (!seccion || seccion === '') {
+        seccion = 'ACY1'; // Si no se envía, usar ACY1
     }
+    // Si seccion es 'all', lo dejamos como 'all' para que no se filtre
+    // No reasignamos 'all' a 'ACY1'
     
     if (!anio || anio === '' || anio === 'all') {
         anio = '2024'; // Año por defecto seguro
@@ -329,8 +436,16 @@ app.get("/api/datos", async (req, res) => {
     // Log de parámetros ajustados
     console.log("📊 Parámetros ajustados:", { seccion, anio, mes, tipo_medicion, estacion, periodo });
     
-    let sql = `SELECT seccion, anio, mes, departamento, tipo_medicion, valor 
-               FROM mediciones_completas WHERE 1=1`;
+    let sql = `SELECT mc.seccion, mc.anio, mc.mes, mc.departamento, mc.tipo_medicion, mc.valor
+               FROM mediciones_completas mc
+               WHERE mc.id = (
+                   SELECT MAX(m2.id)
+                   FROM mediciones_completas m2
+                   WHERE UPPER(TRIM(m2.seccion)) = UPPER(TRIM(mc.seccion))
+                     AND m2.anio = mc.anio
+                     AND m2.mes = mc.mes
+                     AND UPPER(TRIM(m2.tipo_medicion)) = UPPER(TRIM(mc.tipo_medicion))
+               )`;
     const params = [];
 
     // 1. Filtrar por Secciones - CORREGIDO
@@ -339,18 +454,18 @@ app.get("/api/datos", async (req, res) => {
         if (seccion.includes(',')) {
             const seccionesArray = seccion.split(',').map(s => s.trim());
             const placeholders = seccionesArray.map(() => '?').join(',');
-            sql += ` AND seccion IN (${placeholders})`;
-            params.push(...seccionesArray);
+            sql += ` AND UPPER(TRIM(mc.seccion)) IN (${placeholders})`;
+            params.push(...seccionesArray.map(s => s.toUpperCase()));
         } else {
-            sql += " AND seccion = ?";
-            params.push(seccion);
+            sql += " AND UPPER(TRIM(mc.seccion)) = ?";
+            params.push(seccion.toUpperCase());
         }
     }
 
     // 2. Filtrar por Estación (si se proporciona y es diferente de seccion)
     if (estacion && estacion !== '' && estacion !== seccion) {
-        sql += " AND seccion LIKE ?";
-        params.push(`${estacion}%`);
+        sql += " AND UPPER(TRIM(mc.seccion)) LIKE ?";
+        params.push(`${estacion.toUpperCase()}%`);
     }
 
     // 3. Filtrar por Años - CORREGIDO
@@ -361,7 +476,7 @@ app.get("/api/datos", async (req, res) => {
             sql += ` AND anio IN (${placeholders})`;
             params.push(...aniosArray);
         } else {
-            sql += " AND anio = ?";
+            sql += " AND mc.anio = ?";
             params.push(anio);
         }
     }
@@ -371,10 +486,10 @@ app.get("/api/datos", async (req, res) => {
         if (mes.includes(',')) {
             const mesesArray = mes.split(',').map(m => m.trim());
             const placeholders = mesesArray.map(() => '?').join(',');
-            sql += ` AND mes IN (${placeholders})`;
+            sql += ` AND mc.mes IN (${placeholders})`;
             params.push(...mesesArray);
         } else {
-            sql += " AND mes = ?";
+            sql += " AND mc.mes = ?";
             params.push(mes);
         }
     } else if (periodo && periodo !== 'select_months') {
@@ -421,13 +536,13 @@ app.get("/api/datos", async (req, res) => {
             for (let i = 1; i <= 12; i++) {
                 mesesArray.push(i);
             }
-            sql += " AND anio = ?";
+            sql += " AND mc.anio = ?";
             params.push(currentYear - 1);
         }
         
         if (mesesArray.length > 0 && periodo !== 'lastYear') {
             const placeholders = mesesArray.map(() => '?').join(',');
-            sql += ` AND mes IN (${placeholders})`;
+            sql += ` AND mc.mes IN (${placeholders})`;
             params.push(...mesesArray);
         }
     }
@@ -437,15 +552,15 @@ app.get("/api/datos", async (req, res) => {
         if (tipo_medicion.includes(',')) {
             const tiposArray = tipo_medicion.split(',').map(t => t.trim());
             const placeholders = tiposArray.map(() => '?').join(',');
-            sql += ` AND tipo_medicion IN (${placeholders})`;
-            params.push(...tiposArray);
+            sql += ` AND UPPER(TRIM(mc.tipo_medicion)) IN (${placeholders})`;
+            params.push(...tiposArray.map(t => t.toUpperCase()));
         } else {
-            sql += " AND tipo_medicion = ?";
-            params.push(tipo_medicion);
+            sql += " AND UPPER(TRIM(mc.tipo_medicion)) = ?";
+            params.push(tipo_medicion.toUpperCase());
         }
     }
 
-    sql += " ORDER BY anio DESC, mes ASC, seccion ASC";
+    sql += " ORDER BY mc.anio DESC, mc.mes ASC, mc.seccion ASC";
     
     console.log("🔧 SQL final:", sql);
     console.log("📊 Parámetros:", params);
@@ -468,12 +583,20 @@ app.get("/api/datos", async (req, res) => {
             console.log("   Intentando con valores más amplios...");
             
             // Intentar con valores más amplios
-            const fallbackSql = `SELECT seccion, anio, mes, departamento, tipo_medicion, valor 
-                                FROM mediciones_completas 
-                                WHERE seccion LIKE ? 
-                                ORDER BY anio DESC, mes ASC, seccion ASC 
+            const fallbackSql = `SELECT mc.seccion, mc.anio, mc.mes, mc.departamento, mc.tipo_medicion, mc.valor
+                                FROM mediciones_completas mc
+                                WHERE mc.id = (
+                                    SELECT MAX(m2.id)
+                                    FROM mediciones_completas m2
+                                    WHERE UPPER(TRIM(m2.seccion)) = UPPER(TRIM(mc.seccion))
+                                      AND m2.anio = mc.anio
+                                      AND m2.mes = mc.mes
+                                      AND UPPER(TRIM(m2.tipo_medicion)) = UPPER(TRIM(mc.tipo_medicion))
+                                )
+                                  AND UPPER(TRIM(mc.seccion)) LIKE ?
+                                ORDER BY mc.anio DESC, mc.mes ASC, mc.seccion ASC
                                 LIMIT 50`;
-            const fallbackParams = [seccion + '%'];
+            const fallbackParams = [String(seccion || '').toUpperCase() + '%'];
             
             const fallbackRows = await ejecutarConsulta(fallbackSql, fallbackParams);
             console.log(`🔄 Registros con búsqueda ampliada: ${fallbackRows.length}`);
@@ -519,7 +642,10 @@ app.get("/api/datos", async (req, res) => {
             timestamp: new Date().toISOString()
         });
     }
-});
+}
+
+app.get("/api/datos", async (req, res) => handleDatosRequest(req, res, req.query || {}));
+app.post("/api/datos", async (req, res) => handleDatosRequest(req, res, req.body || {}));
 
 // ==================== RUTA NUEVA: Vista ampliada de gráficos ====================
 app.get('/chart.html', (req, res) => {
@@ -708,9 +834,9 @@ app.get("/api/admin/alimentadores-lista", async (req, res) => {
 app.get("/api/admin/ver-duplicados", async (req, res) => {
     try {
         const sql = `
-            SELECT seccion, anio, mes, tipo_medicion, COUNT(*) as cantidad
+            SELECT UPPER(TRIM(seccion)) as seccion, anio, mes, UPPER(TRIM(tipo_medicion)) as tipo_medicion, COUNT(*) as cantidad
             FROM mediciones_completas
-            GROUP BY seccion, anio, mes, tipo_medicion
+            GROUP BY UPPER(TRIM(seccion)), anio, mes, UPPER(TRIM(tipo_medicion))
             HAVING COUNT(*) > 1
             ORDER BY cantidad DESC
         `;
@@ -734,7 +860,7 @@ app.post("/api/admin/eliminar-duplicados", async (req, res) => {
             WHERE id NOT IN (
                 SELECT MAX(id)
                 FROM mediciones_completas
-                GROUP BY seccion, anio, mes, tipo_medicion
+                GROUP BY UPPER(TRIM(seccion)), anio, mes, UPPER(TRIM(tipo_medicion))
             )
         `;
         const resultado = await ejecutarComando(sql);
@@ -758,4 +884,8 @@ app.listen(PORT, () => {
     console.log(`📁 Base de datos: ANDE.db`);
     console.log(`🌐 URL: http://localhost:${PORT}`);
     console.log(`📊 API disponible en: http://localhost:${PORT}/api/`);
+    (async () => {
+        await normalizarYEliminarDuplicados();
+        await sincronizarConExcelPrueba();
+    })();
 });
