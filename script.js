@@ -99,6 +99,24 @@ class ANDEDashboard {
         }
         return false;
     }
+
+
+    resolveSeccionParam(selectedFeed = []) {
+        const normalized = Array.isArray(selectedFeed)
+            ? selectedFeed.map(v => String(v || '').trim()).filter(Boolean)
+            : [];
+
+        const unique = Array.from(new Set(normalized));
+        const totalFeeders = Array.isArray(this.allSecciones) ? this.allSecciones.length : 0;
+        const allSelected = totalFeeders > 0 && unique.length >= totalFeeders;
+
+        if (!unique.length || allSelected) return 'all';
+
+        const joined = unique.join(',');
+        // Evitar URLs enormes que provocan fallos de red en navegador/proxy
+        if (joined.length > 1200) return 'all';
+        return joined;
+    }
     
     showNotification(message, type = "info") {
         const notification = document.getElementById('notification');
@@ -1643,7 +1661,7 @@ class ANDEDashboard {
             const selectedFeed = this.getSelectedValues('filterTransformador');
             let seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'all';
             params.append('seccion', seccionVal);
-            console.log("🔌 Alimentadores:", selectedFeed);
+            console.log("🔌 Alimentadores:", selectedFeed, "=> seccion:", seccionVal);
             
             const yearSel = document.getElementById('filterYear');
             const years = this.getSelectedValues('filterYear');
@@ -1668,10 +1686,24 @@ class ANDEDashboard {
             params.append('tipo_medicion', tipoVal);
             console.log("📊 Tipos:", tipos);
             
-            const url = `${this.apiBaseUrl}/api/datos?${params}`;
+            let url = `${this.apiBaseUrl}/api/datos?${params}`;
             console.log("🌐 URL:", url);
-            
-            const res = await fetch(url);
+
+            let res;
+            try {
+                res = await fetch(url);
+            } catch (fetchErr) {
+                const isNetworkSuspended = String(fetchErr?.message || '').includes('Failed to fetch');
+                if (isNetworkSuspended && seccionVal !== 'all') {
+                    console.warn('⚠️ Reintentando carga con seccion=all por posible URL extensa');
+                    params.set('seccion', 'all');
+                    url = `${this.apiBaseUrl}/api/datos?${params}`;
+                    console.log("🌐 URL (retry):", url);
+                    res = await fetch(url);
+                } else {
+                    throw fetchErr;
+                }
+            }
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             console.log(`✅ Datos recibidos: ${data.length} registros`);
