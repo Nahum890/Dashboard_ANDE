@@ -862,7 +862,7 @@ app.post('/api/comparar-periodos', async (req, res) => {
 async function handleDatosRequest(req, res, source = {}) {
     console.log("📥 Petición a /api/datos recibida con parámetros:", source);
     
-    let { seccion, anio, mes, tipo_medicion, estacion, periodo } = req.query;
+    let { seccion, anio, mes, tipo_medicion, estacion, periodo } = source;
 
     // Si no se reciben filtros explícitos, tratar como "sin filtro"
     if (!seccion || seccion === '') seccion = 'all';
