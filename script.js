@@ -1656,8 +1656,6 @@ class ANDEDashboard {
         console.log("📥 Iniciando carga de datos...");
         this.showLoading(true, "Cargando datos desde el servidor...", null);
         try {
-            const params = new URLSearchParams();
-            
             const selectedFeed = this.getSelectedValues('filterTransformador');
             let seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'all';
             params.append('seccion', seccionVal);
@@ -1668,18 +1666,19 @@ class ANDEDashboard {
             const anioVal = years.length ? years.join(',') : (yearSel?.value || 'all');
             params.append('anio', anioVal);
             console.log("📅 Años:", years);
-            
+
+            let mesVal = 'all';
+            let periodoVal = null;
             if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
-                params.append('mes', Array.from(this.selectedMonths).join(','));
+                mesVal = Array.from(this.selectedMonths).join(',');
                 console.log("📆 Meses seleccionados:", Array.from(this.selectedMonths));
             } else if (this.filters.periodo && this.filters.periodo !== 'select_months') {
-                params.append('periodo', this.filters.periodo);
+                periodoVal = this.filters.periodo;
                 console.log("📆 Período:", this.filters.periodo);
             } else {
-                params.append('mes', 'all');
                 console.log("📆 Meses: todos");
             }
-            
+
             const tipoSel = document.getElementById('filterTipoMedicion');
             const tipos = this.getSelectedValues('filterTipoMedicion');
             const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'all');

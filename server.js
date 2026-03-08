@@ -2,6 +2,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const fs = require("fs");
 const sqlite3 = require("sqlite3").verbose();
 const multer = require("multer");
 const XLSX = require("xlsx");
@@ -850,8 +851,8 @@ app.post('/api/comparar-periodos', async (req, res) => {
 });
 
 // ==================== CORREGIDO: Endpoint de datos con manejo de errores ====================
-app.get("/api/datos", async (req, res) => {
-    console.log("📥 Petición a /api/datos recibida con parámetros:", req.query);
+async function handleDatosRequest(req, res, source = {}) {
+    console.log("📥 Petición a /api/datos recibida con parámetros:", source);
     
     let { seccion, anio, mes, tipo_medicion, estacion, periodo } = req.query;
 
@@ -1036,7 +1037,10 @@ app.get("/api/datos", async (req, res) => {
             timestamp: new Date().toISOString()
         });
     }
-});
+}
+
+app.get("/api/datos", async (req, res) => handleDatosRequest(req, res, req.query || {}));
+app.post("/api/datos", async (req, res) => handleDatosRequest(req, res, req.body || {}));
 
 // ==================== RUTA NUEVA: Vista ampliada de gráficos ====================
 app.get('/chart.html', (req, res) => {
