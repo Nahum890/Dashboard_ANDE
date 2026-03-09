@@ -1674,11 +1674,8 @@ class ANDEDashboard {
         console.log("📥 Iniciando carga de datos...");
         this.showLoading(true, "Cargando datos desde el servidor...", null);
         try {
-            const selectedFeedRaw = this.getSelectedValues('filterTransformador');
-            const selectedFeed = Array.from(new Set(selectedFeedRaw.map(v => String(v || '').trim()).filter(Boolean)));
-            const totalSecciones = this.allSecciones.length;
-            const isAllSeccionesSelected = totalSecciones > 0 && selectedFeed.length >= totalSecciones;
-            const seccionVal = (selectedFeed.length === 0 || isAllSeccionesSelected) ? 'all' : selectedFeed.join(',');
+            const selectedFeed = this.getSelectedValues('filterTransformador');
+            const seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'all';
             console.log("🔌 Alimentadores:", selectedFeed, "=> seccion:", seccionVal);
 
             const years = this.getSelectedValues('filterYear');
@@ -1687,9 +1684,8 @@ class ANDEDashboard {
 
             let mesVal = 'all';
             if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
-                const monthValues = Array.from(this.selectedMonths).sort((a, b) => a - b);
-                mesVal = monthValues.length === 12 ? 'all' : monthValues.join(',');
-                console.log("📆 Meses seleccionados:", monthValues, "=> mes:", mesVal);
+                mesVal = Array.from(this.selectedMonths).join(',');
+                console.log("📆 Meses seleccionados:", Array.from(this.selectedMonths));
             }
 
             const periodoVal = (this.filters.periodo && this.filters.periodo !== 'select_months')
@@ -1703,54 +1699,36 @@ class ANDEDashboard {
             const tipoVal = tipos.length ? tipos.join(',') : 'all';
             console.log("📊 Tipos:", tipos);
 
+            // Construir payload para POST
             const payload = {
                 seccion: seccionVal,
                 anio: anioVal,
                 tipo_medicion: tipoVal
             };
-            payload.mes = mesVal;
+            if (mesVal !== 'all') payload.mes = mesVal;
             if (periodoVal) payload.periodo = periodoVal;
 
             console.log("📦 Payload enviado:", payload);
 
             let res;
             try {
-                res = await this.fetchWithTimeout(`${this.apiBaseUrl}/api/datos`, {
+                res = await fetch(`${this.apiBaseUrl}/api/datos`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
-                }, 30000);
+                });
             } catch (fetchErr) {
-                const errMsg = String(fetchErr?.message || '');
-                const isTransportError =
-                    errMsg.includes('Failed to fetch') ||
-                    errMsg.includes('NetworkError') ||
-                    errMsg.includes('ERR_NETWORK_IO_SUSPENDED') ||
-                    errMsg.includes('AbortError');
-
-                if (!isTransportError) throw fetchErr;
-
-                console.warn('⚠️ POST /api/datos falló por transporte, fallback a GET', fetchErr);
-
-                const params = new URLSearchParams();
-                params.set('seccion', payload.seccion || 'all');
-                params.set('anio', payload.anio || 'all');
-                params.set('tipo_medicion', payload.tipo_medicion || 'all');
-                if (payload.mes) params.set('mes', payload.mes);
-                if (payload.periodo) params.set('periodo', payload.periodo);
-
-                let url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
-                try {
-                    res = await this.fetchWithTimeout(url, {}, 30000);
-                } catch (getErr) {
-                    if ((String(getErr?.message || '').includes('Failed to fetch')) && params.get('seccion') !== 'all') {
-                        console.warn('⚠️ Reintentando GET con seccion=all por posible URL extensa');
-                        params.set('seccion', 'all');
-                        url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
-                        res = await this.fetchWithTimeout(url, {}, 30000);
-                    } else {
-                        throw getErr;
-                    }
+                const isNetworkSuspended = String(fetchErr?.message || '').includes('Failed to fetch');
+                if (isNetworkSuspended && seccionVal !== 'all') {
+                    console.warn('⚠️ Reintentando carga con seccion=all por posible URL extensa');
+                    payload.seccion = 'all';
+                    res = await fetch(`${this.apiBaseUrl}/api/datos`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    throw fetchErr;
                 }
             }
 
@@ -1774,6 +1752,7 @@ class ANDEDashboard {
                 await this.refreshFepDepTotals();
                 this.updateSpecialKPIs();
 
+                // Actualizar gráficos con animaciones
                 this.updateCharts();
                 this.updateScatterChart();
                 this.updatePieCharts();
@@ -1790,11 +1769,9 @@ class ANDEDashboard {
             this.clearChartsAndTable();
             this.renderFepDepTotals(0, 0);
         } finally {
-            this.isLoadingData = false;
             this.showLoading(false);
         }
     }
-
 
 
     
