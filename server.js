@@ -590,18 +590,37 @@ app.get("/api/tipos-medicion", async (req, res) => {
 app.get("/api/secciones", async (req, res) => {
     try {
         const rows = await ejecutarConsulta(
-            "SELECT DISTINCT seccion FROM mediciones_completas WHERE seccion IS NOT NULL AND seccion != '' ORDER BY seccion"
+            "SELECT DISTINCT seccion FROM mediciones_completas WHERE seccion IS NOT NULL AND TRIM(seccion) != ''"
         );
-        
-        if (rows.length === 0) {
-            // Si no hay secciones, devolver algunas por defecto
-            res.json(['ACY1', 'ACY2', 'ACY3', 'ACY4']);
-        } else {
-            res.json(rows.map(r => r.seccion));
+
+        const canon = new Map();
+        for (const r of rows) {
+            const raw = String(r.seccion || '').trim().toUpperCase();
+            if (!raw) continue;
+
+            // Normalizar espacios intermedios y formato tipo "NAR 5" -> "NAR5"
+            let normalized = raw.replace(/\s+/g, ' ');
+            normalized = normalized.replace(/\b([A-Z]{2,})\s+(\d+[A-Z0-9]*)\b/g, '$1$2');
+
+            // Mantener solo alimentadores reales (deben contener al menos un dígito)
+            if (!/\d/.test(normalized)) continue;
+
+            // Validar patrón de alimentador: letras + dígitos (+ sufijos alfanuméricos)
+            if (!/^[A-Z]{2,}\d+[A-Z0-9]*$/.test(normalized)) continue;
+
+            canon.set(normalized, normalized);
         }
+
+        const secciones = Array.from(canon.values()).sort((a, b) => a.localeCompare(b, 'es'));
+
+        if (secciones.length === 0) {
+            res.json(['ACY1', 'ACY2', 'ACY3', 'ACY4']);
+            return;
+        }
+
+        res.json(secciones);
     } catch (err) {
         console.error("Error obteniendo secciones:", err);
-        // Devolver valores por defecto en caso de error
         res.json(['ACY1', 'ACY2', 'ACY3', 'ACY4']);
     }
 });
@@ -862,7 +881,7 @@ app.post('/api/comparar-periodos', async (req, res) => {
 async function handleDatosRequest(req, res, source = {}) {
     console.log("📥 Petición a /api/datos recibida con parámetros:", source);
     
-    let { seccion, anio, mes, tipo_medicion, estacion, periodo } = req.query;
+    let { seccion, anio, mes, tipo_medicion, estacion, periodo } = source;
 
     // Si no se reciben filtros explícitos, tratar como "sin filtro"
     if (!seccion || seccion === '') seccion = 'all';
