@@ -1689,6 +1689,7 @@ class ANDEDashboard {
             const tipoVal = tipos.length ? tipos.join(',') : 'all';
             console.log("📊 Tipos:", tipos);
 
+            // Construir payload para POST
             const payload = {
                 seccion: seccionVal,
                 anio: anioVal,
@@ -1707,35 +1708,17 @@ class ANDEDashboard {
                     body: JSON.stringify(payload)
                 });
             } catch (fetchErr) {
-                const errMsg = String(fetchErr?.message || '');
-                const isTransportError =
-                    errMsg.includes('Failed to fetch') ||
-                    errMsg.includes('NetworkError') ||
-                    errMsg.includes('ERR_NETWORK_IO_SUSPENDED');
-
-                if (!isTransportError) throw fetchErr;
-
-                console.warn('⚠️ POST /api/datos falló por transporte, fallback a GET', fetchErr);
-
-                const params = new URLSearchParams();
-                params.set('seccion', payload.seccion || 'all');
-                params.set('anio', payload.anio || 'all');
-                params.set('tipo_medicion', payload.tipo_medicion || 'all');
-                if (payload.mes) params.set('mes', payload.mes);
-                if (payload.periodo) params.set('periodo', payload.periodo);
-
-                let url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
-                try {
-                    res = await fetch(url);
-                } catch (getErr) {
-                    if ((String(getErr?.message || '').includes('Failed to fetch')) && params.get('seccion') !== 'all') {
-                        console.warn('⚠️ Reintentando GET con seccion=all por posible URL extensa');
-                        params.set('seccion', 'all');
-                        url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
-                        res = await fetch(url);
-                    } else {
-                        throw getErr;
-                    }
+                const isNetworkSuspended = String(fetchErr?.message || '').includes('Failed to fetch');
+                if (isNetworkSuspended && seccionVal !== 'all') {
+                    console.warn('⚠️ Reintentando carga con seccion=all por posible URL extensa');
+                    payload.seccion = 'all';
+                    res = await fetch(`${this.apiBaseUrl}/api/datos`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    throw fetchErr;
                 }
             }
 
@@ -1759,6 +1742,7 @@ class ANDEDashboard {
                 await this.refreshFepDepTotals();
                 this.updateSpecialKPIs();
 
+                // Actualizar gráficos con animaciones
                 this.updateCharts();
                 this.updateScatterChart();
                 this.updatePieCharts();
@@ -1775,11 +1759,9 @@ class ANDEDashboard {
             this.clearChartsAndTable();
             this.renderFepDepTotals(0, 0);
         } finally {
-            this.isLoadingData = false;
             this.showLoading(false);
         }
     }
-
 
 
     
