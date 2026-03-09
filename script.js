@@ -47,6 +47,8 @@ class ANDEDashboard {
         this.isInitialLoad = true;
         this.serverConnected = false;
         this.currentStationGroup = null;
+        this.isLoadingData = false;
+        this.liveUpdatesIntervalId = null;
         
         // ---------- PROPIEDADES PARA FILTRO INTELIGENTE ----------
         this.selectionMode = 'compare_stations';
@@ -1653,65 +1655,99 @@ class ANDEDashboard {
     
     // ========== CARGA DE DATOS ==========
     async loadData() {
+        if (this.isLoadingData) {
+            console.log("⏳ loadData en progreso, se omite llamada duplicada");
+            return;
+        }
+
+        this.isLoadingData = true;
         console.log("📥 Iniciando carga de datos...");
         this.showLoading(true, "Cargando datos desde el servidor...", null);
         try {
             const selectedFeed = this.getSelectedValues('filterTransformador');
-            let seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'all';
-            params.append('seccion', seccionVal);
+            const seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'all';
             console.log("🔌 Alimentadores:", selectedFeed, "=> seccion:", seccionVal);
-            
-            const yearSel = document.getElementById('filterYear');
+
             const years = this.getSelectedValues('filterYear');
-            const anioVal = years.length ? years.join(',') : (yearSel?.value || 'all');
-            params.append('anio', anioVal);
+            const anioVal = years.length ? years.join(',') : 'all';
             console.log("📅 Años:", years);
 
             let mesVal = 'all';
-            let periodoVal = null;
             if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
                 mesVal = Array.from(this.selectedMonths).join(',');
                 console.log("📆 Meses seleccionados:", Array.from(this.selectedMonths));
-            } else if (this.filters.periodo && this.filters.periodo !== 'select_months') {
-                periodoVal = this.filters.periodo;
-                console.log("📆 Período:", this.filters.periodo);
-            } else {
-                console.log("📆 Meses: todos");
             }
 
-            const tipoSel = document.getElementById('filterTipoMedicion');
+            const periodoVal = (this.filters.periodo && this.filters.periodo !== 'select_months')
+                ? this.filters.periodo
+                : null;
+            if (periodoVal) {
+                console.log("📆 Período:", periodoVal);
+            }
+
             const tipos = this.getSelectedValues('filterTipoMedicion');
-            const tipoVal = tipos.length ? tipos.join(',') : (tipoSel?.value || 'all');
-            params.append('tipo_medicion', tipoVal);
+            const tipoVal = tipos.length ? tipos.join(',') : 'all';
             console.log("📊 Tipos:", tipos);
-            
-            let url = `${this.apiBaseUrl}/api/datos?${params}`;
-            console.log("🌐 URL:", url);
+
+            const payload = {
+                seccion: seccionVal,
+                anio: anioVal,
+                tipo_medicion: tipoVal
+            };
+            if (mesVal !== 'all') payload.mes = mesVal;
+            if (periodoVal) payload.periodo = periodoVal;
+
+            console.log("📦 Payload enviado:", payload);
 
             let res;
             try {
-                res = await fetch(url);
+                res = await fetch(`${this.apiBaseUrl}/api/datos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
             } catch (fetchErr) {
-                const isNetworkSuspended = String(fetchErr?.message || '').includes('Failed to fetch');
-                if (isNetworkSuspended && seccionVal !== 'all') {
-                    console.warn('⚠️ Reintentando carga con seccion=all por posible URL extensa');
-                    params.set('seccion', 'all');
-                    url = `${this.apiBaseUrl}/api/datos?${params}`;
-                    console.log("🌐 URL (retry):", url);
+                const errMsg = String(fetchErr?.message || '');
+                const isTransportError =
+                    errMsg.includes('Failed to fetch') ||
+                    errMsg.includes('NetworkError') ||
+                    errMsg.includes('ERR_NETWORK_IO_SUSPENDED');
+
+                if (!isTransportError) throw fetchErr;
+
+                console.warn('⚠️ POST /api/datos falló por transporte, fallback a GET', fetchErr);
+
+                const params = new URLSearchParams();
+                params.set('seccion', payload.seccion || 'all');
+                params.set('anio', payload.anio || 'all');
+                params.set('tipo_medicion', payload.tipo_medicion || 'all');
+                if (payload.mes) params.set('mes', payload.mes);
+                if (payload.periodo) params.set('periodo', payload.periodo);
+
+                let url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
+                try {
                     res = await fetch(url);
-                } else {
-                    throw fetchErr;
+                } catch (getErr) {
+                    if ((String(getErr?.message || '').includes('Failed to fetch')) && params.get('seccion') !== 'all') {
+                        console.warn('⚠️ Reintentando GET con seccion=all por posible URL extensa');
+                        params.set('seccion', 'all');
+                        url = `${this.apiBaseUrl}/api/datos?${params.toString()}`;
+                        res = await fetch(url);
+                    } else {
+                        throw getErr;
+                    }
                 }
             }
+
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             console.log(`✅ Datos recibidos: ${data.length} registros`);
 
             this.data = data;
             this.filteredData = [...this.data];
-            
+
             this.showLoading(true, "Procesando datos...", 70);
-            
+
             if (this.data.length === 0) {
                 this.showNotification("No hay datos con los filtros actuales", "warning");
                 this.clearChartsAndTable();
@@ -1722,13 +1758,12 @@ class ANDEDashboard {
                 this.updateKPIs();
                 await this.refreshFepDepTotals();
                 this.updateSpecialKPIs();
-                
-                // Actualizar gráficos con animaciones
+
                 this.updateCharts();
                 this.updateScatterChart();
                 this.updatePieCharts();
                 this.updateStationSummary();
-                
+
                 this.pagination.currentPage = 1;
                 this.updateTable();
                 this.updateComparisonTags();
@@ -1739,10 +1774,13 @@ class ANDEDashboard {
             this.showNotification(`Error: ${error.message}`, "error");
             this.clearChartsAndTable();
             this.renderFepDepTotals(0, 0);
-        } finally { 
-            this.showLoading(false); 
+        } finally {
+            this.isLoadingData = false;
+            this.showLoading(false);
         }
     }
+
+
 
     
     // ========== KPIS ESPECIALES ==========
@@ -2982,7 +3020,16 @@ class ANDEDashboard {
     }
     
     startLiveUpdates() {
-        setInterval(() => { if (this.serverConnected) { console.log("🔄 Actualización automática"); this.loadData(); this.loadCargas(); } }, 300000);
+        if (this.liveUpdatesIntervalId) clearInterval(this.liveUpdatesIntervalId);
+        this.liveUpdatesIntervalId = setInterval(() => {
+            if (!this.serverConnected) return;
+            if (typeof document !== 'undefined' && document.hidden) return;
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+            if (this.isLoadingData) return;
+            console.log("🔄 Actualización automática");
+            this.loadData();
+            this.loadCargas();
+        }, 300000);
     }
     
     formatValue(v) {
