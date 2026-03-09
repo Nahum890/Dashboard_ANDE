@@ -47,6 +47,8 @@ class ANDEDashboard {
         this.isInitialLoad = true;
         this.serverConnected = false;
         this.currentStationGroup = null;
+        this.isLoadingData = false;
+        this.liveUpdatesIntervalId = null;
         
         // ---------- PROPIEDADES PARA FILTRO INTELIGENTE ----------
         this.selectionMode = 'compare_stations';
@@ -1653,6 +1655,12 @@ class ANDEDashboard {
     
     // ========== CARGA DE DATOS ==========
     async loadData() {
+        if (this.isLoadingData) {
+            console.log("⏳ loadData en progreso, se omite llamada duplicada");
+            return;
+        }
+
+        this.isLoadingData = true;
         console.log("📥 Iniciando carga de datos...");
         this.showLoading(true, "Cargando datos desde el servidor...", null);
         try {
@@ -2994,7 +3002,16 @@ class ANDEDashboard {
     }
     
     startLiveUpdates() {
-        setInterval(() => { if (this.serverConnected) { console.log("🔄 Actualización automática"); this.loadData(); this.loadCargas(); } }, 300000);
+        if (this.liveUpdatesIntervalId) clearInterval(this.liveUpdatesIntervalId);
+        this.liveUpdatesIntervalId = setInterval(() => {
+            if (!this.serverConnected) return;
+            if (typeof document !== 'undefined' && document.hidden) return;
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+            if (this.isLoadingData) return;
+            console.log("🔄 Actualización automática");
+            this.loadData();
+            this.loadCargas();
+        }, 300000);
     }
     
     formatValue(v) {
