@@ -1048,11 +1048,31 @@ class ANDEDashboard {
         } catch (e) { console.error("Error cargando tipos:", e); }
     }
     
+    sanitizeFeederName(value) {
+        const raw = String(value || '').trim().toUpperCase();
+        if (!raw) return '';
+        let normalized = raw.replace(/\s+/g, ' ');
+        normalized = normalized.replace(/\b([A-Z]{2,})\s+(\d+[A-Z0-9]*)\b/g, '$1$2');
+        if (!/\d/.test(normalized)) return '';
+        if (!/^[A-Z]{2,}\d+[A-Z0-9]*$/.test(normalized)) return '';
+        return normalized;
+    }
+
+    normalizeSeccionesList(secciones) {
+        const unique = new Set();
+        (Array.isArray(secciones) ? secciones : []).forEach((s) => {
+            const normalized = this.sanitizeFeederName(s);
+            if (normalized) unique.add(normalized);
+        });
+        return Array.from(unique).sort((a, b) => a.localeCompare(b, 'es'));
+    }
+
     async loadSeccionesDisponibles() {
         console.log("📥 Cargando secciones...");
         try {
             const res = await fetch(`${this.apiBaseUrl}/api/secciones`);
-            const secciones = await res.json();
+            const seccionesRaw = await res.json();
+            const secciones = this.normalizeSeccionesList(seccionesRaw);
             this.allSecciones = secciones;
             
             const estacionesSet = new Set(secciones.map(s => s.substring(0,3)).filter(s => s.length === 3));
@@ -1461,7 +1481,17 @@ class ANDEDashboard {
                 const estCompareSel = document.getElementById('filterEstacionCompare');
                 if (estCompareSel) estCompareSel.value = '';
                 this.filterFeedersByStation('');
-                Array.from(feedSel.options).forEach(opt => opt.selected = true);
+
+                const preferredFeeder = 'ACY1';
+                const hasPreferred = Array.from(feedSel.options).some(opt => opt.value === preferredFeeder);
+                const feederToSelect = hasPreferred
+                    ? preferredFeeder
+                    : (feedSel.options[0]?.value || null);
+
+                Array.from(feedSel.options).forEach(opt => {
+                    opt.selected = feederToSelect ? opt.value === feederToSelect : false;
+                });
+
                 this.updateFeederCount();
             }
             
