@@ -4,9 +4,7 @@ console.log("🚀 Dashboard ANDE v6.2 iniciando (HD + Animaciones CORREGIDAS)...
 class ANDEDashboard {
     constructor() {
         console.log("🔧 Constructor llamado");
-        this.apiBaseUrl = window.location.hostname === 'localhost' 
-            ? 'http://localhost:10000'
-            : window.location.origin;
+        this.apiBaseUrl = window.location.origin;
         this.data = [];
         this.filteredData = [];
         this.mainChart = null;
@@ -48,7 +46,17 @@ class ANDEDashboard {
         this.serverConnected = false;
         this.currentStationGroup = null;
         this.isLoadingData = false;
+        this.isLoadingCargas = false;
         this.liveUpdatesIntervalId = null;
+        
+        // ---------- NETWORK RESILIENCE ----------
+        this._initializeComplete = false;
+        this._requestCounter = 0;
+        this._circuitFailures = 0;
+        this._circuitOpenUntil = 0;
+        this._lastCircuitReset = Date.now();
+        this._loadDataController = null;
+        this._lastSuccessfulLoad = 0;
         
         // ---------- PROPIEDADES PARA FILTRO INTELIGENTE ----------
         this.selectionMode = 'compare_stations';
@@ -83,14 +91,168 @@ class ANDEDashboard {
         };
     }
 
-    async fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-            return await fetch(url, { ...options, signal: controller.signal });
-        } finally {
-            clearTimeout(timeoutId);
+    // ========== CENTRALIZED NETWORK LAYER ==========
+    _nextRequestId() { return `req-${++this._requestCounter}`; }
+
+    _isCircuitOpen() {
+        if (Date.now() > this._lastCircuitReset + 30000) {
+            this._circuitFailures = 0;
+            this._lastCircuitReset = Date.now();
         }
+        return this._circuitFailures >= 5 && Date.now() < this._circuitOpenUntil;
+    }
+
+    _recordCircuitFailure() {
+        this._circuitFailures++;
+        if (this._circuitFailures >= 5) {
+            this._circuitOpenUntil = Date.now() + 10000;
+            this._showConnectionBanner(true);
+        }
+    }
+
+    _recordCircuitSuccess() {
+        this._circuitFailures = 0;
+        this._showConnectionBanner(false);
+    }
+
+    _showConnectionBanner(show) {
+        let banner = document.getElementById('connectionBanner');
+        if (show && !banner) {
+            banner = document.createElement('div');
+            banner.id = 'connectionBanner';
+            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;background:linear-gradient(90deg,#f59e0b,#ef4444);color:#fff;text-align:center;padding:8px 16px;font-size:0.9rem;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;gap:8px;';
+            banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Conexión interrumpida. Reintentando...';
+            document.body.prepend(banner);
+        } else if (!show && banner) {
+            banner.remove();
+        }
+    }
+
+    /**
+     * Centralized JSON request with retry, backoff, timeout, circuit-breaker, and logging.
+     * @param {string} url
+     * @param {RequestInit} options
+     * @param {{ timeoutMs?: number, retries?: number, backoffMs?: number, label?: string, signal?: AbortSignal }} config
+     * @returns {Promise<any>} parsed JSON
+     */
+    async requestJson(url, options = {}, config = {}) {
+        const { timeoutMs = 15000, retries = 3, backoffMs = 1000, label = 'request', signal: externalSignal } = config;
+        const reqId = this._nextRequestId();
+
+        if (this._isCircuitOpen()) {
+            console.warn(`⚡ [${reqId}][${label}] CIRCUIT_OPEN — skipping request (cooldown until ${new Date(this._circuitOpenUntil).toLocaleTimeString()})`);
+            throw Object.assign(new Error('Circuit breaker open — server unreachable'), { code: 'CIRCUIT_OPEN' });
+        }
+
+        let lastError;
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            if (externalSignal?.aborted) {
+                console.log(`🚫 [${reqId}][${label}] ABORTED before attempt ${attempt}`);
+                throw Object.assign(new Error('Request aborted'), { code: 'ABORTED' });
+            }
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+            // Link external signal to internal controller
+            const onExternalAbort = () => controller.abort();
+            if (externalSignal) externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+
+            const t0 = performance.now();
+            if (attempt === 0) {
+                console.log(`🌐 [${reqId}][${label}] START ${options.method || 'GET'} ${url}`);
+            } else {
+                console.log(`🔄 [${reqId}][${label}] RETRY ${attempt}/${retries}`);
+            }
+
+            try {
+                const res = await fetch(url, { ...options, signal: controller.signal });
+                clearTimeout(timeoutId);
+                if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+
+                const elapsed = (performance.now() - t0).toFixed(0);
+
+                if (!res.ok) {
+                    // 4xx → don't retry (client error), 5xx → retry
+                    if (res.status >= 400 && res.status < 500) {
+                        console.error(`❌ [${reqId}][${label}] HTTP ${res.status} ${elapsed}ms — not retrying (client error)`);
+                        throw Object.assign(new Error(`HTTP ${res.status}`), { code: 'HTTP_CLIENT', status: res.status });
+                    }
+                    lastError = new Error(`HTTP ${res.status}`);
+                    lastError.code = 'HTTP_SERVER';
+                    lastError.status = res.status;
+                    console.warn(`⚠️ [${reqId}][${label}] HTTP ${res.status} ${elapsed}ms — will retry`);
+                    this._recordCircuitFailure();
+                    // fall through to backoff
+                } else {
+                    const data = await res.json();
+                    console.log(`✅ [${reqId}][${label}] OK ${elapsed}ms (${Array.isArray(data) ? data.length + ' items' : 'object'})`);
+                    this._recordCircuitSuccess();
+                    return data;
+                }
+            } catch (err) {
+                clearTimeout(timeoutId);
+                if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+
+                if (err.code === 'HTTP_CLIENT') throw err;
+                if (err.code === 'ABORTED' || externalSignal?.aborted) {
+                    console.log(`🚫 [${reqId}][${label}] ABORTED ${(performance.now() - t0).toFixed(0)}ms`);
+                    throw Object.assign(new Error('Request aborted'), { code: 'ABORTED' });
+                }
+                if (err.name === 'AbortError') {
+                    // Could be timeout or external abort
+                    if (externalSignal?.aborted) {
+                        console.log(`🚫 [${reqId}][${label}] ABORTED (external) ${(performance.now() - t0).toFixed(0)}ms`);
+                        throw Object.assign(new Error('Request aborted'), { code: 'ABORTED' });
+                    }
+                    lastError = Object.assign(new Error(`Timeout after ${timeoutMs}ms`), { code: 'TIMEOUT' });
+                    console.warn(`⏰ [${reqId}][${label}] TIMEOUT ${timeoutMs}ms`);
+                } else {
+                    lastError = Object.assign(new Error(err.message || 'Network error'), { code: 'TRANSPORT', originalError: err });
+                    console.warn(`🔌 [${reqId}][${label}] TRANSPORT ERROR: ${err.message}`);
+                }
+                this._recordCircuitFailure();
+            }
+
+            // Backoff before next attempt
+            if (attempt < retries) {
+                const jitter = 1 + (Math.random() - 0.5) * 0.5; // ±25%
+                const delay = Math.min(backoffMs * Math.pow(2, attempt) * jitter, 15000);
+                console.log(`⏳ [${reqId}][${label}] Waiting ${delay.toFixed(0)}ms before retry...`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+        }
+
+        console.error(`💀 [${reqId}][${label}] FAILED after ${retries + 1} attempts: ${lastError?.message}`);
+        throw lastError;
+    }
+
+    _setupConnectivityListeners() {
+        window.addEventListener('online', () => {
+            console.log('🌐 [connectivity] Back online');
+            this._showConnectionBanner(false);
+            this._circuitFailures = 0;
+            if (this._initializeComplete) {
+                this.showNotification('Conexión restaurada. Actualizando datos...', 'success');
+                this.loadData();
+            }
+        });
+
+        window.addEventListener('offline', () => {
+            console.log('📴 [connectivity] Went offline');
+            this._showConnectionBanner(true);
+            this.showNotification('Sin conexión a internet', 'warning');
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+            if (!this._initializeComplete) return;
+            const staleMs = Date.now() - this._lastSuccessfulLoad;
+            if (staleMs > 5 * 60 * 1000) {
+                console.log(`👁️ [visibility] Tab visible, data stale (${(staleMs / 1000).toFixed(0)}s). Refreshing...`);
+                this.loadData();
+            }
+        });
     }
     
     // ========== MÉTODOS DE UTILIDAD ==========
@@ -222,16 +384,44 @@ class ANDEDashboard {
     async verificarServidor() {
         console.log("🔍 Verificando servidor...");
         try {
-            const res = await fetch(`${this.apiBaseUrl}/api/health`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            // Fast connectivity check: simple fetch with short timeout (no DB dependency)
+            const controller = new AbortController();
+            const tid = setTimeout(() => controller.abort(), 5000);
+            try {
+                const pingRes = await fetch(`${this.apiBaseUrl}/api/health`, {
+                    signal: controller.signal
+                });
+                clearTimeout(tid);
+                if (pingRes.ok) {
+                    this.serverConnected = true;
+                    console.log("✅ Servidor conectado (health OK)");
+                    return true;
+                }
+            } catch (pingErr) {
+                clearTimeout(tid);
+                // If page was served from same origin, server IS running
+                // The health endpoint might just be slow (DB init)
+                if (window.location.origin === this.apiBaseUrl) {
+                    console.warn("⚠️ Health check lento, pero la página se sirvió del mismo origen. Continuando...");
+                    this.serverConnected = true;
+                    return true;
+                }
+                // Otherwise retry with longer timeout
+                console.warn("⚠️ Ping rápido falló, intentando con reintentos...", pingErr.message);
+            }
+
+            // Fallback: retry with longer timeout for remote/slow servers
+            await this.requestJson(`${this.apiBaseUrl}/api/health`, {}, {
+                retries: 3, backoffMs: 2000, timeoutMs: 30000, label: 'health'
+            });
             this.serverConnected = true;
             console.log("✅ Servidor conectado");
             return true;
         } catch (e) {
             this.serverConnected = false;
-            console.error("❌ Error de conexión:", e);
+            console.error("❌ Error de conexión tras reintentos:", e);
             this.showErrorInOverlay(
-                "No se pudo conectar al servidor. Verifica que esté ejecutándose en el puerto 10000.",
+                "No se pudo conectar al servidor. Verifica que esté ejecutándose.",
                 () => this.initialize()
             );
             return false;
@@ -241,12 +431,12 @@ class ANDEDashboard {
     async verificarEstadoBD() {
         console.log("🔍 Verificando base de datos...");
         try {
-            const res = await fetch(`${this.apiBaseUrl}/api/verificar-datos`);
-            const data = await res.json();
+            const data = await this.requestJson(`${this.apiBaseUrl}/api/verificar-datos`, {}, {
+                retries: 1, timeoutMs: 30000, label: 'verificar-bd'
+            });
             console.log("📊 Estado BD:", data);
             if (!data.tabla_existe || data.total_registros === 0) {
                 this.showNotification("Base de datos vacía. Sube un archivo Excel para comenzar.", "warning");
-                return true;
             }
             return true;
         } catch {
@@ -258,35 +448,69 @@ class ANDEDashboard {
     // ========== INICIALIZACIÓN ==========
     async initialize() {
         console.log("🔧 Inicializando dashboard...");
+        this._initializeComplete = false;
         try {
+            // Step 0: Health check with retries
             this.showLoading(true, "Conectando con el servidor...", 10);
             if (!await this.verificarServidor()) return;
+
+            // Step 1: Verify DB
             this.showLoading(true, "Verificando base de datos...", 30);
             await this.verificarEstadoBD();
+
+            // Step 2: Init charts & event listeners (synchronous)
             this.showLoading(true, "Inicializando gráficos HD...", 50);
             this.initCharts();
             this.showLoading(true, "Configurando filtros...", 60);
             this.setupEventListeners();
+            this._setupConnectivityListeners();
+
+            // Step 3: Load metadata in parallel (partial failure is tolerable)
             this.showLoading(true, "Cargando metadatos...", 70);
-            await this.loadTiposMedicion();
-            await this.loadSeccionesDisponibles();
-            await this.loadYearsAvailable();
+            const metaResults = await Promise.allSettled([
+                this.loadTiposMedicion(),
+                this.loadSeccionesDisponibles(),
+                this.loadYearsAvailable()
+            ]);
+            metaResults.forEach((r, i) => {
+                if (r.status === 'rejected') {
+                    const names = ['tipos-medicion', 'secciones', 'anios'];
+                    console.warn(`⚠️ Metadata '${names[i]}' failed: ${r.reason?.message}`);
+                }
+            });
+
+            // Step 4: Apply default filter values
             this.showLoading(true, "Aplicando valores por defecto...", 80);
             this.setDefaultFilterValues();
+
+            // Step 5: Load data sequentially
             this.showLoading(true, "Cargando datos...", 90);
             await this.loadData();
+
+            // Step 6: Load cargas sequentially (no setTimeout)
             this.showLoading(true, "Cargando historial...", 95);
-            setTimeout(() => this.loadCargas(), 1000);
+            await this.loadCargas();
+
+            // Step 7: Mark init complete and start background tasks
+            this._initializeComplete = true;
             this.updateTime();
             this.startLiveUpdates();
             this.showLoading(false);
             this.showNotification("Dashboard cargado correctamente ✨", "success");
         } catch (error) {
             console.error("❌ Error inicializando:", error);
-            this.showErrorInOverlay(
-                `Error al cargar el dashboard: ${error.message || 'Error desconocido'}`,
-                () => this.initialize()
-            );
+            // Don't wipe UI if we have partial data
+            if (this.data.length === 0) {
+                this.showErrorInOverlay(
+                    `Error al cargar el dashboard: ${error.message || 'Error desconocido'}`,
+                    () => this.initialize()
+                );
+            } else {
+                this.showLoading(false);
+                this.showNotification(`Inicio parcial: ${error.message}. Los datos previos se mantienen.`, 'warning');
+                this._initializeComplete = true;
+                this.startLiveUpdates();
+            }
         } finally {
             this.isInitialLoad = false;
         }
@@ -907,9 +1131,30 @@ class ANDEDashboard {
             this.updateStationSummary();
         });
         
-        this.safeAddEventListener('expandRankingBtn', 'click', () => {
-            console.log("🖱️ Ver ranking completo");
-            this.expandRankingChart();
+        // Header Buttons Navigation & Export
+        this.safeAddEventListener('goToExcelUpload', 'click', () => {
+            console.log("🖱️ Scroll a Carga Excel");
+            document.querySelector('.excel-upload').scrollIntoView({ behavior: 'smooth' });
+        });
+        this.safeAddEventListener('exportData', 'click', () => {
+            console.log("🖱️ Generando Exportación JSON");
+            this.exportToJSON();
+        });
+        this.safeAddEventListener('fullscreenToggle', 'click', () => {
+            this.toggleFullscreen();
+        });
+        this.safeAddEventListener('toggleLegend', 'click', () => {
+            if (this.mainChart) {
+                const currentDisplay = this.mainChart.options.plugins.legend.display;
+                this.mainChart.options.plugins.legend.display = !currentDisplay;
+                this.mainChart.update();
+                
+                // Toggle also the custom legend if it exists
+                const customLegend = document.getElementById('mainChartLegend');
+                if (customLegend) {
+                    customLegend.style.display = currentDisplay ? 'none' : 'flex';
+                }
+            }
         });
         this.safeAddEventListener('stationSummarySelect', 'change', (e) => {
             this.stationSummarySelection = e.target.value || '__ALL__';
@@ -979,6 +1224,56 @@ class ANDEDashboard {
         });
     }
     
+    // ========== HERRAMIENTAS DE HEADER ==========
+    exportToJSON() {
+        if (!this.filteredData || this.filteredData.length === 0) {
+            this.showNotification('No hay datos para exportar', 'warning');
+            return;
+        }
+        
+        try {
+            const dataStr = JSON.stringify(this.filteredData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ande_export_${new Date().getTime()}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            this.showNotification('Datos exportados exitosamente a JSON', 'success');
+        } catch (e) {
+            console.error("Error al exportar:", e);
+            this.showNotification('Error al exportar datos', 'error');
+        }
+    }
+
+    toggleFullscreen() {
+        const doc = window.document;
+        const docEl = doc.documentElement;
+
+        const requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+        const cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+
+        if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+            if (requestFullScreen) {
+                requestFullScreen.call(docEl);
+                this.showNotification('Modo pantalla completa activado', 'info');
+            }
+        } else {
+            if (cancelFullScreen) {
+                cancelFullScreen.call(doc);
+                this.showNotification('Modo pantalla completa desactivado', 'info');
+            }
+        }
+        
+        // Wait a bit to resize charts as the window size changes
+        setTimeout(() => this.resizeAllCharts(), 300);
+    }
+    
     // ========== PESTAÑAS DE PERÍODO ==========
     onPeriodTabClick(e) {
         const tab = e.currentTarget;
@@ -1037,8 +1332,9 @@ class ANDEDashboard {
     async loadTiposMedicion() {
         console.log("📥 Cargando tipos de medición...");
         try {
-            const res = await fetch(`${this.apiBaseUrl}/api/tipos-medicion`);
-            const tipos = await res.json();
+            const tipos = await this.requestJson(`${this.apiBaseUrl}/api/tipos-medicion`, {}, {
+                retries: 2, timeoutMs: 10000, label: 'meta-tipos'
+            });
             const select = document.getElementById('filterTipoMedicion');
             if (select) {
                 select.innerHTML = '<option value="all">Todos los tipos</option>' + 
@@ -1070,8 +1366,9 @@ class ANDEDashboard {
     async loadSeccionesDisponibles() {
         console.log("📥 Cargando secciones...");
         try {
-            const res = await fetch(`${this.apiBaseUrl}/api/secciones`);
-            const seccionesRaw = await res.json();
+            const seccionesRaw = await this.requestJson(`${this.apiBaseUrl}/api/secciones`, {}, {
+                retries: 2, timeoutMs: 10000, label: 'meta-secciones'
+            });
             const secciones = this.normalizeSeccionesList(seccionesRaw);
             this.allSecciones = secciones;
             
@@ -1081,12 +1378,6 @@ class ANDEDashboard {
             const estSel = document.getElementById('filterEstacion');
             if (estSel) {
                 estSel.innerHTML = '<option value="">Todas las estaciones</option>' + 
-                    this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
-            }
-
-            const estCompareSel = document.getElementById('filterEstacionCompare');
-            if (estCompareSel) {
-                estCompareSel.innerHTML = '<option value="">Selecciona estación 2</option>' +
                     this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
             }
 
@@ -1108,8 +1399,9 @@ class ANDEDashboard {
     async loadYearsAvailable() {
         console.log("📥 Cargando años...");
         try {
-            const res = await fetch(`${this.apiBaseUrl}/api/anios`);
-            const years = await res.json();
+            const years = await this.requestJson(`${this.apiBaseUrl}/api/anios`, {}, {
+                retries: 2, timeoutMs: 10000, label: 'meta-anios'
+            });
             const select = document.getElementById('filterYear');
             if (select) {
                 select.innerHTML = '<option value="all">Todos los años</option>' + 
@@ -1125,7 +1417,7 @@ class ANDEDashboard {
         this.setupFeederModeTabs();
         this.setupFeederEventListeners();
         this.updateFeederCount();
-        this.setFeederMode('compare_stations');
+        this.setFeederMode('manual');
         this.renderStationSelectors();
         this.updateComparisonUiByGlobalMode();
     }
@@ -1145,12 +1437,6 @@ class ANDEDashboard {
         const estSel = document.getElementById('filterEstacion');
         if (estSel) {
             estSel.innerHTML = '<option value="">Todas las estaciones</option>' +
-                this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
-        }
-
-        const estCompareSel = document.getElementById('filterEstacionCompare');
-        if (estCompareSel) {
-            estCompareSel.innerHTML = '<option value="">Selecciona estación 2</option>' +
                 this.estaciones.map(e => `<option value="${e}">${e}</option>`).join('');
         }
     }
@@ -1181,21 +1467,34 @@ class ANDEDashboard {
             container.appendChild(wrap);
         }
 
-        container.querySelectorAll('.station-dynamic-select').forEach((sel, i) => {
-            if (prev[i]) sel.value = prev[i];
-            sel.addEventListener('change', () => {
-                this.selectedStations = this.getSelectedStations();
-                if (this.selectionMode === 'manual') {
-                    const first = this.selectedStations[0] || '';
-                    this.currentStationFilter = first;
-                    this.filterFeedersByStation(first);
-                } else if (this.selectionMode === 'station_multi') {
-                    this.selectStationsFeeders();
-                }
+        const feederSearch = document.getElementById('feederSearch');
+        if (feederSearch) {
+            feederSearch.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const feedSel = document.getElementById('filterTransformador');
+                if (!feedSel) return;
+                
+                let foundMatch = false;
+                Array.from(feedSel.options).forEach(opt => {
+                    const text = opt.textContent.toLowerCase();
+                    const visible = text.includes(searchTerm);
+                    opt.style.display = visible ? '' : 'none';
+                    if (visible) foundMatch = true;
+                });
+                
+                // Si la búsqueda es fuerte y solo hay 1-2 visibles, podríamos auto-seleccionar,
+                // por ahora solo filtramos visualmente.
             });
-        });
+        }
 
-        this.selectedStations = this.getSelectedStations();
+        const openMultiBtn = document.getElementById('openStationMultiBtn');
+        if (openMultiBtn) {
+            openMultiBtn.addEventListener('click', () => {
+                this.setFeederMode('station_multi');
+            });
+        }
+
+        this.setupFeederModeTabs();
     }
 
     getSelectedStations() {
@@ -1211,15 +1510,10 @@ class ANDEDashboard {
         tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
 
         const stationSelectorContainer = document.getElementById('stationSelectorContainer');
-        const compareStationContainer = document.getElementById('compareStationContainer');
         const stationMultiContainer = document.getElementById('stationMultiContainer');
 
         if (stationSelectorContainer) {
-            stationSelectorContainer.style.display = (mode === 'manual' || mode === 'compare_stations') ? 'block' : 'none';
-        }
-
-        if (compareStationContainer) {
-            compareStationContainer.style.display = mode === 'compare_stations' ? 'block' : 'none';
+            stationSelectorContainer.style.display = mode === 'manual' ? 'block' : 'none';
         }
 
         if (stationMultiContainer) {
@@ -1228,18 +1522,6 @@ class ANDEDashboard {
 
         if (mode === 'all') this.selectAllFeeders();
         if (mode === 'station' && this.currentStationFilter) this.selectStationFeeders(this.currentStationFilter);
-        if (mode === 'compare_stations') {
-            const estSel = document.getElementById('filterEstacion');
-            const estCompareSel = document.getElementById('filterEstacionCompare');
-            const available = this.estaciones || [];
-            if (available.length) {
-                if (estSel && !estSel.value) estSel.value = available[0];
-                if (estCompareSel && !estCompareSel.value) estCompareSel.value = available[1] || available[0];
-                this.currentStationFilter = estSel?.value || this.currentStationFilter;
-                this.currentStationCompare = estCompareSel?.value || this.currentStationCompare;
-            }
-            this.selectComparisonStationsFeeders();
-        }
 
         this.updateFeederModeHint();
     }
@@ -1251,7 +1533,6 @@ class ANDEDashboard {
             manual: 'Filtra los alimentadores por estación y selecciona manualmente con Ctrl+Click.',
             station: 'Al seleccionar una estación, se marcarán automáticamente todos sus alimentadores.',
             station_multi: 'Define cuántas estaciones comparar y elige cada una para seleccionar sus alimentadores automáticamente.',
-            compare_stations: 'Selecciona 2 estaciones para comparar sus alimentadores en conjunto.',
             all: 'Modo "Todos los alimentadores" – se muestran y seleccionan todos.'
         };
         hint.innerHTML = `<i class="fas fa-info-circle"></i> ${texts[this.selectionMode] || texts.manual}`;
@@ -1264,22 +1545,7 @@ class ANDEDashboard {
                 const estacion = e.target.value;
                 console.log("🔄 Estación 1 seleccionada:", estacion);
                 this.currentStationFilter = estacion;
-
-                if (this.selectionMode === 'compare_stations') {
-                    this.selectComparisonStationsFeeders();
-                } else {
-                    this.filterFeedersByStation(estacion);
-                }
-            });
-        }
-
-        const estacionCompareSelect = document.getElementById('filterEstacionCompare');
-        if (estacionCompareSelect) {
-            estacionCompareSelect.addEventListener('change', (e) => {
-                const estacion = e.target.value;
-                console.log("🔄 Estación 2 seleccionada:", estacion);
-                this.currentStationCompare = estacion;
-                if (this.selectionMode === 'compare_stations') this.selectComparisonStationsFeeders();
+                this.filterFeedersByStation(estacion);
             });
         }
 
@@ -1386,41 +1652,7 @@ class ANDEDashboard {
         if (this.globalMode === 'unique') this.loadDataDebounced();
     }
 
-    selectComparisonStationsFeeders() {
-        const stationOne = document.getElementById('filterEstacion')?.value || '';
-        const stationTwo = document.getElementById('filterEstacionCompare')?.value || '';
 
-        this.currentStationFilter = stationOne;
-        this.currentStationCompare = stationTwo;
-
-        const selectedStations = [stationOne, stationTwo].filter(Boolean);
-        const feederSelect = document.getElementById('filterTransformador');
-        if (!feederSelect) return;
-
-        if (selectedStations.length === 0) {
-            this.filterFeedersByStation('');
-            Array.from(feederSelect.options).forEach(opt => opt.selected = false);
-            this.updateFeederCount();
-            this.showNotification('Selecciona al menos una estación para comparar', 'warning');
-            return;
-        }
-
-        const feeders = this.allSecciones.filter(feeder => selectedStations.some(st => feeder.startsWith(st)));
-        feederSelect.innerHTML = '';
-
-        feeders.forEach(feeder => {
-            const option = document.createElement('option');
-            option.value = feeder;
-            option.textContent = feeder;
-            option.selected = true;
-            feederSelect.appendChild(option);
-        });
-
-        this.updateFeederCount();
-        const stationLabel = selectedStations.join(' vs ');
-        this.showNotification(`Comparando estaciones: ${stationLabel}`, 'success');
-        if (this.globalMode === 'unique') this.loadDataDebounced();
-    }
 
     clearFeeders() {
         console.log("🧹 Limpiando selección de alimentadores");
@@ -1455,56 +1687,52 @@ class ANDEDashboard {
         });
         this.filters.periodo = 'select_months';
         
-        setTimeout(() => {
-            const setSelect = (id, defaultValue = null) => {
-                const el = document.getElementById(id);
-                if (el && el.options.length) {
-                    if (defaultValue && Array.from(el.options).find(opt => opt.value === defaultValue)) el.value = defaultValue;
-                    else if (el.options.length > 0) el.value = el.options[0].value;
-                }
-            };
-
-            const yearSelect = document.getElementById('filterYear');
-            if (yearSelect && yearSelect.options.length > 0) {
-                const yearValues = Array.from(yearSelect.options)
-                    .map(opt => Number(opt.value))
-                    .filter(Number.isFinite);
-                const latestYear = yearValues.length ? String(Math.max(...yearValues)) : null;
-                setSelect('filterYear', latestYear);
+        const setSelect = (id, defaultValue = null) => {
+            const el = document.getElementById(id);
+            if (el && el.options.length) {
+                if (defaultValue && Array.from(el.options).find(opt => opt.value === defaultValue)) el.value = defaultValue;
+                else if (el.options.length > 0) el.value = el.options[0].value;
             }
-            setSelect('filterTipoMedicion', 'TOTAL FEP');
-            
-            const feedSel = document.getElementById('filterTransformador');
-            if (feedSel) {
-                const estSel = document.getElementById('filterEstacion');
-                if (estSel) estSel.value = '';
-                const estCompareSel = document.getElementById('filterEstacionCompare');
-                if (estCompareSel) estCompareSel.value = '';
-                this.filterFeedersByStation('');
+        };
 
-                const preferredFeeder = 'ACY1';
-                const hasPreferred = Array.from(feedSel.options).some(opt => opt.value === preferredFeeder);
-                const feederToSelect = hasPreferred
-                    ? preferredFeeder
-                    : (feedSel.options[0]?.value || null);
+        const yearSelect = document.getElementById('filterYear');
+        if (yearSelect && yearSelect.options.length > 0) {
+            const yearValues = Array.from(yearSelect.options)
+                .map(opt => Number(opt.value))
+                .filter(Number.isFinite);
+            const latestYear = yearValues.length ? String(Math.max(...yearValues)) : null;
+            setSelect('filterYear', latestYear);
+        }
+        setSelect('filterTipoMedicion', 'TOTAL FEP');
+        
+        const feedSel = document.getElementById('filterTransformador');
+        if (feedSel) {
+            const estSel = document.getElementById('filterEstacion');
+            if (estSel) estSel.value = '';
+            this.filterFeedersByStation('');
 
-                Array.from(feedSel.options).forEach(opt => {
-                    opt.selected = feederToSelect ? opt.value === feederToSelect : false;
-                });
+            const preferredFeeder = 'ACY1';
+            const hasPreferred = Array.from(feedSel.options).some(opt => opt.value === preferredFeeder);
+            const feederToSelect = hasPreferred
+                ? preferredFeeder
+                : (feedSel.options[0]?.value || null);
 
-                this.updateFeederCount();
-            }
-            
-            this.filters = {
-                year: [document.getElementById('filterYear')?.value || 'all'],
-                tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'TOTAL FEP'],
-                transformador: this.getSelectedValues('filterTransformador'),
-                month: Array.from(this.selectedMonths),
-                estacion: '',
-                periodo: 'select_months'
-            };
-            console.log("⚙️ Filtros por defecto establecidos:", this.filters);
-        }, 500);
+            Array.from(feedSel.options).forEach(opt => {
+                opt.selected = feederToSelect ? opt.value === feederToSelect : false;
+            });
+
+            this.updateFeederCount();
+        }
+        
+        this.filters = {
+            year: [document.getElementById('filterYear')?.value || 'all'],
+            tipoMedicion: [document.getElementById('filterTipoMedicion')?.value || 'TOTAL FEP'],
+            transformador: this.getSelectedValues('filterTransformador'),
+            month: Array.from(this.selectedMonths),
+            estacion: '',
+            periodo: 'select_months'
+        };
+        console.log("⚙️ Filtros por defecto establecidos:", this.filters);
     }
     
     // ========== MANEJO DE FILTROS GLOBALES ==========
@@ -1522,21 +1750,16 @@ class ANDEDashboard {
     updateComparisonUiByGlobalMode() {
         const tabs = document.querySelector('.selection-mode-tabs');
         const openMultiBtn = document.getElementById('openStationMultiBtn');
-        const compareContainer = document.getElementById('compareStationContainer');
         const stationMultiContainer = document.getElementById('stationMultiContainer');
         const stationSelectorContainer = document.getElementById('stationSelectorContainer');
-        const estCompareSel = document.getElementById('filterEstacionCompare');
 
         if (this.globalMode === 'unique') {
             if (tabs) tabs.style.display = 'none';
             if (openMultiBtn) openMultiBtn.style.display = 'none';
-            if (compareContainer) compareContainer.style.display = 'none';
             if (stationMultiContainer) stationMultiContainer.style.display = 'none';
             if (stationSelectorContainer) stationSelectorContainer.style.display = 'block';
-            if (estCompareSel) estCompareSel.value = '';
 
             this.selectionMode = 'manual';
-            this.currentStationCompare = '';
             this.enforceSingleSelect('filterTransformador');
             this.enforceSingleSelect('filterTipoMedicion');
             this.enforceSingleSelect('filterYear');
@@ -1547,11 +1770,7 @@ class ANDEDashboard {
         if (tabs) tabs.style.display = '';
         if (openMultiBtn) openMultiBtn.style.display = '';
 
-        if (this.selectionMode === 'manual') {
-            this.setFeederMode('compare_stations');
-        } else {
-            this.setFeederMode(this.selectionMode);
-        }
+        this.setFeederMode(this.selectionMode);
     }
 
     setGlobalMode(mode) {
@@ -1695,17 +1914,26 @@ class ANDEDashboard {
     
     // ========== CARGA DE DATOS ==========
     async loadData() {
+        // Cancel previous in-flight request (last-write-wins)
+        if (this._loadDataController) {
+            this._loadDataController.abort();
+            this._loadDataController = null;
+        }
+
         if (this.isLoadingData) {
             console.log("⏳ loadData en progreso, se omite llamada duplicada");
             return;
         }
 
         this.isLoadingData = true;
+        const controller = new AbortController();
+        this._loadDataController = controller;
+
         console.log("📥 Iniciando carga de datos...");
         this.showLoading(true, "Cargando datos desde el servidor...", null);
         try {
             const selectedFeed = this.getSelectedValues('filterTransformador');
-            const seccionVal = selectedFeed.length > 0 ? selectedFeed.join(',') : 'all';
+            const seccionVal = this.resolveSeccionParam(selectedFeed);
             console.log("🔌 Alimentadores:", selectedFeed, "=> seccion:", seccionVal);
 
             const years = this.getSelectedValues('filterYear');
@@ -1740,34 +1968,23 @@ class ANDEDashboard {
 
             console.log("📦 Payload enviado:", payload);
 
-            let res;
-            try {
-                res = await fetch(`${this.apiBaseUrl}/api/datos`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-            } catch (fetchErr) {
-                const isNetworkSuspended = String(fetchErr?.message || '').includes('Failed to fetch');
-                if (isNetworkSuspended && seccionVal !== 'all') {
-                    console.warn('⚠️ Reintentando carga con seccion=all por posible URL extensa');
-                    payload.seccion = 'all';
-                    res = await fetch(`${this.apiBaseUrl}/api/datos`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                } else {
-                    throw fetchErr;
-                }
-            }
+            const data = await this.requestJson(`${this.apiBaseUrl}/api/datos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }, {
+                retries: 3, timeoutMs: 20000, backoffMs: 1000, label: 'datos',
+                signal: controller.signal
+            });
 
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            // If aborted between request and processing, bail out
+            if (controller.signal.aborted) return;
+
             console.log(`✅ Datos recibidos: ${data.length} registros`);
 
             this.data = data;
             this.filteredData = [...this.data];
+            this._lastSuccessfulLoad = Date.now();
 
             this.showLoading(true, "Procesando datos...", 70);
 
@@ -1794,11 +2011,23 @@ class ANDEDashboard {
                 this.showNotification(`${this.data.length} registros cargados ✨`, "success");
             }
         } catch (error) {
+            // Don't treat cancellation as an error
+            if (error.code === 'ABORTED') {
+                console.log("🚫 loadData fue cancelado (nueva solicitud en curso)");
+                return;
+            }
             console.error("❌ Error cargando datos:", error);
-            this.showNotification(`Error: ${error.message}`, "error");
-            this.clearChartsAndTable();
-            this.renderFepDepTotals(0, 0);
+            // Preserve existing data on transient errors
+            if (this.data.length > 0) {
+                this.showNotification(`Error actualizando datos: ${error.message}. Datos anteriores mantenidos.`, "warning");
+            } else {
+                this.showNotification(`Error: ${error.message}`, "error");
+                this.clearChartsAndTable();
+                this.renderFepDepTotals(0, 0);
+            }
         } finally {
+            this.isLoadingData = false;
+            this._loadDataController = null;
             this.showLoading(false);
         }
     }
@@ -2074,54 +2303,7 @@ class ANDEDashboard {
         }
     }
 
-    updateKPIs() {
-        if (!this.data.length) return;
-        const values = this.data
-            .map(d => this.parseNumericValue(d.frecuencia))
-            .filter(v => Number.isFinite(v));
-        if (!values.length) return;
-        const min = Math.min(...values), max = Math.max(...values);
-        const range = max - min;
-        const rangeVal = document.getElementById('rangeValue');
-        if (rangeVal) rangeVal.textContent = range.toFixed(4);
-        const rangeInfo = document.getElementById('rangeInfo');
-        if (rangeInfo) rangeInfo.textContent = `${this.safeToFixed(min)}-${this.safeToFixed(max)}`;
-        
-        if (values.length > 1) {
-            const mean = values.reduce((a,b)=>a+b,0)/values.length;
-            const variance = values.reduce((a,b)=>a+Math.pow(b-mean,2),0)/values.length;
-            const cv = (Math.sqrt(variance)/mean)*100;
-            const varVal = document.getElementById('variabilityValue');
-            if (varVal) varVal.textContent = cv.toFixed(2)+'%';
-            const varBadge = document.getElementById('variabilityBadge');
-            if (varBadge) {
-                varBadge.textContent = cv < 10 ? 'BAJA' : cv < 30 ? 'MEDIA' : 'ALTA';
-                varBadge.style.backgroundColor = cv < 10 ? '#10b981' : cv < 30 ? '#f59e0b' : '#ef4444';
-            }
-        } else if (str.includes(',')) {
-            str = str.replace(',', '.');
-        }
-        
-        const series = {};
-        this.data.forEach(d => {
-            const value = this.parseNumericValue(d.frecuencia);
-            if (!Number.isFinite(value)) return;
-            if (!series[d.combinationKey]) series[d.combinationKey] = { label: d.combinationLabel, vals: [] };
-            series[d.combinationKey].vals.push(value);
-        });
-        let worstKey = null, worstAvg = -Infinity;
-        Object.entries(series).forEach(([k, v]) => {
-            const avg = v.vals.reduce((a,b)=>a+b,0)/v.vals.length;
-            if (avg > worstAvg) { worstAvg = avg; worstKey = k; }
-        });
-        if (worstKey) {
-            const ws = document.getElementById('worstSeries');
-            if (ws) ws.textContent = series[worstKey].label;
-            const wv = document.getElementById('worstValue');
-            if (wv) wv.textContent = worstAvg.toFixed(4);
-        }
-
-    }
+    // (broken duplicate updateKPIs removed — the correct guarded version is below)
 
     updateKPIs() {
         if (this._isUpdatingKPIs) return;
@@ -2360,16 +2542,59 @@ class ANDEDashboard {
         if (rankingChartWrapper) rankingChartWrapper.style.display = showChart ? '' : 'none';
         if (rankingListWrapper) rankingListWrapper.style.display = showList ? '' : 'none';
 
-        if (!this.data.length) {
+        const controls = document.querySelector('.ranking-controls');
+        let emptyStateMsg = null;
+        
+        const selectedFeeders = this.getSelectedValues('filterTransformador');
+        
+        if (!this.data || this.data.length === 0) {
+            emptyStateMsg = 'Sin datos para ranking. Asegúrate de que los filtros elegidos devuelvan mediciones.';
+        } else if (selectedFeeders.length <= 1 && this.globalMode === 'unique') {
+            emptyStateMsg = 'Selecciona "Modo Múltiple" y escoge al menos 2 alimentadores para ver el Ranking.';
+        } else if (selectedFeeders.length <= 1 && this.globalMode !== 'unique' && this.selectionMode !== 'all') {
+            emptyStateMsg = 'Selecciona al menos 2 alimentadores o el modo "Todos" para comparar en el Ranking.';
+        }
+
+        let currentEmptyState = rankingChartWrapper.querySelector('.chart-empty-state');
+        const canvasEl = document.getElementById('rankingChart');
+
+        if (emptyStateMsg) {
+            // Mostrar mensaje de vacío y ocultar lienzo
+            if (!currentEmptyState) {
+                currentEmptyState = document.createElement('div');
+                currentEmptyState.className = 'chart-empty-state';
+                currentEmptyState.innerHTML = `<i class="fas fa-list-ol" style="font-size:2rem;margin-bottom:1rem;opacity:0.5;color:var(--accent);"></i><p style="color:var(--text-color);"></p>`;
+                rankingChartWrapper.appendChild(currentEmptyState);
+            }
+            currentEmptyState.querySelector('p').textContent = emptyStateMsg;
+            currentEmptyState.style.display = 'flex';
+            if (canvasEl) canvasEl.style.display = 'none';
+            if (rankingListWrapper) rankingListWrapper.style.display = 'none';
+            
+            if (controls) {
+                controls.style.opacity = '0.3';
+                controls.style.pointerEvents = 'none';
+            }
+
             this.latestRankingData = [];
             this.rankingItems = [];
-            this.rankingChart.data.labels = [];
-            rankingDataset.data = [];
-            rankingDataset.backgroundColor = [];
-            rankingDataset.borderColor = [];
-            this.rankingChart.update('none');
-            if (showList) this.renderRankingList([]);
+            // Limpia el chart si existe
+            if (this.rankingChart && this.rankingChart.data) {
+                this.rankingChart.data.labels = [];
+                if (this.rankingChart.data.datasets && this.rankingChart.data.datasets.length > 0) {
+                    this.rankingChart.data.datasets[0].data = [];
+                }
+                this.rankingChart.update('none');
+            }
             return;
+        } else {
+            // Restaurar estado normal
+            if (currentEmptyState) currentEmptyState.style.display = 'none';
+            if (canvasEl) canvasEl.style.display = '';
+            if (controls) {
+                controls.style.opacity = '1';
+                controls.style.pointerEvents = 'auto';
+            }
         }
 
         const rankingGroup = document.getElementById('rankingGroup')?.value || 'alimentador';
@@ -2953,13 +3178,27 @@ class ANDEDashboard {
     }
     
     async loadCargas() {
+        if (this.isLoadingCargas) {
+            console.log("⏳ loadCargas en progreso, se omite llamada duplicada");
+            return;
+        }
+        this.isLoadingCargas = true;
         console.log("📥 Cargando historial de cargas...");
         try {
-            const res = await fetch(`${this.apiBaseUrl}/api/cargas`);
-            const cargas = await res.json();
+            const cargas = await this.requestJson(`${this.apiBaseUrl}/api/cargas`, {}, {
+                retries: 2, timeoutMs: 15000, label: 'cargas'
+            });
             this.renderCargas(cargas);
             await this.loadEstadisticas();
-        } catch (e) { console.error("Error cargando cargas:", e); }
+        } catch (e) {
+            console.error("Error cargando cargas:", e);
+            // Keep existing cargas UI on error
+            if (e.code !== 'CIRCUIT_OPEN') {
+                this.showNotification('No se pudo actualizar historial de cargas', 'warning');
+            }
+        } finally {
+            this.isLoadingCargas = false;
+        }
     }
     
     renderCargas(cargas) {
@@ -3012,11 +3251,12 @@ class ANDEDashboard {
     
     async loadEstadisticas() {
         try {
-            const res = await fetch(`${this.apiBaseUrl}/api/estadisticas`);
-            const stats = await res.json();
+            const stats = await this.requestJson(`${this.apiBaseUrl}/api/estadisticas`, {}, {
+                retries: 1, timeoutMs: 10000, label: 'estadisticas'
+            });
             const el = document.getElementById('totalDatosGlobal');
             if (el) el.textContent = stats.total_datos.toLocaleString();
-        } catch (e) {}
+        } catch (e) { /* non-critical */ }
     }
     
     // ========== SIDEBAR ==========
@@ -3043,14 +3283,18 @@ class ANDEDashboard {
     
     startLiveUpdates() {
         if (this.liveUpdatesIntervalId) clearInterval(this.liveUpdatesIntervalId);
-        this.liveUpdatesIntervalId = setInterval(() => {
+        this.liveUpdatesIntervalId = setInterval(async () => {
+            // Gate: don't fire if initialize hasn't completed
+            if (!this._initializeComplete) return;
             if (!this.serverConnected) return;
-            if (typeof document !== 'undefined' && document.hidden) return;
-            if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-            if (this.isLoadingData) return;
+            if (document.hidden) return;
+            if (navigator.onLine === false) return;
+            if (this.isLoadingData || this.isLoadingCargas) return;
+            if (this._isCircuitOpen()) return;
             console.log("🔄 Actualización automática");
-            this.loadData();
-            this.loadCargas();
+            // Sequential to avoid connection flooding
+            await this.loadData();
+            await this.loadCargas();
         }, 300000);
     }
     

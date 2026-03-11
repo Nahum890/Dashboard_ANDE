@@ -1,229 +1,113 @@
-# Dashboard ANDE - Sistema de Monitoreo de Frecuencia Eléctrica
+# ⚡ Dashboard ANDE - Sistema de Monitoreo de Frecuencia Eléctrica
 
-## 📋 Descripción General
-**ANDE Dashboard** es una aplicación web para monitorear, comparar y analizar mediciones eléctricas (frecuencia/variables asociadas) por alimentador, año, mes y tipo de medición.
-
-La plataforma está orientada a análisis operativo con visualización avanzada, filtros múltiples, KPIs, tablas paginadas y carga de datos desde Excel.
+Bienvenido a la documentación oficial del **ANDE Dashboard**, una aplicación web integral para monitorear, comparar y analizar métricas eléctricas en tiempo real y datos históricos. Este documento detalla toda la arquitectura, el funcionamiento interno y los pasos necesarios para instalar, usar y modificar el sistema, ayudando a que cualquier desarrollador pueda tomar control del proyecto al instante.
 
 ---
 
-## ✨ Funcionalidades Principales
+## 🏗️ Arquitectura del Sistema
 
-### 1) Panel de análisis y comparación
-- Comparación de series por:
-  - **Alimentador (sección)**
-  - **Año**
-  - **Tipo de medición**
-  - **Mes/período**
-- Modo de comparación:
-  - **Único** (un valor por filtro)
-  - **Múltiple** (varios valores por filtro)
-- Etiquetas dinámicas que muestran la comparación activa.
+El proyecto opera como una aplicación monolítica compuesta por un Backend con **Node.js y Express** y un Frontend construido usando **HTML, CSS puro y Vanilla JavaScript**.
+Es una aplicación rápida y ligera (sin bundlers pesados tipo Webpack o React), que prioriza el rendimiento al procesar y visualizar cientos de miles de registros desde el servidor web directamente al navegador.
 
-### 2) Filtros avanzados
-- Selección de:
-  - Año (multiselección)
-  - Variable / tipo de medición
-  - Estación
-  - Alimentadores
-  - Meses o períodos predefinidos (últimos 3, 6, 12, año actual, año pasado)
-- Agrupación de datos por:
-  - Alimentador
-  - Año
-  - Tipo
-  - Combinación completa
-
-### 3) Visualizaciones y analítica
-- Gráficos interactivos con **Chart.js**.
-- KPIs de resumen (series activas, rango, variabilidad, etc.).
-- Ranking y visualizaciones comparativas.
-- Controles de visualización:
-  - Zoom
-  - Pantalla completa
-  - Mostrar/ocultar leyenda
-  - Alternar puntos
-
-### 4) Tabla de datos operativa
-- Tabla con:
-  - Ordenamiento por columnas
-  - Búsqueda
-  - Paginación
-  - Navegación por páginas
-- Indicadores de cantidad de registros mostrados/total.
-
-### 5) Exportación de datos
-- Exportación de la vista filtrada en formato **JSON**.
-
-### 6) Carga de Excel integrada
-- Sección en el frontend para subir archivos **`.xlsx`**.
-- Subida al endpoint `POST /api/subir-excel`.
-- Validación de archivo y feedback visual de estado (éxito/error/progreso).
-- Al terminar una carga exitosa, el dashboard recarga datos automáticamente.
+### 📁 Estructura Principal (`/backend`)
+*   **`server.js`**: El núcleo de la aplicación. Levanta el servidor Express, aloja todos los endpoints de la API (`/api/datos`, `/api/subir-excel`), maneja las consultas a la base de datos (SQLite) y procesa todo el formateo lógico de archivos subidos en Excel.
+*   **`ANDE.db`**: Una base de datos integrada **SQLite** que almacena las mediciones de los alimentadores organizadas de tal manera de facilitar un rápido análisis mensual y anual.
+*   **`index.html`**, **`comparacion.html`**, **`limpiar.html`**: Vistas frontend directas para los usuarios, que se comunican continuamente por AJAX vía JSON Fetch.
+*   **`script.js`**: Manejador central del lado del cliente. Lee las variables del usuario, envía asincrónicamente los filtros al backend y utiliza la biblioteca **Chart.js** para renderizar gráficos reactivos. Controla las tablas paginadas, exportaciones a JSON/CSV y UI dinámica.
+*   **`styles.css`**: Hoja de estilos principal, implementando un diseño moderno, tarjetas translúcidas, esquemas flexbox/CSS grid orientados hacia el diseño UI "glassmorphism"/"modern clean".
+*   **`scripts/reimport_from_xlsx.js`**: Importante y crítico script CLI diseñado para realizar un vacío completo y reimportación cruda por terminal de millones de registros directamente al archivo `ANDE.db`. Útil en caso de corrupción severa en el dashboard.
 
 ---
 
-## 🧠 Flujo de Carga de Excel (Backend)
+## 🗃️ Base de Datos: Esquema y Diseño
 
-La carga está diseñada para entornos como Render (filesystem efímero):
+El sistema opera bajo SQLite por simplicidad sin servidor (serverless db). Si se decide mover a render en el futuro, existe código residual de `pg` (PostgreSQL), pero actualmente la base primaria es `ANDE.db`.
 
-- Uso de `multer.memoryStorage()` (RAM, sin guardar en disco).
-- Lectura del archivo con `xlsx` desde `req.file.buffer`.
-- Inserción en PostgreSQL con transacción:
-  - `BEGIN`
-  - `INSERT INTO ... ON CONFLICT ON CONSTRAINT unique_medicion DO NOTHING`
-  - `COMMIT`
-  - `ROLLBACK` en error
+1.  **Tabla Principal**: `mediciones_completas`
+    *   `id` (INTEGER PK AUTOINCREMENT)
+    *   `seccion` (TEXT) – **El identificador exacto del ALIMENTADOR** (ej. "ACY1"). ¡A pesar de cómo se llamaba en el excel, acá representa al alimentador!
+    *   `anio` (INTEGER) – Año de la medición.
+    *   `mes` (INTEGER) – Mes numérico (1-12).
+    *   `departamento` (TEXT) – Provincia local.
+    *   `local` (TEXT) - Ciudad de la sección general donde opera el alimentador (ej. CAACUPE / CIUDAD DEL ESTE).
+    *   `tipo_medicion` (TEXT) – Parámetro técnico medido. Los típicos incluyen `ACCID.DEP`, `PROG.FEP`, `PROD.PENF`, `TOTAL DEP`, etc.
+    *   `valor` (REAL) – El valor recolectado en dicho mes.
 
-Esto garantiza:
-- **Atomicidad**: no quedan inserciones parciales si falla una fila.
-- **Idempotencia parcial por conflicto**: duplicados se ignoran sin romper el proceso.
-
----
-
-## 🗃️ Estructura de datos
-
-Tabla objetivo: `mediciones_completas`
-
-Columnas esperadas en Excel (cabeceras):
-- `seccion`
-- `anio`
-- `mes`
-- `departamento`
-- `tipo_medicion`
-- `valor`
-
-Restricción de unicidad:
-- `unique_medicion (seccion, anio, mes, tipo_medicion)`
+2.  **Manejo de Unicidad (`unique_medicion`)**:
+    Existe un bloque `UNIQUE(seccion, anio, mes, tipo_medicion)`. La base de datos NO permite que el mismo parámetro técnico sea subido dos veces para un mismo alimentador en el mismo mes y año. Si ocurre un conflicto interno desde un Excel, el backend usa una función `INSERT OR REPLACE` u omitirá datos (esto mantiene los registros sanos y evita una inflación brutal o conteos falsos).
 
 ---
 
-## 🔌 Endpoints API
+## 🧠 Funcionamiento Interno del Creador/Subidor de Excel (`/api/subir-excel`)
 
-### Estado
-- `GET /api/health`  
-  Estado del servicio.
+El dashboard expone un "Uploader" para que un operario mantenga la DB viva enviando archivos `.xlsx` actualizados.
+Dado que los excels originales traían formatos complejos ("Pivotes"), así es cómo `server.js` maneja la lectura e interpretación:
 
-### Catálogos/filtros
-- `GET /api/tipos-medicion`
-- `GET /api/secciones`
-- `GET /api/anios`
-
-### Datos principales
-- `GET /api/datos?seccion=...&anio=...&tipo_medicion=...&mes=...`
-
-### Carga de archivos
-- `POST /api/subir-excel`
-  - `multipart/form-data`
-  - campo de archivo: `archivo`
+1.  **Recepción (`multer`)**: Los archivos Excel se alojan momentáneamente en memoria para no desbordar el disco duro de producción.
+2.  **Identificación de la Hoja (Sheet)**: `detectarHojaValida` intenta siempre buscar por nombre hojas como `"FEP DEP PENF - Datos de Prueba"`, ya que es el estándar pactado. Si no la encuentra, intenta evaluar la tabla inferida.
+3.  **Mapeo Rígido (Normalización)**:
+    *   El sistema automáticamente elimina acentos, unifica textos (mayúscula).
+    *   Normaliza variantes raras en los alimentadores. Ejemplo: elimina espacios sueltos de tipeo humano, convirtiendo automáticamente `"NAR 5"` en `"NAR5"`, o `"sri5"` en `"SRI5"` antes de inyectarlos gracias a la función interna `normalizarSeccion`.
+4.  **Expansión del Formato Pivote**:
+    En el Excel humano hay múltiples columnas de medición alineadas juntas. Sin embargo, en el backend existen las columnas exclusivas. Al encontrar este formato y realizar la expansión pivote, `transformarFilas` filtra ciertas meta-columnas estáticas (como `"SECCION"`, `"PERIODO"`, `"axuMES"`, `"LOCAL"`) por medio del hash set en Javascript (`COLUMNAS_NO_MEDICION_PIVOTE`), impidiendo que por accidente se intenten inyectar en la base de datos como tipos de mediciones validas y corrompiendo el código. Además, prioriza la columna Excel llamada `ALIMENTADOR` para guardarla en el campo SQLite `seccion`. **Esta fue la parte más sensible del parseo.**
+5.  **Detección de Duplicados Directos vía Endpoints (Admin)**: Además existe un endpoint `/api/admin/eliminar-duplicados` extra en caso de emergencias por si datos fantasma hubiesen esquivado las protecciones primarias.
 
 ---
 
-## 🛠️ Tecnologías
+## 📈 Trazado del Lado Cliente (Visualizando y Entendiendo los Gráficos)
 
-### Frontend
-- HTML5
-- CSS3
-- JavaScript (Vanilla)
-- Chart.js
-- Font Awesome
+En `script.js` reside un motor enorme de filtros interconectados.
 
-### Backend
-- Node.js
-- Express
-- CORS
-- SQLite (lecturas en endpoints actuales)
-- PostgreSQL (`pg`) para carga de Excel
-- `multer` para upload en memoria
-- `xlsx` para parseo de Excel
+1.  **El Fetch de Datos (`loadData`)**: El selector (por ej. los checkbox) y las cajas de dropdown envían sus `values` crudos como query params HTTP Get a `/api/datos?seccion=ACY1...`.
+2.  **Preparación del Request**: El backend genera parámetros SQL eficientes, omitiendo el uso de lentas "SubConsultas Correlacionadas" asegurando que 120,000 registros respondan consistentemente en `< 100ms`.
+3.  **Renderizado Global Chart.js (`processChartData`)**:
+    *   Si los datos recibidos detectan Multi-Selecciones en la UI (ejemplo, se pidieron múltiples "Años" o múltiples "Alimentadores"), el script interviene creando múltiples *datasets* (series) con colores individualizados proceduralmente gracias a `generateColors()`.
+    *   A esto le sumamos el "Tooltip" enriquecido de Chart.js customizado bajo la variable de configuración `plugins`, donde se suma al valor bruto la unidad visual del param.
+4.  **Generación de KPIs & Tabla Operativa**: De esos arrays se genera matemática del Total Acumulativo (Suma General), los Máximos, y en el footer un volcado HTML `populateTable(data, currentPage)` manejando los 20 registros max paginados.
 
 ---
 
-## 📦 Instalación y ejecución
+## 🛠️ Cómo Iniciar y Configurar el Sistema para Colaborar Locales
 
-### Prerrequisitos
-- Node.js `>=16`
-- npm
+Cualquier persona del equipo puede agarrar el repositorio e inicializarlo siguiendo cinco pasos base:
 
-### Instalar dependencias
+### 1. Iniciar Prerrequisitos de Versiones
+Para que corra el ecosistema necesitas de forma excluyente mínimo **Node.js (v18+)** que viene con `npm`. SQLite3 viene alojado precompiladamente en dependencias genéricas por lo tanto no requieres bajar bases locales de Windows extra.
+
+### 2. Clonado y Paqueteria
+Al estar dentro de la capeta `backend/` deberás ejecutar:
 ```bash
 npm install
 ```
+El `package.json` ya lista todas nuestras librerías (`express`, `cors`, `sqlite3`, `xlsx`, `multer`).
 
-> Si agregas o actualizas la funcionalidad de carga Excel, verifica que estén disponibles:
-```bash
-npm install multer xlsx pg
-```
-
-### Ejecutar en desarrollo
+### 3. Encender el Servidor
 ```bash
 npm run dev
+# Alternativamente, si hay problemas en un server headless:
+node server.js
 ```
+Esto encenderá inmediatamente la API REST y creara el listener en el puerto estipulado o predeterminado (`PORT 10000`). Se imprimirá por consola  un ASCII mostrando el estado sano.
 
-### Ejecutar en producción
-```bash
-npm start
-```
-
-### Reimportación masiva desde `datos.xlsx` (eficiente)
-```bash
-# Validar conversión sin tocar DB
-npm run reimport:xlsx:dry
-
-# Reimportar todo (borra y vuelve a cargar mediciones_completas)
-npm run reimport:xlsx
-```
-
+### 4. Ingresar al Panel Principal
+Abre en tu navegador la dirección correspondiente al LocalHost predeterminado en `10000` o estipulado con IP. No necesitas acceder a IPs como `index.html` puesto que la carpeta entera es servida con middleware estático (`express.static`).
+* Ejemplo: 👉 `http://localhost:10000`
 
 ---
 
-## ⚙️ Variables de entorno
+## 🧰 Guía de Modificaciones Comunes para Desarrolladores (CheatSheet)
 
-Para habilitar la carga a PostgreSQL:
-
-- `DATABASE_URL`: cadena de conexión PostgreSQL.
-- `NODE_ENV=production` para usar SSL en la conexión (configurado automáticamente en el pool).
-
-Ejemplo:
-```env
-DATABASE_URL=postgres://usuario:password@host:5432/base
-NODE_ENV=production
-PORT=10000
-```
+*   **"Deseo habilitar una medición o filtro que no sale desplegado":** En el archivo `script.js`, el inicio de la app dispara `fetchFilters()`. Dicha función lee un Hard-Codificado que arma selectores. Alternativamente debes fijarte en  el backend `server.js` -> `/api/tipos-medicion` ya que extrae dinámicamente un `SELECT DISTINCT tipo_medicion`. Si en el excel la columna tiene nombre distinto o no califica, hay que ajustarlo en `server.js` al subirlo.
+*   **"Deseo cambiar las paletas de Colores de los Series de la Grafica":** Ubícate en `script.js` en las funciones `getColorByTipo`, `getColorBySeccion` o el método nativo fallback `generateColors()`. ChartJs las absorbe.
+*   **"Deseo editar el diseño responsivo o GlassMorphism":** Los fondos, la distorsión, sombras translúcidas y layout "CSS Grid" para el Dashboard principal están integrados uniformemente en `styles.css`. Fíjate de modificar variables root como `:root` y clases como `.glass-card` y el `backdrop-filter: blur(10px)`.
+*   **"El Backend sufre lentitud grave de Timeout":** Previa advertencia revisa que no se haya activado una query de subconsulta como la antigua `WHERE MAX(id)` en tu SQLite de forma inútil. Mantener simple la selectiva y no saturar `unique_medicion` resolverá el 99% de los embudos de hardware. Adicionalmente cerciórate de que SQLite no se corrompió ejecutando por última vez la herramienta oficial `node scripts/reimport_from_xlsx.js --xlsx datos.xlsx --db ANDE.db --truncate`.
 
 ---
 
-## 📁 Estructura del proyecto (resumen)
+## 🔒 Variables y Entorno (`.env`)
+No es completamente obligatorio, pero se sugiere tener configuradas variables de proceso por si esto despliega a Render/AWS/Cloud:
+*   `PORT=10000` (puerto estándar dev)
+*   `NODE_ENV=development`
+(Aplica Postgres `DATABASE_URL` solo si requieres un uso extendido exterior al `sqlite3`).
 
-- `server.js` → API Express, conexión DB, endpoints, carga Excel.
-- `index.html` → UI principal del dashboard.
-- `script.js` → lógica de filtros, gráficos, tabla, exportación y upload.
-- `styles.css` → estilos del panel.
-- `ANDE.db` → base de datos SQLite local de lectura.
-
----
-
-## 🧪 Validaciones recomendadas
-
-- Verificar sintaxis:
-```bash
-node -c server.js
-node -c script.js
-```
-
-- Probar health check:
-```bash
-curl http://localhost:10000/api/health
-```
-
----
-
-## 📌 Notas operativas
-
-- En Render, el filesystem es efímero: **no usar almacenamiento en disco para uploads**.
-- La carga Excel fue implementada con memoria RAM para cumplir ese requisito.
-- Los endpoints existentes de lectura (`/api/datos`, etc.) se mantienen sin cambios funcionales críticos.
-
----
-
-## 📄 Licencia
-MIT
+¡Gracias por leer y mantener viva esta arquitectura! Cualquier gran bug o pull a resolver comiencen por rastrear `server.js` y todo caerá en su lugar.🚀

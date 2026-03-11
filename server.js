@@ -35,6 +35,7 @@ function verificarTablas() {
             console.error(err);
         } else if (row) {
             console.log("✅ Tabla 'mediciones_completas' encontrada y lista.");
+            crearIndicesRendimiento();
             validarEsquemaMediciones().catch((schemaErr) => {
                 console.error("❌ No se pudo validar el esquema de 'mediciones_completas':", schemaErr.message);
             });
@@ -42,6 +43,34 @@ function verificarTablas() {
             console.warn("⚠️ ALERTA: No se encontró la tabla 'mediciones_completas'.");
             console.warn("   Es posible que el archivo ANDE.db esté vacío o tenga otro nombre de tabla.");
         }
+    });
+}
+
+function crearIndicesRendimiento() {
+    const indices = [
+        // Composite index for the correlated MAX(id) subquery in handleDatosRequest
+        `CREATE INDEX IF NOT EXISTS idx_mc_dedup 
+         ON mediciones_completas(seccion COLLATE NOCASE, anio, mes, tipo_medicion COLLATE NOCASE, id DESC)`,
+        // Individual indexes for common filter columns
+        `CREATE INDEX IF NOT EXISTS idx_mc_seccion ON mediciones_completas(seccion COLLATE NOCASE)`,
+        `CREATE INDEX IF NOT EXISTS idx_mc_anio ON mediciones_completas(anio)`,
+        `CREATE INDEX IF NOT EXISTS idx_mc_tipo ON mediciones_completas(tipo_medicion COLLATE NOCASE)`,
+        `CREATE INDEX IF NOT EXISTS idx_mc_mes ON mediciones_completas(mes)`
+    ];
+
+    console.log("📊 Verificando/creando índices de rendimiento...");
+    let created = 0;
+    indices.forEach(sql => {
+        db.run(sql, (err) => {
+            if (err) {
+                console.warn("⚠️ No se pudo crear índice:", err.message);
+            } else {
+                created++;
+                if (created === indices.length) {
+                    console.log(`✅ ${created} índices de rendimiento verificados/creados`);
+                }
+            }
+        });
     });
 }
 
@@ -178,6 +207,14 @@ function normalizarTexto(valor) {
     return String(valor).trim();
 }
 
+function normalizarSeccion(valor) {
+    if (valor === undefined || valor === null) return "";
+    let s = String(valor).trim().toUpperCase();
+    // Eliminar espacios entre letras y números: "NAR 5" -> "NAR5"
+    s = s.replace(/\b([A-Z]+)\s+(\d+[A-Z0-9]*)\b/g, '$1$2');
+    return s;
+}
+
 function convertirMesANumero(valor) {
     if (valor === undefined || valor === null) return null;
 
@@ -235,28 +272,60 @@ function convertirMesANumero(valor) {
     return meses[normalizado] || null;
 }
 
-function mapearHeadersFila(row) {
-    const alias = {
-        seccion: "seccion",
-        alimentador: "seccion",
-        anio: "anio",
-        ano: "anio",
-        mes: "mes",
-        tipo_medicion: "tipo_medicion",
-        tipo: "tipo_medicion",
-        valor: "valor",
-        departamento: "departamento",
-        local: "local",
-        axumes: "axumes",
-        periodo: "periodo"
-    };
+// Columns that are NOT measurement types — excluded from pivot expansion
+const COLUMNAS_NO_MEDICION = new Set([
+    "seccion", "alimentador", "anio", "ano", "mes",
+    "departamento", "local", "axumes", "periodo",
+    "tipo_medicion", "tipo", "valor", "seccion_ciudad"
+]);
 
+function mapearHeadersFila(row) {
     const filaMapeada = {};
     const columnasOriginales = {};
 
+    // First pass: detect if both ALIMENTADOR and SECCION exist
+    let tieneAlimentador = false;
+    let tieneSeccion = false;
+    const headersNorm = {};
     Object.keys(row).forEach((key) => {
-        const normalizado = normalizarHeader(key);
-        const destino = alias[normalizado] || normalizado;
+        const norm = normalizarHeader(key);
+        headersNorm[key] = norm;
+        if (norm === "alimentador") tieneAlimentador = true;
+        if (norm === "seccion") tieneSeccion = true;
+    });
+
+    // Second pass: map columns
+    Object.keys(row).forEach((key) => {
+        const normalizado = headersNorm[key];
+
+        // ALIMENTADOR always maps to seccion (feeder identifier)
+        if (normalizado === "alimentador") {
+            filaMapeada.seccion = row[key];
+            columnasOriginales.seccion = key;
+            return;
+        }
+
+        // SECCION maps to seccion_ciudad (city) when ALIMENTADOR exists,
+        // otherwise it maps to seccion
+        if (normalizado === "seccion") {
+            if (tieneAlimentador) {
+                filaMapeada.seccion_ciudad = row[key];
+                columnasOriginales.seccion_ciudad = key;
+            } else {
+                filaMapeada.seccion = row[key];
+                columnasOriginales.seccion = key;
+            }
+            return;
+        }
+
+        // Standard aliases
+        const aliasMap = {
+            anio: "anio", ano: "anio", mes: "mes",
+            tipo_medicion: "tipo_medicion", tipo: "tipo_medicion",
+            valor: "valor", departamento: "departamento",
+            local: "local", axumes: "axumes", periodo: "periodo"
+        };
+        const destino = aliasMap[normalizado] || normalizado;
         filaMapeada[destino] = row[key];
         columnasOriginales[destino] = key;
     });
@@ -264,9 +333,40 @@ function mapearHeadersFila(row) {
     return { filaMapeada, columnasOriginales };
 }
 
-function detectarHojaValida(workbook) {
+function analizarWorkbook(workbook) {
     const hojas = workbook.SheetNames || [];
 
+    // 1. Detectar si es un "Informe Mensual" (Formato de estación por hoja)
+    const estacionesConocidas = ["APR", "CAN", "CDE", "SRI", "HER", "SBT", "JLM", "SDG", "CUR", "CAT", "DES", "MINGA"];
+    const hojasEstaciones = hojas.filter(h => estacionesConocidas.includes(h.trim().toUpperCase()));
+    
+    if (hojasEstaciones.length > 0) {
+        return {
+            tipo: 'informe_mensual',
+            hojas: hojasEstaciones.map(h => ({
+                nombreHoja: h,
+                rows: XLSX.utils.sheet_to_json(workbook.Sheets[h], { header: 1, range: 0 })
+            }))
+        };
+    }
+
+    // 2. Detectar si es el formato antiguo "Pivote Histórico"
+    const nombresObjetivo = ["FEP DEP PENF - Datos de Prueba", "FEP DEP", "mediciones"];
+    for (const target of nombresObjetivo) {
+        const match = hojas.find(name => name.toLowerCase().includes(target.toLowerCase()));
+        if (match) {
+            const hoja = workbook.Sheets[match];
+            const rows = XLSX.utils.sheet_to_json(hoja, { defval: null });
+            if (rows.length > 0) {
+                return { 
+                    tipo: 'pivote_historico', 
+                    hojas: [{ nombreHoja: match, rows, headersOriginales: Object.keys(rows[0] || {}) }] 
+                };
+            }
+        }
+    }
+
+    // Fallback: auto-detect a valid sheet para formato antiguo
     for (const nombreHoja of hojas) {
         const hoja = workbook.Sheets[nombreHoja];
         const rows = XLSX.utils.sheet_to_json(hoja, { defval: null });
@@ -278,14 +378,93 @@ function detectarHojaValida(workbook) {
 
         const tieneBase = headersSet.has("mes") && (headersSet.has("seccion") || headersSet.has("alimentador")) && (headersSet.has("anio") || headersSet.has("ano"));
         const formatoLargo = headersSet.has("tipo_medicion") && headersSet.has("valor");
-        const formatoPivote = headersOriginales.some((h) => !["seccion", "seccion", "alimentador", "anio", "ano", "mes", "departamento"].includes(normalizarHeader(h)));
+        const formatoPivote = headersOriginales.some((h) => !COLUMNAS_NO_MEDICION.has(normalizarHeader(h)));
 
         if (tieneBase && (formatoLargo || formatoPivote)) {
-            return { nombreHoja, rows, headersOriginales };
+            return { 
+                tipo: 'pivote_historico', 
+                hojas: [{ nombreHoja, rows, headersOriginales }] 
+            };
         }
     }
 
     return null;
+}
+
+function procesarInformeMensual(rows, nombreHoja) {
+    let periodoVal = null;
+    let anio = null, mes = null;
+
+    for (let i = 0; i < Math.min(20, rows.length); i++) {
+        const row = rows[i];
+        if (row) {
+            for (let j = 0; j < row.length; j++) {
+                if (String(row[j] || '').toUpperCase().includes('PERÍODO:')) {
+                    periodoVal = row[j+1] ?? row[j+2] ?? row[j+3];
+                    break;
+                }
+            }
+        }
+        if (periodoVal) break;
+    }
+
+    if (periodoVal && !isNaN(periodoVal)) {
+        const jsDate = new Date((periodoVal - (25567 + 2)) * 86400 * 1000);
+        anio = jsDate.getUTCFullYear();
+        mes = jsDate.getUTCMonth() + 1;
+    } else {
+        return { registros: [], rechazos: { error_fecha: 1 }, detalles: [`Hoja ${nombreHoja}: No se encontró un PERÍODO de fecha válido`] };
+    }
+
+    let startRow = -1;
+    for (let i = 0; i < rows.length; i++) {
+        if (rows[i] && String(rows[i][0] || '').includes('ALIM')) {
+            startRow = i;
+            break;
+        }
+    }
+
+    if (startRow === -1) {
+        return { registros: [], rechazos: { tabla_faltante: 1 }, detalles: [`Hoja ${nombreHoja}: No se encontró inicio de tabla (ALIM)`] };
+    }
+
+    const registros = [];
+    const mappings = [
+        { col: 1, tipo: 'ACCID. DEP' }, { col: 2, tipo: 'PROG. DEP' }, { col: 3, tipo: 'PROD. DEP' }, { col: 4, tipo: 'TOTAL DEP' },
+        { col: 5, tipo: 'ACCID. FEP' }, { col: 6, tipo: 'PROG. FEP' }, { col: 7, tipo: 'PROD. FEP' }, { col: 8, tipo: 'TOTAL FEP' },
+        { col: 9, tipo: 'ACCID. PENF' }, { col: 10, tipo: 'PROG. PENF' }, { col: 11, tipo: 'PROD. PENF' }, { col: 12, tipo: 'TOTAL PENF' }
+    ];
+
+    for (let i = startRow + 2; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !row[0]) continue;
+
+        const alimentadorRaw = String(row[0]).trim();
+        if (alimentadorRaw.toUpperCase().includes('TOTAL') || alimentadorRaw.length < 2) continue;
+
+        const seccion = normalizarSeccion(alimentadorRaw);
+        if (!seccion) continue;
+
+        for (const map of mappings) {
+            const valRaw = row[map.col];
+            if (valRaw === undefined || valRaw === null || String(valRaw).trim() === '') continue;
+            
+            const val = parseFloat(valRaw);
+            if (!isNaN(val)) {
+                registros.push({
+                    seccion: seccion,
+                    anio: anio,
+                    mes: mes,
+                    departamento: null,
+                    local: null,
+                    tipo_medicion: map.tipo,
+                    valor: val
+                });
+            }
+        }
+    }
+
+    return { registros, rechazos: {}, detalles: [] };
 }
 
 function transformarFilas(rows) {
@@ -306,7 +485,7 @@ function transformarFilas(rows) {
         try {
             const { filaMapeada } = mapearHeadersFila(row);
 
-            const seccion = normalizarTexto(filaMapeada.seccion);
+            const seccion = normalizarSeccion(filaMapeada.seccion);
             const anio = parseInt(filaMapeada.anio, 10);
             const mes =
                 convertirMesANumero(filaMapeada.mes) ||
@@ -354,7 +533,7 @@ function transformarFilas(rows) {
 
             // Formato pivote: cada columna de medición se transforma a formato largo
             Object.keys(filaMapeada).forEach((key) => {
-                if (["seccion", "anio", "mes", "departamento"].includes(key)) return;
+                if (COLUMNAS_NO_MEDICION.has(key)) return;
                 const rawValor = filaMapeada[key];
                 if (rawValor === undefined || rawValor === null || String(rawValor).trim() === "") return;
 
@@ -893,14 +1072,7 @@ async function handleDatosRequest(req, res, source = {}) {
     
     let sql = `SELECT mc.seccion, mc.anio, mc.mes, mc.departamento, mc.tipo_medicion, mc.valor
                FROM mediciones_completas mc
-               WHERE mc.id = (
-                   SELECT MAX(m2.id)
-                   FROM mediciones_completas m2
-                   WHERE UPPER(TRIM(m2.seccion)) = UPPER(TRIM(mc.seccion))
-                     AND m2.anio = mc.anio
-                     AND m2.mes = mc.mes
-                     AND UPPER(TRIM(m2.tipo_medicion)) = UPPER(TRIM(mc.tipo_medicion))
-               )`;
+               WHERE 1=1`;
     const params = [];
 
     // 1. Filtrar por Secciones - CORREGIDO
@@ -1119,19 +1291,17 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
         `);
 
         const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-        const hojaValida = detectarHojaValida(workbook);
+        const analisisDb = analizarWorkbook(workbook);
 
-        if (!hojaValida) {
+        if (!analisisDb) {
             return res.status(400).json({
-                error: "No se encontró una hoja válida con headers requeridos",
-                resumen_rechazos: { header_faltante: 1 },
+                error: "No se encontró estructura reconocible de datos en el archivo Excel.",
+                resumen_rechazos: { formato_desconocido: 1 },
                 total_procesado: 0
             });
         }
 
-        const rows = hojaValida.rows;
-
-        console.log(`📄 Archivo '${req.file.originalname}' cargado desde hoja '${hojaValida.nombreHoja}': ${rows.length} filas`);
+        console.log(`📄 Archivo '${req.file.originalname}' tipo detectado: ${analisisDb.tipo} (${analisisDb.hojas.length} hojas validas)`);
 
         // Insertar registro de carga
         const carga = await ejecutarComando(
@@ -1141,6 +1311,32 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
 
         let insertadas = 0;
         let errores = 0;
+        const totalRegistros = [];
+        const consolidadRechazos = {};
+        const consolidadDetalles = [];
+
+        // Extraer y transformar de todas las hojas válidas
+        for (const hoja of analisisDb.hojas) {
+            let resultado;
+            if (analisisDb.tipo === 'informe_mensual') {
+                resultado = procesarInformeMensual(hoja.rows, hoja.nombreHoja);
+            } else {
+                resultado = transformarFilas(hoja.rows);
+            }
+
+            if (resultado && resultado.registros) {
+                totalRegistros.push(...resultado.registros);
+                
+                for (const key in resultado.rechazos) {
+                    consolidadRechazos[key] = (consolidadRechazos[key] || 0) + resultado.rechazos[key];
+                }
+                if (resultado.detalles) {
+                    consolidadDetalles.push(...resultado.detalles);
+                }
+            }
+        }
+        
+        errores = Object.values(consolidadRechazos).reduce((acc, n) => acc + n, 0);
 
         // Preparar statement para inserción
         const stmt = db.prepare(`
@@ -1149,14 +1345,11 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        const { registros, rechazos, detalles } = transformarFilas(rows);
-        errores = Object.values(rechazos).reduce((acc, n) => acc + n, 0);
-
         // Procesar filas válidas
         db.serialize(() => {
             db.run("BEGIN TRANSACTION");
             
-            registros.forEach((row) => {
+            totalRegistros.forEach((row) => {
                 try {
                     stmt.run(
                         String(row.seccion).trim(),
@@ -1172,8 +1365,8 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
                     
                 } catch (e) {
                     errores++;
-                    rechazos.error_fila++;
-                    detalles.push(`Error al insertar registro: ${e.message}`);
+                    consolidadRechazos.error_fila = (consolidadRechazos.error_fila || 0) + 1;
+                    consolidadDetalles.push(`Error al insertar registro ${row.seccion}-${row.tipo_medicion}: ${e.message}`);
                 }
             });
             
@@ -1189,18 +1382,19 @@ app.post("/api/subir-excel", upload.single("archivo"), async (req, res) => {
 
         console.log(`✅ Procesamiento completado: ${insertadas} insertadas, ${errores} errores`);
 
+        const hojasUsadas = analisisDb.hojas.map(h => h.nombreHoja).join(', ');
+
         res.json({ 
             success: true,
             message: "Archivo procesado correctamente", 
             carga_id: carga.id, 
             insertadas: insertadas,
             errores: errores,
-            hoja_usada: hojaValida.nombreHoja,
-            total_procesado: rows.length,
-            total_registros_largos: registros.length,
-            resumen_rechazos: rechazos,
-            total_filas: rows.length,
-            detalles_errores: detalles.slice(0, 20) // Mostrar primeros 20 errores
+            hojas_procesadas: hojasUsadas,
+            formato_detectado: analisisDb.tipo,
+            total_procesado: totalRegistros.length,
+            resumen_rechazos: consolidadRechazos,
+            detalles_errores: consolidadDetalles.slice(0, 20) // Mostrar primeros 20 errores
         });
 
     } catch (error) {
