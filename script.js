@@ -689,15 +689,14 @@ class ANDEDashboard {
                 data: [], 
                 backgroundColor: [], 
                 borderColor: [], 
-                borderWidth: 1.5, 
-                borderRadius: 6,
+                borderWidth: 2, 
+                borderRadius: 8,
                 borderSkipped: false
             }] },
             options: {
                 indexAxis: 'y',
                 responsive: true,
-                maintainAspectRatio: true,
-                aspectRatio: 1.5,
+                maintainAspectRatio: false,
                 devicePixelRatio: Math.max(window.devicePixelRatio || 2, 3),
                 
                 animation: {
@@ -726,18 +725,18 @@ class ANDEDashboard {
                             lineWidth: 1
                         },
                         ticks: { 
-                            color: '#334155', 
-                            font: { size: 11, weight: '500' },
+                            color: '#1e293b', 
+                            font: { size: 12, weight: '600' },
                             callback: (v) => this.formatValue(v),
-                            padding: 6
+                            padding: 8
                         }
                     },
                     y: { 
                         grid: { display: false },
                         ticks: { 
-                            color: '#334155', 
-                            font: { size: 11, weight: '600' },
-                            padding: 10
+                            color: '#1e293b', 
+                            font: { size: 12, weight: '700' },
+                            padding: 12
                         }
                     }
                 }
@@ -1079,6 +1078,26 @@ class ANDEDashboard {
             console.log("🖱️ Deseleccionar todos los meses");
             this.deselectAllMonths();
         });
+
+        const monthRanges = {
+            'btnQ1': [1, 2, 3],
+            'btnQ2': [4, 5, 6],
+            'btnQ3': [7, 8, 9],
+            'btnQ4': [10, 11, 12],
+            'btnS1': [1, 2, 3, 4, 5, 6],
+            'btnS2': [7, 8, 9, 10, 11, 12]
+        };
+        Object.entries(monthRanges).forEach(([id, range]) => {
+            this.safeAddEventListener(id, 'click', () => {
+                console.log(`🖱️ Rango de meses clickeado: ${id}`);
+                this.setMonthsRange(range);
+            });
+        });
+        
+        this.safeAddEventListener('multiYearMode', 'change', () => {
+            console.log("🔄 Modo multianual cambiado");
+            this.updateMainChart();
+        });
         
         this.safeAddEventListener('groupBy', 'change', () => {
             console.log("🔄 Selector de agrupación cambiado");
@@ -1126,9 +1145,6 @@ class ANDEDashboard {
         });
         this.safeAddEventListener('openFullRankingBtn', 'click', () => {
             this.openFullRankingTab();
-        });
-        this.safeAddEventListener('stationSummarySelect', 'change', () => {
-            this.updateStationSummary();
         });
         
         // Header Buttons Navigation & Export
@@ -1911,6 +1927,15 @@ class ANDEDashboard {
         this.showNotification("Todos los meses deseleccionados","info"); 
         if (this.globalMode === 'unique') this.loadDataDebounced(); 
     }
+
+    setMonthsRange(months) {
+        console.log("📅 Estableciendo rango de meses:", months);
+        this.selectedMonths.clear();
+        months.forEach(m => this.selectedMonths.add(m));
+        this.updateMonthButtons(); this.updateMonthSelect();
+        this.showNotification(`Rango seleccionado correctamente`, "success");
+        if (this.globalMode === 'unique') this.loadDataDebounced();
+    }
     
     // ========== CARGA DE DATOS ==========
     async loadData() {
@@ -2275,7 +2300,10 @@ class ANDEDashboard {
             const anioVal = years.length ? years.join(',') : (yearSel?.value || 'all');
             params.append('anio', anioVal);
 
-            if (this.selectedMonths.size && this.filters.periodo === 'select_months') {
+            const estacionVal = document.getElementById('filterEstacion')?.value;
+            if (estacionVal) params.append('estacion', estacionVal);
+
+            if (this.selectedMonths.size > 0) {
                 params.append('mes', Array.from(this.selectedMonths).join(','));
             } else if (this.filters.periodo && this.filters.periodo !== 'select_months') {
                 params.append('periodo', this.filters.periodo);
@@ -2295,6 +2323,25 @@ class ANDEDashboard {
             const totals = this.calculateFepDepTotals(data);
             console.log('🧮 Totales calculados:', totals);
             this.renderFepDepTotals(totals.fep, totals.dep);
+            
+            // Actualizar etiqueta meta dinámicamente
+            const selectedFeedCount = selectedFeed.length;
+            const metaLabels = document.querySelectorAll('#totalFep, #totalDep');
+            metaLabels.forEach(el => {
+                const metaContainer = el.parentElement.nextElementSibling;
+                if (metaContainer && metaContainer.classList.contains('kpi-meta')) {
+                    if (selectedFeedCount === 0 || seccionVal === 'all') {
+                        if (estacionVal) {
+                           metaContainer.textContent = `Estación ${estacionVal}`;
+                        } else {
+                           metaContainer.textContent = `Todos los alimentadores`;
+                        }
+                    } else {
+                        metaContainer.textContent = `Mostrando ${selectedFeedCount} seleccionado${selectedFeedCount > 1 ? 's' : ''}`;
+                    }
+                }
+            });
+            
         } catch (error) {
             if (requestId !== this.fepDepRequestId) return;
             console.warn('⚠️ No se pudieron refrescar totales FEP/DEP con consulta global, usando datos actuales.', error);
@@ -2422,41 +2469,90 @@ class ANDEDashboard {
             return;
         }
         
+        const multiYearMode = document.getElementById('multiYearMode')?.value || 'sequential';
         const grouped = this.groupDataForChart();
         console.log("📊 Grupos para gráfico principal:", Object.keys(grouped));
         const datasets = [];
         const labelsSet = new Set();
         
+        const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
         Object.entries(grouped).forEach(([key, pts], idx) => {
             pts.sort((a,b)=> a.year!==b.year ? a.year-b.year : a.month-b.month);
-            pts.forEach(p => labelsSet.add(`${p.year}-${String(p.month).padStart(2,'0')}`));
-            datasets.push({
-                label: key,
-                data: [],
-                borderColor: this.chartPalette[idx % this.chartPalette.length],
-                backgroundColor: this.chartPalette[idx % this.chartPalette.length] + '20',
-                borderWidth: 2.5,
-                tension: 0.2,
-                fill: false,
-                pointRadius: 0,
-                pointHoverRadius: 7,
-                pointHoverBorderWidth: 3,
-                pointHoverBackgroundColor: '#ffffff',
-                borderCapStyle: 'round',
-                borderJoinStyle: 'round'
-            });
+            
+            if (multiYearMode === 'overlap') {
+                const ptsByYear = {};
+                pts.forEach(p => {
+                    labelsSet.add(p.month);
+                    if (!ptsByYear[p.year]) ptsByYear[p.year] = [];
+                    ptsByYear[p.year].push(p);
+                });
+
+                let yearOffset = 0;
+                Object.entries(ptsByYear).forEach(([year, yearPts]) => {
+                    const colorIdx = (idx * 3 + yearOffset) % this.chartPalette.length;
+                    datasets.push({
+                        label: `${key} (${year})`,
+                        _pts: yearPts,
+                        borderColor: this.chartPalette[colorIdx],
+                        backgroundColor: this.chartPalette[colorIdx] + '20',
+                        borderWidth: 2.5,
+                        tension: 0.2,
+                        fill: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 7,
+                        pointHoverBorderWidth: 3,
+                        pointHoverBackgroundColor: '#ffffff',
+                        borderCapStyle: 'round',
+                        borderJoinStyle: 'round'
+                    });
+                    yearOffset++;
+                });
+            } else {
+                pts.forEach(p => labelsSet.add(`${p.year}-${String(p.month).padStart(2,'0')}`));
+                datasets.push({
+                    label: key,
+                    _pts: pts,
+                    borderColor: this.chartPalette[idx % this.chartPalette.length],
+                    backgroundColor: this.chartPalette[idx % this.chartPalette.length] + '20',
+                    borderWidth: 2.5,
+                    tension: 0.2,
+                    fill: false,
+                    pointRadius: 0,
+                    pointHoverRadius: 7,
+                    pointHoverBorderWidth: 3,
+                    pointHoverBackgroundColor: '#ffffff',
+                    borderCapStyle: 'round',
+                    borderJoinStyle: 'round'
+                });
+            }
         });
         
-        const labels = Array.from(labelsSet).sort();
-        console.log("📅 Labels del gráfico:", labels);
-        datasets.forEach(ds => {
-            const pts = grouped[ds.label];
-            ds.data = labels.map(lbl => {
-                const [y,m] = lbl.split('-').map(Number);
-                const p = pts.find(p => p.year===y && p.month===m);
-                return p ? p.frecuencia : null;
+        let labels = [];
+        if (multiYearMode === 'overlap') {
+            const monthsNum = Array.from(labelsSet).sort((a,b) => a - b);
+            labels = monthsNum.map(m => monthNames[m - 1]);
+            
+            datasets.forEach(ds => {
+                ds.data = monthsNum.map(m => {
+                    const p = ds._pts.find(x => x.month === m);
+                    return p ? p.frecuencia : null;
+                });
+                delete ds._pts; // cleanup
             });
-        });
+        } else {
+            labels = Array.from(labelsSet).sort();
+            console.log("📅 Labels del gráfico:", labels);
+            
+            datasets.forEach(ds => {
+                ds.data = labels.map(lbl => {
+                    const [y,m] = lbl.split('-').map(Number);
+                    const p = ds._pts.find(x => x.year===y && x.month===m);
+                    return p ? p.frecuencia : null;
+                });
+                delete ds._pts; // cleanup
+            });
+        }
         
         this.mainChart.data.labels = labels;
         this.mainChart.data.datasets = datasets;
@@ -2548,13 +2644,9 @@ class ANDEDashboard {
         const selectedFeeders = this.getSelectedValues('filterTransformador');
         
         if (!this.data || this.data.length === 0) {
-            emptyStateMsg = 'Sin datos para ranking. Asegúrate de que los filtros elegidos devuelvan mediciones.';
-        } else if (selectedFeeders.length <= 1 && this.globalMode === 'unique') {
-            emptyStateMsg = 'Selecciona "Modo Múltiple" y escoge al menos 2 alimentadores para ver el Ranking.';
-        } else if (selectedFeeders.length <= 1 && this.globalMode !== 'unique' && this.selectionMode !== 'all') {
-            emptyStateMsg = 'Selecciona al menos 2 alimentadores o el modo "Todos" para comparar en el Ranking.';
+            emptyStateMsg = 'Sin datos empíricos para ranking. Asegúrate de que los filtros elegidos devuelvan mediciones.';
         }
-
+        
         let currentEmptyState = rankingChartWrapper.querySelector('.chart-empty-state');
         const canvasEl = document.getElementById('rankingChart');
 
@@ -2673,15 +2765,60 @@ class ANDEDashboard {
 
     openFullRankingTab() {
         const source = Array.isArray(this.latestRankingData) ? this.latestRankingData : (this.rankingItems || []);
-        const payload = {
-            labels: source.map(item => item.label),
-            data: source.map(item => item.avg),
-            title: 'Ranking completo',
-            subtitle: `Total de elementos: ${source.length}`,
-            palette: this.chartPalette
-        };
-        localStorage.setItem('ande_ranking_full_data', JSON.stringify(payload));
-        window.open('ranking.html', '_blank', 'width=1600,height=1000');
+        if (!source || source.length === 0) {
+            this.showNotification("No hay datos para mostrar en el ranking.", "warning");
+            return;
+        }
+
+        let html = `<div style="padding: 1.25rem;">
+            <h3 style="margin-bottom: 1.2rem; color: var(--text-color); font-size: 1.3rem;">
+               <i class="fas fa-trophy" style="color: #f59e0b; margin-right: 0.5rem;"></i> Ranking Completo
+            </h3>
+            <p style="margin-bottom: 1.5rem; color: var(--text-muted);">
+               Total de elementos rankeados: <strong>${source.length}</strong>
+            </p>
+            <div class="table-responsive" style="max-height: 60vh; overflow-y: auto; border: 1px solid rgba(148,163,184,0.2); border-radius: 8px;">
+                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; background: var(--bg-card); z-index: 1;">
+                        <tr>
+                            <th style="padding: 1rem; width: 60px; text-align: center; border-bottom: 2px solid rgba(148,163,184,0.1);">#</th>
+                            <th style="padding: 1rem; text-align: left; border-bottom: 2px solid rgba(148,163,184,0.1);">Identificador</th>
+                            <th style="padding: 1rem; text-align: right; border-bottom: 2px solid rgba(148,163,184,0.1);">Promedio</th>
+                            <th style="padding: 1rem; text-align: right; border-bottom: 2px solid rgba(148,163,184,0.1);">Rango Max-Min</th>
+                            <th style="padding: 1rem; text-align: right; border-bottom: 2px solid rgba(148,163,184,0.1);">Último Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${source.map((item, idx) => `
+                        <tr style="border-bottom: 1px solid rgba(148,163,184,0.1); transition: background 0.2s;">
+                            <td style="padding: 0.85rem 1rem; text-align: center; font-weight: 800; color: ${this.chartPalette[idx % this.chartPalette.length]}">${idx + 1}</td>
+                            <td style="padding: 0.85rem 1rem; font-weight: 600; color: var(--text-color);">${item.label}</td>
+                            <td style="padding: 0.85rem 1rem; text-align: right; color: var(--text-color);"><strong>${this.safeToFixed(item.avg, 4)}</strong></td>
+                            <td style="padding: 0.85rem 1rem; text-align: right; color: var(--text-muted);">${this.safeToFixed(item.range, 4)}</td>
+                            <td style="padding: 0.85rem 1rem; text-align: right; color: var(--text-muted);">${this.safeToFixed(item.last, 4)}</td>
+                        </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+
+        const modalBody = document.getElementById('modalBody');
+        const modalOverlay = document.getElementById('seriesModal');
+        const modalClose = document.getElementById('modalClose');
+
+        if(modalBody && modalOverlay) {
+            modalBody.innerHTML = html;
+            modalOverlay.style.display = 'flex';
+            setTimeout(() => modalOverlay.classList.add('show'), 10);
+
+            if(modalClose) {
+                modalClose.onclick = () => {
+                    modalOverlay.classList.remove('show');
+                    setTimeout(() => modalOverlay.style.display = 'none', 300);
+                };
+            }
+        }
     }
 
     updateScatterChart() {

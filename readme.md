@@ -110,4 +110,4 @@ No es completamente obligatorio, pero se sugiere tener configuradas variables de
 *   `NODE_ENV=development`
 (Aplica Postgres `DATABASE_URL` solo si requieres un uso extendido exterior al `sqlite3`).
 
-¡Gracias por leer y mantener viva esta arquitectura! Cualquier gran bug o pull a resolver comiencen por rastrear `server.js` y todo caerá en su lugar.🚀
+¡Gracias por leer y mantener viva esta arquitectura! Cualquier gran bug o pull a resolver comiencen por rastrear `server.js` y todo caerá en su lugar.

@@ -191,6 +191,14 @@
                             <button type="button" class="month-btn" data-month="11">Nov</button>
                             <button type="button" class="month-btn" data-month="12">Dic</button>
                         </div>
+                        <div class="month-actions" style="margin-bottom: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.3rem;">
+                            <button type="button" class="btn-link" id="btnQ1" style="font-size: 0.8rem; padding: 0.2rem 0.4rem;">Q1</button>
+                            <button type="button" class="btn-link" id="btnQ2" style="font-size: 0.8rem; padding: 0.2rem 0.4rem;">Q2</button>
+                            <button type="button" class="btn-link" id="btnQ3" style="font-size: 0.8rem; padding: 0.2rem 0.4rem;">Q3</button>
+                            <button type="button" class="btn-link" id="btnQ4" style="font-size: 0.8rem; padding: 0.2rem 0.4rem;">Q4</button>
+                            <button type="button" class="btn-link" id="btnS1" style="font-size: 0.8rem; padding: 0.2rem 0.4rem;">Sem 1</button>
+                            <button type="button" class="btn-link" id="btnS2" style="font-size: 0.8rem; padding: 0.2rem 0.4rem;">Sem 2</button>
+                        </div>
                         <div class="month-actions">
                             <button type="button" class="btn-link" id="selectAllMonths">Todos</button>
                             <button type="button" class="btn-link" id="deselectAllMonths">Ninguno</button>
@@ -464,11 +472,15 @@
                             </button>
                         </div>
                         <div class="chart-controls">
-                            <div class="chart-options">
+                            <div class="chart-options" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                 <select id="chartType" class="chart-select">
                                     <option value="line">Líneas</option>
                                     <option value="bar">Barras</option>
                                     <option value="scatter">Dispersión</option>
+                                </select>
+                                <select id="multiYearMode" class="chart-select" style="min-width: 140px;" title="Modo Multianual: Cómo se dibuja cuando hay más de 1 año">
+                                    <option value="sequential">Años Secuenciales</option>
+                                    <option value="overlap">Años Superpuestos</option>
                                 </select>
                             </div>
                             <div class="chart-controls">
@@ -498,51 +510,52 @@
                             <i class="fas fa-info-circle"></i> Haz clic en la leyenda para ocultar series
                         </div>
                     </div>
+                    </div>
                 </div>
 
-                <!-- RANKING -->
-                <div class="card chart-card side-chart-area delay-6">
-                    <div class="card-header">
-                        <h3><i class="fas fa-trophy"></i> Ranking</h3>
-                        <div class="ranking-controls">
-                            <select id="rankingGroup" class="ranking-select">
-                                <option value="alimentador">Agrupar por: Alimentador</option>
-                                <option value="estacion">Agrupar por: Estación</option>
-                            </select>
-                            <select id="rankingSort" class="ranking-select">
-                                <option value="avg">Ordenar por: Promedio</option>
-                                <option value="stability">Ordenar por: Estabilidad</option>
-                                <option value="trend">Ordenar por: Tendencia</option>
-                            </select>
-                            <select id="rankingViewMode" class="ranking-select">
-                                <option value="top10">Vista gráfico: Top 10</option>
-                                <option value="all">Vista gráfico: Todos</option>
-                            </select>
-                            <select id="rankingDisplayMode" class="ranking-select">
-                                <option value="chart">Mostrar: Gráfico</option>
-                                <option value="list">Mostrar: Lista</option>
-                                <option value="both">Mostrar: Ambos</option>
-                            </select>
-                            <button id="openFullRankingBtn" class="btn-outline small" type="button">
-                                <i class="fas fa-up-right-from-square"></i> Ranking completo
-                            </button>
-                        </div>
+            <!-- RANKING (Sección completa) -->
+            <div class="card chart-card delay-6" style="margin-top: 1.5rem; margin-bottom: 1.5rem;">
+                <div class="card-header">
+                    <h3><i class="fas fa-trophy"></i> Ranking</h3>
+                    <div class="ranking-controls">
+                        <select id="rankingGroup" class="ranking-select">
+                            <option value="alimentador">Agrupar por: Alimentador</option>
+                            <option value="estacion">Agrupar por: Estación</option>
+                        </select>
+                        <select id="rankingSort" class="ranking-select">
+                            <option value="avg">Ordenar por: Promedio</option>
+                            <option value="stability">Ordenar por: Estabilidad</option>
+                            <option value="trend">Ordenar por: Tendencia</option>
+                        </select>
+                        <select id="rankingViewMode" class="ranking-select">
+                            <option value="top10">Vista gráfico: Top 10</option>
+                            <option value="all">Vista gráfico: Todos</option>
+                        </select>
+                        <select id="rankingDisplayMode" class="ranking-select">
+                            <option value="chart">Mostrar: Gráfico</option>
+                            <option value="list">Mostrar: Lista</option>
+                            <option value="both">Mostrar: Ambos</option>
+                        </select>
+                        <button id="openFullRankingBtn" class="btn-outline small" type="button">
+                            <i class="fas fa-up-right-from-square"></i> Ranking completo
+                        </button>
                     </div>
-                    <div class="card-body">
-                        <div class="chart-wrapper" id="rankingChartWrapper">
-                            <canvas id="rankingChart"></canvas>
-                        </div>
-                        <div id="rankingListWrapper" style="display:none; margin-top:0.75rem; max-height:320px; overflow:auto; border:1px solid rgba(148,163,184,0.2); border-radius:8px; padding:0.5rem;"></div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-wrapper" id="rankingChartWrapper">
+                        <canvas id="rankingChart"></canvas>
                     </div>
-                    <div class="chart-footer">
-                        <div class="chart-note">
-                            <i class="fas fa-info-circle"></i> Ranking según agrupación y métrica seleccionadas
-                        </div>
+                    <div id="rankingListWrapper" style="display:none; margin-top:0.75rem; max-height:320px; overflow:auto; border:1px solid rgba(148,163,184,0.2); border-radius:8px; padding:0.5rem;"></div>
+                </div>
+                <div class="chart-footer">
+                    <div class="chart-note">
+                        <i class="fas fa-info-circle"></i> Ranking según agrupación y métrica seleccionadas
                     </div>
+                </div>
                 </div>
             </div>
 
-            <!-- GRÁFICOS DE PASTEL -->
+            <!-- SEGUNDA FILA: PASTEL Y RESUMEN -->
             <div class="pie-charts-container">
                 <div class="card pie-chart-card">
                     <div class="card-header">
@@ -566,8 +579,9 @@
                 </div>
             </div>
 
-            <!-- RESUMEN POR ESTACIÓN -->
-            <div id="stationSummaryContainer" class="card" style="margin-top: 1.5rem; display: none;">
+            <!-- RESUMEN POR ESTACIÓN Y DISPERSIÓN -->
+            <div class="charts-grid" style="grid-template-columns: 1fr 1fr; margin-top: 1.5rem;">
+            <div id="stationSummaryContainer" class="card" style="display: none;">
                 <div class="card-header">
                     <h3><i class="fas fa-layer-group"></i> Resumen de estación <span id="stationName"></span></h3>
                     <select id="stationSummarySelect" class="ranking-select" style="max-width: 280px;">
@@ -582,7 +596,7 @@
             </div>
 
             <!-- DISPERSIÓN -->
-            <div class="card chart-card delay-7" style="margin-top: 1.5rem;">
+            <div class="card chart-card delay-7">
                 <div class="card-header">
                     <h3><i class="fas fa-braille"></i> Dispersión por alimentador</h3>
                     <div class="chart-options">
@@ -604,8 +618,8 @@
                     </div>
                 </div>
             </div>
-
-            <!-- TABLA -->
+            </div>
+            
             <div class="card table-card delay-8" style="margin-top: 1.5rem;">
                 <div class="card-header with-controls">
                     <h3><i class="fas fa-list-ul"></i> Registro detallado</h3>

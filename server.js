@@ -1119,7 +1119,7 @@ async function handleDatosRequest(req, res, source = {}) {
             sql += " AND mc.mes = ?";
             params.push(mes);
         }
-    } else if (periodo && periodo !== 'select_months') {
+    } else if (periodo && periodo !== 'select_months' && periodo !== '') {
         // Si hay período dinámico, manejarlo
         const currentDate = new Date();
         const currentYear = currentDate.getFullYear();
